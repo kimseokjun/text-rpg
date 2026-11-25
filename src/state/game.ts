@@ -867,6 +867,14 @@ function applyTower(s: GameState, ex: Expedition): string[] {
   return lines;
 }
 
+/** 서버 보상 지급 (월드보스 등) */
+export function grantReward(s: GameState, r: { gold?: number; cores?: number; refineStones?: number; egg?: number }): string {
+  s.gold += r.gold ?? 0; s.cores += r.cores ?? 0; s.refineStones += r.refineStones ?? 0;
+  let extra = '';
+  if (r.egg) { const p = addPet(s, hatch(rngOf(s), r.egg as Grade)); extra = ` · ${PET_GRADE_NAME[p.grade]} ${PET_BY_ID[p.kind].name} 부화!`; }
+  return extra;
+}
+
 // ───────── 가이드 퀘스트 ─────────
 export function questView(s: GameState): QuestView {
   const eq = allEquipsOf(s);

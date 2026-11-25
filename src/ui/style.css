@@ -376,3 +376,4 @@ svg.px{image-rendering:pixelated;flex:none}
 .frow .small{flex:1}
 .dot{width:9px;height:9px;border-radius:50%;background:#555}
 .dot.on{background:var(--ok)}
+.bar.big{height:14px}

@@ -97,3 +97,11 @@ export async function wipeSave() {
   try { localStorage.removeItem(CLOUD && session ? `${LS_KEY}-${session.user.id}` : LS_KEY); } catch { /* 무시 */ }
   if (docRef) { try { await docRef.delete(); } catch { /* 무시 */ } }
 }
+
+/** 바로 서버에 저장 (서버가 세이브를 읽어야 할 때) */
+export async function saveGameNow(s: GameState): Promise<boolean> {
+  if (!CLOUD || !session) return false;
+  clearTimeout(cloudTimer);
+  try { localStorage.setItem(`${LS_KEY}-${session.user.id}`, JSON.stringify(s)); } catch { /* 무시 */ }
+  return saveCloud(JSON.parse(JSON.stringify(s)), s.day, statePower(s));
+}

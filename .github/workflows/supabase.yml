@@ -2,7 +2,7 @@ name: Deploy server (Supabase)
 on:
   push:
     branches: [main]
-    paths: ['supabase/**', '.github/workflows/supabase.yml']
+    paths: ['supabase/**', 'src/core/**', 'src/data/**', 'src/state/game.ts', 'src/server/**', '.github/workflows/supabase.yml']
   workflow_dispatch:
 jobs:
   deploy:
@@ -26,6 +26,11 @@ jobs:
         run: supabase db push --remote --include-all --yes -p "$SUPABASE_DB_PASSWORD" || supabase db push --linked --include-all -p "$SUPABASE_DB_PASSWORD"
       - name: Push auth config
         run: supabase config push --yes || echo "::warning::config push 실패 — 대시보드에서 이메일 확인 끄기 필요"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Bundle game core for functions
+        run: npx --yes esbuild@0.28 src/server/worldboss.ts --bundle --format=esm --platform=neutral --target=es2022 --outfile=supabase/functions/worldboss/core.js
       - name: Deploy functions
         run: |
           if [ -d supabase/functions ] && [ "$(ls -A supabase/functions 2>/dev/null)" ]; then supabase functions deploy --project-ref "$PROJECT_REF" --use-api; else echo "함수 없음"; fi

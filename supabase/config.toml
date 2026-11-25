@@ -22,3 +22,6 @@ double_confirm_changes = false
 enable_confirmations = false
 secure_password_change = false
 max_frequency = "1s"
+
+[functions.worldboss]
+verify_jwt = false

@@ -20,16 +20,17 @@ import { BLESS_CHANCE, DROP_CHANCE, MAX_REPEAT, STONE_CHANCE, rarityWeights } fr
 import { SKILLS, describeSkill } from '../data/skills';
 import { TRAITS } from '../data/traits';
 import { QUESTS, rewardText } from '../data/quests';
+import { WB_LIMIT, wbInfo } from '../server/worldboss';
 import { TOWER_UNLOCK, isTowerBoss, towerBoss, towerGimmick, towerReward } from '../data/tower';
 import * as G from '../state/game';
-import { exportSave, importSave, initRemote, loadGame, remoteReady, saveGame, wipeSave } from '../state/save';
+import { exportSave, importSave, initRemote, loadGame, remoteReady, saveGame, saveGameNow, wipeSave } from '../state/save';
 import * as Cloud from '../net/cloud';
 import { CLOUD } from '../net/cloud';
 import { townScene } from './art';
 import { charSprite } from './pixel';
 import { equipKind, equipSprite, itemSprite, monsterSprite, petSprite } from './sprites';
 
-type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank';
+type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world';
 
 let S: G.GameState | null = null;
 let screen: Screen = 'title';
@@ -196,6 +197,7 @@ const HUBS: { id: string; name: string; tabs: [string, string][] }[] = [
   { id: 'smith', name: '대장간', tabs: [['smith', '강화'], ['refinery', '제련'], ['forge', '제작']] },
   { id: 'adv', name: '모험', tabs: [['gate', '던전'], ['tower', '무한 탑'], ['daily', '일일 던전'], ['raid', '개인 레이드']] },
 ];
+if (CLOUD) HUBS[2].tabs.push(['world', '월드보스']);
 const hubOf = (sc: string) => HUBS.find((h) => h.tabs.some(([t]) => t === sc));
 const hubTabs = () => {
   const h = hubOf(screen);
@@ -835,6 +837,70 @@ function viewRank() {
   </div>`;
 }
 
+// ───────── 월드보스 (서버) ─────────
+let wb: Awaited<ReturnType<typeof Cloud.wbStatus>> = null;
+let wbLoading = false, wbBusy = false, wbAt = 0;
+let wbLast: any = null;
+async function loadWB(force = false) {
+  if (wbLoading || (!force && Date.now() - wbAt < 15000)) return;
+  wbLoading = true;
+  wb = await Cloud.wbStatus(raidWeek(), kstToday());
+  wbLoading = false; wbAt = Date.now();
+  Cloud.subscribeWB((b) => { if (wb && b.season === raidWeek()) { wb.boss = b; if (screen === 'world') { const el = document.getElementById('wbhp'); if (el) el.outerHTML = wbHpBar(b); } } });
+  if (screen === 'world') render();
+}
+const kstToday = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+function wbHpBar(b: Cloud.WBBoss | null) {
+  if (!b) return `<div id="wbhp" class="small mute">첫 도전이 들어오면 이번 주 보스가 나타나요.</div>`;
+  const pct = Math.max(0, (b.hp / b.max_hp) * 100);
+  return `<div id="wbhp"><div class="bar e big"><i style="width:${pct}%"></i></div><p class="small" style="margin:4px 0 0">${b.killed_at ? `☠ 처치 완료${b.killer ? ` · 막타 ${esc(b.killer)}` : ''}` : `HP ${fmt(b.hp)} / ${fmt(b.max_hp)} (${pct.toFixed(1)}%)`}</p></div>`;
+}
+function viewWorld() {
+  const s = S!;
+  if (!wb && !wbLoading) setTimeout(() => loadWB(true), 0);
+  else if (Date.now() - wbAt > 15000) setTimeout(() => loadWB(), 0);
+  const info = wbInfo(raidWeek());
+  const b = wb?.boss ?? null;
+  const left = Math.max(0, WB_LIMIT - (wb?.used ?? 0));
+  const top = (wb?.top ?? []).map((r, i) => `<li class="${r.user_id === Cloud.session?.user.id ? 'me' : ''}"><span class="rk ${i < 3 ? `top${i + 1}` : ''}">${i + 1}</span><b>${esc(r.username)}</b><span class="small mute">${r.hits}회</span><span class="rv">${fmt(r.total)}</span></li>`).join('');
+  const last = wbLast ? `<div class="panel raidres"><div><b>이번 도전 피해 ${fmt(wbLast.dealt)}</b>${wbLast.killedNow ? ' · ☠ 막타! 월드보스를 쓰러뜨렸다!' : ''}${wbLast.wiped ? ' · 파티 전멸' : ''}</div><div class="small mute">남은 도전 ${wbLast.attemptsLeft}회</div></div>${wbLast.report ? reportPanel({ report: wbLast.report, lost: false, diag: [] } as unknown as G.ExpeditionSummary) : ''}` : '';
+  return `<div class="wrap">${backBtn()}
+    <h2>월드보스</h2>
+    <p class="mute">모든 모험가가 <b>피통 하나를 함께 깎는</b> 주간 보스예요. 하루 ${WB_LIMIT}번 도전할 수 있고, 피해는 <b>서버가 직접 계산</b>해요. 쓰러뜨리면 기여 순위에 따라 보상을 받아요. 매주 월요일에 새 형태로 돌아와요.</p>
+    ${!G.towerOpen(s) ? '<p class="small" style="color:var(--gold)">마왕숲 50층 이전 파티는 거의 피해를 못 넣어요. 그래도 참여하면 참여 보상은 받을 수 있어요.</p>' : ''}
+    ${(wb?.claimable ?? []).map((sn) => `<div class="quest ready"><div class="row" style="justify-content:space-between;gap:10px;align-items:center"><b>✔ ${sn === raidWeek() ? '이번 주' : '지난'} 월드보스 처치 보상</b><button class="btn sm" data-a="wbClaim" data-v="${sn}">보상 받기</button></div></div>`).join('')}
+    <div class="panel raidboss"><div class="raidpic">${monsterSprite(info.monster, { size: 128, boss: true, tags: ['demon'] })}</div>
+      <div style="flex:1;min-width:0"><h3 style="margin:0">${esc(info.name)}</h3><p class="small mute" style="margin:2px 0 8px">${esc(info.form)} · ${esc(info.tip)}</p>
+      ${wbHpBar(b)}
+      <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn" data-a="wbAttack" ${left && !wbBusy && !b?.killed_at ? '' : 'disabled'}>${wbBusy ? '전투 중…' : `도전 (오늘 ${left}/${WB_LIMIT})`}</button><button class="btn ghost sm" data-a="wbRefresh">새로고침</button></div>
+      <p class="small mute" style="margin:6px 0 0">지금 출전 파티·장비·펫으로 싸워요 (도전할 때 서버에 저장 후 계산).</p></div></div>
+    ${last}
+    <div class="panel"><h3 style="margin-top:0">기여 순위 <span class="small mute">내 기여 ${wb?.mine ? `${fmt(wb.mine.total)} · ${wb.myRank}위` : '없음'}</span></h3>
+      <ol class="ranklist">${top || `<p class="mute">${wbLoading ? '불러오는 중…' : '아직 아무도 도전하지 않았어요.'}</p>`}</ol>
+      <p class="small mute">보상: 1위 핵 300·전설 알 / 상위 10% 핵 200·영웅 알 / 30% 핵 140 / 60% 핵 90 / 참여 핵 50 (+제련석·골드)</p></div>
+  </div>`;
+}
+async function wbAttack() {
+  if (wbBusy) return;
+  wbBusy = true; render();
+  if (S && !(await saveGameNow(S))) { wbBusy = false; toast('서버 저장에 실패했어요. 잠시 후 다시 시도하세요', true); render(); return; }
+  const r = await Cloud.wbCall({ action: 'attack' });
+  wbBusy = false;
+  if (r?.error) { toast(r.error, true); await loadWB(true); render(); return; }
+  wbLast = r;
+  toast(`월드보스에게 ${fmt(r.dealt)} 피해!`);
+  await loadWB(true);
+  render();
+}
+async function wbClaim(season: number) {
+  const r = await Cloud.wbCall({ action: 'claim', season });
+  if (r?.error) { toast(r.error, true); return; }
+  const extra = G.grantReward(S!, r.reward);
+  saveGame(S!);
+  toast(`${r.rank}위 / ${r.total}명 (${r.reward.label}) 보상: 핵 ${r.reward.cores} · 제련석 ${r.reward.refineStones} · ${fmt(r.reward.gold)}G${extra}`);
+  await loadWB(true); render();
+}
+
 function viewTower() {
   const s = S!;
   if (!G.towerOpen(s)) return `<div class="wrap">${backBtn()}<h2>무한 탑</h2><p class="mute">마왕숲 ${TOWER_UNLOCK}층을 클리어하면 열려요.</p></div>`;
@@ -1465,7 +1531,7 @@ function renderNow() {
   }
   const body = !S || screen === 'title' ? viewTitle()
     : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
-    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'rank' ? viewRank() : viewResult();
+    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : viewResult();
   app.innerHTML = (screen === 'title' ? '' : topbar()) + body;
   renderModal();
   renderToast();
@@ -1605,6 +1671,9 @@ app.addEventListener('click', (ev) => {
     case 'chatTab': chatTab = d.v as 'chat' | 'friends'; if (chatTab === 'chat') chatUnread = 0; renderChat(); break;
     case 'friendAccept': Cloud.acceptFriend(Number(d.v)).then(async () => { friends = await Cloud.loadFriends(); renderChat(); toast('친구가 됐어요'); }); break;
     case 'friendRemove': Cloud.removeFriend(Number(d.v)).then(async () => { friends = await Cloud.loadFriends(); renderChat(); }); break;
+    case 'wbAttack': wbAttack(); break;
+    case 'wbRefresh': loadWB(true); break;
+    case 'wbClaim': wbClaim(Number(d.v)); break;
     case 'claimQuest': commit(G.claimQuest(s!)); break;
     case 'whFilter': whFilter = d.v as WhFilter; render(); break;
     case 'whOpen': whOpen = whOpen === d.e ? null : d.e!; render(); break;

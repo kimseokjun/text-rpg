@@ -166,3 +166,49 @@ export async function requestFriend(name: string): Promise<string | null> {
 }
 export async function acceptFriend(id: number) { if (sb) await sb.from('friendships').update({ status: 'accepted' }).eq('id', id); }
 export async function removeFriend(id: number) { if (sb) await sb.from('friendships').delete().eq('id', id); }
+
+// ───────── 월드보스 ─────────
+export interface WBBoss { season: number; max_hp: number; hp: number; started_at: string; killed_at: string | null; killer: string | null }
+export interface WBRank { user_id: string; username: string; total: number; hits: number }
+export async function wbStatus(season: number, today: string) {
+  if (!sb || !session) return null;
+  const me = session.user.id;
+  const [b, top, mine, used, prevB] = await Promise.all([
+    sb.from('worldboss').select('*').eq('season', season).maybeSingle(),
+    sb.from('worldboss_rank').select('user_id, username, total, hits').eq('season', season).order('total', { ascending: false }).limit(20),
+    sb.from('worldboss_rank').select('user_id, username, total, hits').eq('season', season).eq('user_id', me).maybeSingle(),
+    sb.from('worldboss_hits').select('id', { count: 'exact', head: true }).eq('user_id', me).eq('kst_date', today),
+    sb.from('worldboss').select('season, killed_at').lt('season', season + 1).not('killed_at', 'is', null).order('season', { ascending: false }).limit(3),
+  ]);
+  // 받을 보상: 처치된 시즌 중 내가 참여했고 아직 안 받은 것
+  let claimable: number[] = [];
+  const killed = ((prevB.data ?? []) as { season: number }[]).map((x) => x.season);
+  if (killed.length) {
+    const [part, cl] = await Promise.all([
+      sb.from('worldboss_rank').select('season').eq('user_id', me).in('season', killed),
+      sb.from('worldboss_claims').select('season').eq('user_id', me).in('season', killed),
+    ]);
+    const done = new Set(((cl.data ?? []) as { season: number }[]).map((x) => x.season));
+    claimable = ((part.data ?? []) as { season: number }[]).map((x) => x.season).filter((x) => !done.has(x));
+  }
+  let myRank: number | null = null;
+  if (mine.data) {
+    const c = await sb.from('worldboss_rank').select('user_id', { count: 'exact', head: true }).eq('season', season).gt('total', (mine.data as WBRank).total);
+    myRank = (c.count ?? 0) + 1;
+  }
+  return { boss: (b.data as WBBoss) ?? null, top: (top.data ?? []) as WBRank[], mine: (mine.data as WBRank) ?? null, myRank, used: used.count ?? 0, claimable };
+}
+export async function wbCall(body: Record<string, unknown>): Promise<any> {
+  if (!sb || !session) return { error: '로그인이 필요해요' };
+  const { data, error } = await sb.functions.invoke('worldboss', { body });
+  if (error) {
+    try { const j = await (error as any).context?.json?.(); if (j?.error) return j; } catch { /* 무시 */ }
+    return { error: '서버 함수에 연결할 수 없어요' };
+  }
+  return data;
+}
+let wbCh: ReturnType<SupabaseClient['channel']> | null = null;
+export function subscribeWB(onChange: (b: WBBoss) => void) {
+  if (!sb || wbCh) return;
+  wbCh = sb.channel('wb').on('postgres_changes', { event: '*', schema: 'public', table: 'worldboss' }, (p) => onChange(p.new as WBBoss)).subscribe();
+}

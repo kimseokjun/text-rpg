@@ -26,7 +26,7 @@ export const TITLES: Title[] = [
   { id: 'bossHunter', name: '보스 사냥꾼', tone: 4, mods: [pm('bossDmg', 3)], desc: '보스·엘리트 피해 +3%' },
   { id: 'goldHunter', name: '황금 사냥꾼', tone: 4, mods: [pm('goldGain', 10)], desc: '골드 획득 +10%' },
   { id: 'mercKing', name: '용병왕', tone: 5, mods: [pm('atk', 2), pm('mag', 2), pm('hp', 2)], desc: '공격력·마력·생명력 +2%' },
-  { id: 'transcender', name: '초월자', tone: 5, mods: [pm('crit', 2, 'flat')], desc: '치명 +2%p' },
+  { id: 'transcender', name: '초월자', tone: 5, mods: [pm('crit', 2, 'flat')], desc: '치명타 확률 +2%p' },
   { id: 'forgeMaster', name: '전설의 대장장이', tone: 4, mods: [pm('def', 3), pm('res', 3)], desc: '방어·마법 저항 +3%' },
   { id: 'mythOwner', name: '신화의 주인', tone: 5, mods: [pm('physDmg', 2), pm('mag', 2)], desc: '물리 피해·마력 +2%' },
   { id: 'beastLord', name: '진화의 인도자', tone: 4, mods: [pm('hp', 3)], desc: '생명력 +3%' },

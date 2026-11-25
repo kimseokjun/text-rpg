@@ -303,11 +303,11 @@ const POTION_COLOR: Record<string, string> = { p_str: '#d8443a', p_str2: '#ff3a2
 const potionIcon = (id: string, size = 30) => itemSprite('potion', { size, color: POTION_COLOR[id] ?? '#d8443a' });
 function equipLine(e: Equip, opts: { pot?: boolean } = {}) {
   const b = EQUIP_BY_ID[e.baseId];
-  const st = Object.entries(equipStats(e)).map(([k, v]) => `<span class="nw">${STAT_LABEL[k as StatKey]} +${Math.round(v as number)}</span>`).join(', ');
+  const st = Object.entries(equipStats(e)).map(([k, v]) => `<span class="nw">${STAT_LABEL[k as StatKey]} +${Math.round(v as number)}${k === 'crit' ? '%p' : ''}</span>`).join(', ');
   const opt = opts.pot === false ? '' : potSummary(e);
   return `<span class="eico r${e.rarity}e ${b.set ? 'setico' : ''}">${equipIcon(e)}</span><span class="iname r${e.rarity}">${esc(b.name)}${e.enhance ? ` +${e.enhance}` : ''}</span>${b.set ? ` <span class="settag">${esc(SET_BY_ID[b.set].name)} 세트</span>` : ''} <span class="small mute">${RARITY_NAME[e.rarity]}${b.jobs ? ` · ${b.jobs.map((j) => JOBS[j].name).join('/')}` : ''}</span><div class="istat">${st}${opt ? ` · ${opt}` : ''}</div>`;
 }
-const STAT_LABEL: Record<StatKey, string> = { hp: 'HP', mp: 'MP', atk: '공격', mag: '마력', def: '방어', res: '마저', agi: '민첩', crit: '치명' };
+const STAT_LABEL: Record<StatKey, string> = { hp: 'HP', mp: 'MP', atk: '공격', mag: '마력', def: '방어', res: '마저', agi: '민첩', crit: '치명타 확률' };
 const MOD_LABEL: Record<string, string> = { ...STAT_LABEL, goldGain: '골드 획득', expGain: '경험치 획득', itemGain: '아이템 드롭', dmgTaken: '받는 피해', mpCost: 'MP 소모', evade: '회피', healPower: '회복량', skillDmg: '스킬 데미지', physDmg: '물리 피해', normalDmg: '일반 공격', bossDmg: '보스 피해', resPierce: '마저 무시', defPierce: '방어 무시', magTaken: '받는 마법 피해' };
 function optText(o: { key: string; kind: string; value: number }) {
   if (o.key === 'critDmg') return `치명타 피해 +${Math.round(o.value * 100)}%p`;
@@ -791,7 +791,7 @@ function viewForge() {
     const c = CRAFT_COST[b.slot], rc = RAID_CRAFT_COST[b.slot], mc = MYTH_CRAFT_COST[b.slot];
     const myth = forgeSet === MYTH_SET;
     const can = myth ? (s.mythEss ?? 0) >= mc.ess && s.gold >= mc.gold : raidSet ? s.scales >= rc.scales && s.gold >= rc.gold : s.cores >= c.cores && s.gold >= c.gold;
-    const st = Object.entries(b.stats).map(([k, v]) => `${STAT_LABEL[k as StatKey]} +${v}`).join(', ');
+    const st = Object.entries(b.stats).map(([k, v]) => `${STAT_LABEL[k as StatKey]} +${v}${k === 'crit' ? '%p' : ''}`).join(', ');
     return `<div class="icard r5b forgecard"><div class="row" style="gap:10px;align-items:center"><span class="eico r5e setico" style="width:64px;height:64px">${equipSprite(equipKind(b.slot, b.jobs?.[0]), 8, { size: 60, set: b.set })}</span>
       <div><b class="r5">${esc(b.name)}</b><div class="small mute">${KIND_NAME_EQ[b.slot]}${b.jobs ? ` · ${JOBS[b.jobs[0]].name}` : ''} · 기본 ${st}</div></div></div>
       <div class="small">재료: ${myth ? `신화의 정수 ${mc.ess} · ${fmt(mc.gold)}G` : raidSet ? `벨리알의 파편 ${rc.scales} · ${fmt(rc.gold)}G` : `군단장의 핵 ${c.cores} · ${fmt(c.gold)}G`}</div>
@@ -948,7 +948,7 @@ function potTablePanel() {
       <li>등급 상승: 레어→에픽 ${POT_UP[1]}% (천장 ${POT_PITY[1]}회) · 에픽→유니크 ${POT_UP[2]}% (${POT_PITY[2]}회) · 유니크→레전드리 ${POT_UP[3]}% (${POT_PITY[3]}회)</li>
       <li>첫 줄은 항상 현재 등급, 2·3번째 줄은 40% 확률로 같은 등급 · 아니면 한 등급 아래 (수치도 그 등급 기준)</li>
       <li>한 줄은 그 등급에서 나올 수 있는 옵션 중 균등 확률이고, 같은 옵션은 한 장비에 겹쳐 붙지 않아요</li>
-      <li>치명 확률은 100%가 상한이에요. 넘친 만큼은 효과가 없어요</li>
+      <li>치명타 확률은 100%가 상한이에요. 넘친 만큼은 효과가 없어요</li>
     </ul></div>`;
 }
 
@@ -2327,7 +2327,7 @@ function viewStorage() {
   const cards = list.map(({ e, owner }) => {
     const bs = EQUIP_BY_ID[e.baseId];
     const on = whOpen === e.uid;
-    const st = Object.entries(equipStats(e)).map(([k, v]) => `${STAT_LABEL[k as StatKey]} +${Math.round(v as number)}`).join(' · ');
+    const st = Object.entries(equipStats(e)).map(([k, v]) => `${STAT_LABEL[k as StatKey]} +${Math.round(v as number)}${k === 'crit' ? '%p' : ''}`).join(' · ');
     const opts = potSummary(e);
     const set = bs.set ? SET_BY_ID[bs.set] : null;
     return `<div class="wrow r${e.rarity}b ${owner ? 'worn' : ''} ${on ? 'on' : ''}">
@@ -2718,7 +2718,7 @@ function viewCharModal(uid: string) {
       <div class="ccol">${(['accessory', 'ring1', 'ring2'] as EquipSlot[]).map(slotBtn).join('')}<div class="cslotb deco" aria-hidden="true">${JOB_EMBLEM(c)}</div></div>
       <div class="cstats"><div class="cpow"><span class="small">전투력</span><b>${fmt(charPower(c))}</b></div>
         ${STAT_KEYS.filter((k) => k !== 'crit').map((k) => `<div class="srow"><span>${STAT_LABEL[k]}</span><b>${fmt(Math.round(stats[k]))}</b></div>`).join('')}
-        <div class="srow" title="${stats.crit > 100 ? `치명 수치 ${Math.round(stats.crit)}% · 100% 넘는 ${Math.round(stats.crit - 100)}%p는 효과 없음` : '공격이 치명타로 들어갈 확률'}"><span>치명타 확률</span><b>${Math.min(100, Math.round(stats.crit))}%${stats.crit > 100 ? ` <span class="small mute">(${Math.round(stats.crit)})</span>` : ''}</b></div>
+        <div class="srow" title="${stats.crit > 100 ? `치명타 확률 수치 ${Math.round(stats.crit)}% · 100% 넘는 ${Math.round(stats.crit - 100)}%p는 효과 없음` : '공격이 치명타로 들어갈 확률'}"><span>치명타 확률</span><b>${Math.min(100, Math.round(stats.crit))}%${stats.crit > 100 ? ` <span class="small mute">(${Math.round(stats.crit)})</span>` : ''}</b></div>
         <div class="srow" title="치명타가 나면 기본 150% + 치명타 피해 옵션"><span>치명타 피해</span><b>${Math.round(150 + extra.critDmg * 100)}%</b></div>
         ${ex ? `<div class="small mute" style="margin-top:4px">${ex}</div>` : ''}</div>
     </div>

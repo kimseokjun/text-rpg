@@ -77,7 +77,7 @@ export function awaken(c: Character, rng: Rng): string | null {
   if (c.awakening >= 5) {
     if ((c.transcend ?? 0) >= MAX_TRANSCEND) return null;
     c.transcend = (c.transcend ?? 0) + 1;
-    return `${c.name} 초월 ${c.transcend}단계! (모든 능력치 +${c.transcend * 4}%${c.transcend >= MAX_TRANSCEND ? ' · 치명 +5%p' : ''})`;
+    return `${c.name} 초월 ${c.transcend}단계! (모든 능력치 +${c.transcend * 4}%${c.transcend >= MAX_TRANSCEND ? ' · 치명타 확률 +5%p' : ''})`;
   }
   c.awakening++;
   if (c.awakening === 3) {

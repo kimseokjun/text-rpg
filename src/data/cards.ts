@@ -22,15 +22,15 @@ export const CARD_SETS: CardSet[] = [
   { id: 'star', name: '별의 마도회', desc: '마법 화력', color: '#9ab8ff',
     bonus: [{ n: 2, text: '마력 +12%', mods: [P('mag', 12)] }, { n: 4, text: '스킬 피해 +18%', mods: [P('skillDmg', 18)] }, { n: 5, text: '마저 무시 +25%', mods: [P('resPierce', 25, 'flat')] }],
     awaken: [{ sum: 10, text: '마력 +6%', mods: [P('mag', 6)] }, { sum: 18, text: '스킬 피해 +10%', mods: [P('skillDmg', 10)] }, { sum: 25, text: '마력 +12% · MP +20%', mods: [P('mag', 12), P('mp', 20)] }] },
-  { id: 'moon', name: '은월 사냥단', desc: '치명과 속도', color: '#8be0c0',
-    bonus: [{ n: 2, text: '치명 +8%p', mods: [P('crit', 8, 'flat')] }, { n: 4, text: '민첩 +20%', mods: [P('agi', 20)] }, { n: 5, text: '치명타 피해 +40%p', mods: [P('critDmg', 0.4, 'flat')] }],
-    awaken: [{ sum: 10, text: '공격 +6%', mods: [P('atk', 6)] }, { sum: 18, text: '치명 +6%p', mods: [P('crit', 6, 'flat')] }, { sum: 25, text: '공격 +10% · 치명타 피해 +20%p', mods: [P('atk', 10), P('critDmg', 0.2, 'flat')] }] },
+  { id: 'moon', name: '은월 사냥단', desc: '치명타와 속도', color: '#8be0c0',
+    bonus: [{ n: 2, text: '치명타 확률 +8%p', mods: [P('crit', 8, 'flat')] }, { n: 4, text: '민첩 +20%', mods: [P('agi', 20)] }, { n: 5, text: '치명타 피해 +40%p', mods: [P('critDmg', 0.4, 'flat')] }],
+    awaken: [{ sum: 10, text: '공격 +6%', mods: [P('atk', 6)] }, { sum: 18, text: '치명타 확률 +6%p', mods: [P('crit', 6, 'flat')] }, { sum: 25, text: '공격 +10% · 치명타 피해 +20%p', mods: [P('atk', 10), P('critDmg', 0.2, 'flat')] }] },
   { id: 'steel', name: '강철 기사단', desc: '단단함', color: '#c9d1d9',
     bonus: [{ n: 2, text: '방어 +15%', mods: [P('def', 15)] }, { n: 4, text: 'HP +15%', mods: [P('hp', 15)] }, { n: 5, text: '공격 +18%', mods: [P('atk', 18)] }],
     awaken: [{ sum: 10, text: '방어·마저 +8%', mods: [P('def', 8), P('res', 8)] }, { sum: 18, text: 'HP +8%', mods: [P('hp', 8)] }, { sum: 25, text: '공격 +10% · 받는 피해 -6%', mods: [P('atk', 10), P('dmgTaken', -6, 'flat')] }] },
   { id: 'night', name: '마왕성의 귀부인', desc: '어둠과 관통', color: '#e0607a',
     bonus: [{ n: 2, text: '공격·마력 +8%', mods: [P('atk', 8), P('mag', 8)] }, { n: 4, text: '보스 피해 +18%', mods: [P('bossDmg', 18, 'flat')] }, { n: 5, text: '방어 무시 +25%', mods: [P('defPierce', 25, 'flat')] }],
-    awaken: [{ sum: 10, text: '치명 +5%p', mods: [P('crit', 5, 'flat')] }, { sum: 18, text: '보스 피해 +10%', mods: [P('bossDmg', 10, 'flat')] }, { sum: 25, text: '공격·마력 +10%', mods: [P('atk', 10), P('mag', 10)] }] },
+    awaken: [{ sum: 10, text: '치명타 확률 +5%p', mods: [P('crit', 5, 'flat')] }, { sum: 18, text: '보스 피해 +10%', mods: [P('bossDmg', 10, 'flat')] }, { sum: 25, text: '공격·마력 +10%', mods: [P('atk', 10), P('mag', 10)] }] },
   { id: 'abyss', name: '심연의 여왕', desc: '보스·레이드', color: '#b48cff',
     bonus: [{ n: 2, text: '보스 피해 +12%', mods: [P('bossDmg', 12, 'flat')] }, { n: 4, text: '레이드 보스 피해 +25%', mods: [P('raidDmg', 25, 'flat')] }, { n: 5, text: '공격·마력 +15%', mods: [P('atk', 15), P('mag', 15)] }],
     awaken: [{ sum: 10, text: '받는 마법 피해 -8%', mods: [P('magTaken', -8, 'flat')] }, { sum: 18, text: '보스 피해 +10%', mods: [P('bossDmg', 10, 'flat')] }, { sum: 25, text: '공격·마력 +10% · HP +8%', mods: [P('atk', 10), P('mag', 10), P('hp', 8)] }] },
@@ -93,7 +93,7 @@ export const CARDS: CardDef[] = ROWS.flatMap(([set, rows], si) => rows.map(([nam
   id: `c${String(si * 5 + i + 1).padStart(2, '0')}`, no: si * 5 + i + 1, name, title, set, grade, stat, look: { hair, outfit, eye, bg, acc },
 })));
 export const CARD_BY_ID: Record<string, CardDef> = Object.fromEntries(CARDS.map((c) => [c.id, c]));
-export const STAT_KO: Record<string, string> = { hp: 'HP', mp: 'MP', atk: '공격', mag: '마력', def: '방어', res: '마저', agi: '민첩', crit: '치명' };
+export const STAT_KO: Record<string, string> = { hp: 'HP', mp: 'MP', atk: '공격', mag: '마력', def: '방어', res: '마저', agi: '민첩', crit: '치명타 확률' };
 
 export interface OwnedCard { count: number; awaken: number }
 export const cardValue = (c: CardDef, awaken: number) => Math.round(CARD_BASE[c.grade] * (1 + 0.25 * awaken) * 10) / 10;

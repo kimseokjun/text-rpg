@@ -23,7 +23,7 @@ export const petValue = (p: Pet) => Math.round((PET_GRADE_PCT[p.grade] + p.stars
 export const PET_EVO_GOLD = 500000;
 export const petMods = (p: Pet | undefined): Modifier[] => (p ? [...PET_BY_ID[p.kind].mods(petValue(p)), ...(p.evo && p.kind !== 'bear' ? [{ key: 'hp' as const, kind: 'pct' as const, value: 5, scope: 'party' as const }] : p.evo ? [{ key: 'def' as const, kind: 'pct' as const, value: 5, scope: 'party' as const }] : [])] : []);
 export function petEffectText(p: Pet) {
-  return petMods(p).map((m) => `${({ def: '방어', res: '마저', atk: '공격', mag: '마력', hp: 'HP', crit: '치명', agi: '민첩', healPower: '회복량' } as Record<string, string>)[m.key]} +${m.value}${m.kind === 'pct' ? '%' : '%p'}`).join(' · ');
+  return petMods(p).map((m) => `${({ def: '방어', res: '마저', atk: '공격', mag: '마력', hp: 'HP', crit: '치명타 확률', agi: '민첩', healPower: '회복량' } as Record<string, string>)[m.key]} +${m.value}${m.kind === 'pct' ? '%' : '%p'}`).join(' · ');
 }
 export function petName(p: Pet) {
   return `${p.evo ? '✦ ' : ''}${PET_BY_ID[p.kind].name}`;

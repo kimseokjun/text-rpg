@@ -387,3 +387,22 @@ svg.px{image-rendering:pixelated;flex:none}
 .roomlog .rl.sys{color:var(--mute);font-size:13px}
 .roomlog .rl b{color:var(--gold)}.roomlog .rl b.me{color:#7fb3ff}
 .roomlog .ct{font-size:11px;color:var(--mute)}
+.pethero{display:flex;flex-direction:column;align-items:center;text-align:center;padding:18px 14px;margin:8px auto 12px;max-width:360px;border-radius:16px;background:radial-gradient(circle at 50% 30%,#ffffff10,transparent 70%),var(--panel);border:1px solid var(--line);border-top:4px solid var(--line)}
+.pethero.r1b{border-top-color:var(--r1)}.pethero.r2b{border-top-color:var(--r2)}.pethero.r3b{border-top-color:var(--r3)}.pethero.r4b{border-top-color:var(--r4)}.pethero.r5b{border-top-color:var(--r5)}
+.pethero.empty{border-style:dashed}
+.petpic.big svg{width:128px;height:128px}
+.stars{color:var(--gold);letter-spacing:1px}.stars .off{color:#ffffff30}
+.petshop .hatch{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.petshop .hx{border-radius:8px;border:1px solid var(--line);border-bottom:3px solid var(--line);padding:2px}
+.hx.r1b{border-bottom-color:var(--r1)}.hx.r2b{border-bottom-color:var(--r2)}.hx.r3b{border-bottom-color:var(--r3)}.hx.r4b{border-bottom-color:var(--r4)}.hx.r5b{border-bottom-color:var(--r5)}
+.linkbtn{all:unset;cursor:pointer;color:var(--mute);margin-top:8px;display:inline-block}
+.petbag{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px;margin-top:10px}
+.pettile{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border-radius:12px;background:var(--panel);border:1px solid var(--line);border-bottom:3px solid var(--line);text-align:center}
+.pettile.r1b{border-bottom-color:var(--r1)}.pettile.r2b{border-bottom-color:var(--r2)}.pettile.r3b{border-bottom-color:var(--r3)}.pettile.r4b{border-bottom-color:var(--r4)}.pettile.r5b{border-bottom-color:var(--r5)}
+.pettile.on{outline:2px solid var(--gold)}
+.pettile:focus-visible{outline:2px solid var(--lapis2)}
+.pettile .pn{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.petsel{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--panel);border:1px solid var(--gold)}
+.petsel .up{color:var(--ok)}.petsel .down{color:var(--bad)}
+.petsel .psi{flex:1 1 180px;min-width:0}.petsel .psb{flex-basis:100%}
+.pettile .pg{font-size:11px;opacity:.85}

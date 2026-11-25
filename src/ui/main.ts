@@ -10,7 +10,7 @@ import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Row, type TargetPref, type U
 import { raidWeek, MILESTONE_SCALES, RAID_DIFF, RAID_DIFFS, RAID_DIFF_NAME, RAID_LIMIT, RAID_ROUNDS, nextResetText, raidForm, raidMaxHp, type RaidDiff } from '../data/raid';
 import { DAILIES, DAILY_BY_ID, DAILY_LIMIT, DAILY_STAGES, dailyReward } from '../data/daily';
 import { CRAFT_COST, RAID_CRAFT_COST, RAID_SET, SETS, SET_BASES, SET_BY_ID, SET_DROP_CHANCE, SET_RARITY, SHARD_CHANCE } from '../data/sets';
-import { EGG_ODDS, EGG_PRICE, PET_BY_ID, PET_GRADE_NAME, PET_GRADE_PCT, PET_MAX_STARS, petEffectText, petSellPrice, type Pet } from '../data/pets';
+import { PET_KINDS, EGG_ODDS, EGG_PRICE, PET_BY_ID, PET_GRADE_NAME, PET_GRADE_PCT, PET_MAX_STARS, petEffectText, petSellPrice, type Pet } from '../data/pets';
 import { EQUIP_BASES, EQUIP_BY_ID, MAX_POTIONS, OPTION_SLOTS, POTIONS, REFINE_CHANCE, tierOfFloor } from '../data/items';
 import { ADVANCE_AT, JOBS, advanceOptions } from '../data/jobs';
 import { MERC_BY_ID } from '../data/mercenaries';
@@ -579,35 +579,49 @@ function viewForge() {
   </div>`;
 }
 
+let petSel: string | null = null;
+let petOdds = false;
 function viewPets() {
   const s = S!;
   const act = G.activePet(s);
-  const list = [...s.pets].sort((a, b) => (a.uid === s.activePet ? -1 : b.uid === s.activePet ? 1 : b.grade - a.grade || b.stars - a.stars || a.kind.localeCompare(b.kind)));
-  const dupes = (p: Pet) => s.pets.some((x) => x.uid !== p.uid && x.kind === p.kind && x.grade === p.grade && x.uid !== s.activePet);
-  const cards = list.map((p) => {
-    const on = p.uid === s.activePet;
-    return `<div class="petcard r${p.grade}b ${on ? 'on' : ''}">
-      <div class="petpic">${petSprite(p.kind, p.grade, { size: 72 })}</div>
-      <div class="row" style="justify-content:space-between"><b class="g${p.grade}">${esc(PET_BY_ID[p.kind].name)}</b><span class="small g${p.grade}">${PET_GRADE_NAME[p.grade]}</span></div>
-      <div class="stars" aria-label="${p.stars}성">${'★'.repeat(p.stars)}${'☆'.repeat(PET_MAX_STARS - p.stars)}</div>
-      <div class="small">${esc(petEffectText(p))}</div>
-      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">
-        ${on ? '<span class="tag">동행 중</span>' : `<button class="btn sm" data-a="petUse" data-id="${p.uid}">데려가기</button>`}
-        ${p.stars < PET_MAX_STARS ? `<button class="btn ghost sm" data-a="petMerge" data-id="${p.uid}" ${dupes(p) ? '' : 'disabled'} title="같은 종류·등급 펫 하나를 먹여 +1성">합성</button>` : ''}
-        ${on ? '' : `<button class="btn ghost sm" data-a="petSell" data-id="${p.uid}">보내기 ${fmt(petSellPrice(p))}G</button>`}
-      </div></div>`;
-  }).join('');
+  const bag = s.pets.filter((p) => p.uid !== s.activePet).sort((a, b) => b.grade - a.grade || b.stars - a.stars || a.kind.localeCompare(b.kind));
+  const sel = bag.find((p) => p.uid === petSel) ?? null;
+  const owned = new Set(s.pets.map((p) => `${p.kind}:${p.grade}`));
+  const stars = (n: number) => `<span class="stars" aria-label="${n}성">${'★'.repeat(n)}<span class="off">${'☆'.repeat(PET_MAX_STARS - n)}</span></span>`;
+  const hero = act ? `<div class="pethero r${act.grade}b">
+      <div class="petpic big">${petSprite(act.kind, act.grade, { size: 128 })}</div>
+      <span class="tag">동행 중</span>
+      <h3 class="g${act.grade}" style="margin:6px 0 0">${esc(PET_BY_ID[act.kind].name)}</h3>
+      <div class="small g${act.grade}">${PET_GRADE_NAME[act.grade]} ${stars(act.stars)}</div>
+      <p style="margin:6px 0 0"><b>${esc(petEffectText(act))}</b> <span class="small mute">· 출전 파티 전원</span></p>
+      ${act.stars < PET_MAX_STARS ? `<p class="small mute" style="margin:4px 0 0">같은 ${PET_GRADE_NAME[act.grade]} ${esc(PET_BY_ID[act.kind].name)}이(가) 또 나오면 자동으로 ★+1</p>` : '<p class="small g5" style="margin:4px 0 0">최대 성급!</p>'}
+    </div>` : `<div class="pethero empty">${itemSprite('egg', { size: 96 })}<p class="mute">동행 중인 펫이 없어요. 알을 부화시켜 보세요.</p></div>`;
+  const tiles = bag.map((p) => `<button class="pettile r${p.grade}b ${p.uid === petSel ? 'on' : ''}" data-a="petSel" data-id="${p.uid}" aria-pressed="${p.uid === petSel}">
+      ${petSprite(p.kind, p.grade, { size: 56 })}<span class="pn g${p.grade}">${esc(PET_BY_ID[p.kind].name)}</span><span class="pg g${p.grade}">${PET_GRADE_NAME[p.grade]}</span><span class="small">${stars(p.stars)}</span></button>`).join('');
+  const cmp = (p: Pet) => {
+    if (!act || act.kind !== p.kind) return '';
+    const d = PET_GRADE_PCT[p.grade] + p.stars - (PET_GRADE_PCT[act.grade] + act.stars);
+    return ` <span class="small ${d > 0 ? 'up' : d < 0 ? 'down' : 'mute'}">(지금보다 ${d > 0 ? '+' : ''}${d}%p)</span>`;
+  };
+  const detail = sel ? `<div class="petsel r${sel.grade}b">${petSprite(sel.kind, sel.grade, { size: 64 })}<div class="psi"><b class="g${sel.grade}">${PET_GRADE_NAME[sel.grade]} ${esc(PET_BY_ID[sel.kind].name)}</b> ${stars(sel.stars)}<div class="small">${esc(petEffectText(sel))}${cmp(sel)}</div><div class="small mute">${esc(PET_BY_ID[sel.kind].desc)}</div></div>
+      <div class="row psb" style="gap:6px;flex-wrap:wrap"><button class="btn sm" data-a="petUse" data-id="${sel.uid}">데려가기</button><button class="btn ghost sm" data-a="petSell" data-id="${sel.uid}">보내기 +${fmt(petSellPrice(sel))}G</button></div></div>` : '';
+  const lowN = bag.filter((p) => p.grade <= 2).length;
+  const recent = G.lastHatch.length ? `<div class="hatch">${G.lastHatch.slice(0, 10).map((h) => `<span class="hx r${h.grade}b" title="${PET_GRADE_NAME[h.grade]} ${esc(PET_BY_ID[h.kind].name)}">${petSprite(h.kind, h.grade, { size: 36 })}</span>`).join('')}</div>` : '';
   return `<div class="wrap">${backBtn()}
     <h2>펫 우리</h2>
-    <p class="small mute">펫 한 마리를 데려가면 출전 파티 전원이 효과를 받아요. 등급별 기본 효과 ${Object.values(PET_GRADE_PCT).join('/')}%, 같은 종류·등급 펫을 합성하면 ★ 하나당 +1%p (최대 ★${PET_MAX_STARS}).<br>
-    알 부화 확률: 일반 ${EGG_ODDS[1]}% · 고급 ${EGG_ODDS[2]}% · 희귀 ${EGG_ODDS[3]}% · 영웅 ${EGG_ODDS[4]}% · 전설 ${EGG_ODDS[5]}%. 보스를 처음 잡으면 알을 하나 줘요 (마왕성 보스는 희귀 이상).</p>
-    <div class="panel row" style="gap:10px;flex-wrap:wrap;align-items:center">
-      ${act ? `<div class="petpic sm">${petSprite(act.kind, act.grade, { size: 56 })}</div>` : itemSprite('egg', { size: 48 })}
-      <div style="flex:1;min-width:200px">${act ? `동행 중: <b class="g${act.grade}">${esc(PET_BY_ID[act.kind].name)}</b> ${'★'.repeat(act.stars)} · ${esc(petEffectText(act))}` : '<span class="mute">동행 중인 펫이 없어요</span>'}</div>
-      <button class="btn" data-a="buyEgg" data-n="1" ${s.gold < EGG_PRICE ? 'disabled' : ''}>알 1개 · ${fmt(EGG_PRICE)}G</button>
-      <button class="btn ghost" data-a="buyEgg" data-n="10" ${s.gold < EGG_PRICE * 10 ? 'disabled' : ''}>알 10개 · ${fmt(EGG_PRICE * 10)}G</button>
+    ${hero}
+    <div class="panel petshop">
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">${itemSprite('egg', { size: 40 })}<b style="flex:1">펫 알 ${fmt(EGG_PRICE)}G</b>
+        <button class="btn" data-a="buyEgg" data-n="1" ${s.gold < EGG_PRICE ? 'disabled' : ''}>1개</button>
+        <button class="btn ghost" data-a="buyEgg" data-n="10" ${s.gold < EGG_PRICE * 10 ? 'disabled' : ''}>10개 · ${fmt(EGG_PRICE * 10)}G</button></div>
+      ${recent}
+      <button class="linkbtn small" data-a="petOdds">${petOdds ? '▴ 접기' : '▾ 확률·규칙 보기'}</button>
+      ${petOdds ? `<p class="small mute" style="margin:4px 0 0">부화 확률: 일반 ${EGG_ODDS[1]}% · 고급 ${EGG_ODDS[2]}% · 희귀 ${EGG_ODDS[3]}% · 영웅 ${EGG_ODDS[4]}% · 전설 ${EGG_ODDS[5]}%<br>등급별 효과 ${Object.values(PET_GRADE_PCT).join('/')}% + ★ 하나당 1%p (최대 ★${PET_MAX_STARS}). 같은 종류·등급이 나오면 자동 합성돼요. 보스 첫 처치·무한 탑·월드보스에서도 알이 나와요.</p>` : ''}
     </div>
-    <div class="petgrid">${cards || '<p class="mute">아직 펫이 없어요.</p>'}</div>
+    <div class="row" style="justify-content:space-between;align-items:baseline;margin-top:14px"><h3 style="margin:0">펫 가방 <span class="small mute">${bag.length}마리 · 도감 ${owned.size}/${PET_KINDS.length * 5}</span></h3>
+      ${lowN ? `<button class="btn ghost sm" data-a="petSellLow">일반·고급 ${lowN}마리 보내기</button>` : ''}</div>
+    ${detail}
+    <div class="petbag">${tiles || '<p class="mute">가방이 비어 있어요.</p>'}</div>
   </div>`;
 }
 
@@ -1821,9 +1835,11 @@ app.addEventListener('click', (ev) => {
     case 'forgeSet': forgeSet = d.v!; render(); break;
     case 'forgeJob': forgeJob = d.v as BaseJob; render(); break;
     case 'buyEgg': commit(G.buyEggs(s!, Number(d.n ?? 1))); break;
-    case 'petUse': commit(G.setActivePet(s!, d.id!)); break;
-    case 'petMerge': commit(G.mergePet(s!, d.id!)); break;
-    case 'petSell': commit(G.sellPet(s!, d.id!)); break;
+    case 'petUse': petSel = null; commit(G.setActivePet(s!, d.id!)); break;
+    case 'petSel': petSel = petSel === d.id ? null : d.id!; render(); break;
+    case 'petOdds': petOdds = !petOdds; render(); break;
+    case 'petSellLow': commit(G.sellPetsUpTo(s!, 2)); break;
+    case 'petSell': petSel = null; commit(G.sellPet(s!, d.id!)); break;
     case 'optLock': commit(G.toggleOptionLock(s!, d.e!, Number(d.i))); break;
     case 'refineView': refineView = d.v as GroupView; render(); break;
     case 'partyIn': commit(G.togglePartyMember(s!, d.uid!)); break;

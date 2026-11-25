@@ -295,19 +295,55 @@ export const petPartyMods = (s: GameState) => petMods(activePet(s));
 /** 펫 효과까지 넣은 파티 전투력 */
 export const statePower = (s: GameState) => partyPower(partyChars(s), petPartyMods(s));
 function addPet(s: GameState, p: Omit<Pet, 'uid'>): Pet {
-  const pet = { ...p, uid: `p${s.seed}_${s.day}_${s.pets.length}_${Math.floor(rngOf(s).next() * 1e6)}` };
+  bump(s, 'petSeq');
+  const pet = { ...p, uid: `p${s.seed}_${s.cnt!.petSeq}_${Math.floor(rngOf(s).next() * 1e6)}` };
   s.pets.push(pet);
   if (!s.activePet) s.activePet = pet.uid;
+  autoMergePets(s);
   return pet;
 }
+/** 같은 종류·등급 펫은 자동으로 합성 (★ 올리기). 동행 중인 펫이 있으면 그쪽으로. 합친 마리 수 반환 */
+export function autoMergePets(s: GameState): number {
+  let merged = 0;
+  const groups: Record<string, Pet[]> = {};
+  for (const p of s.pets) (groups[`${p.kind}:${p.grade}`] ??= []).push(p);
+  for (const g of Object.values(groups)) {
+    if (g.length < 2) continue;
+    g.sort((a, b) => (a.uid === s.activePet ? -1 : b.uid === s.activePet ? 1 : b.stars - a.stars));
+    let ti = 0;
+    for (let i = 1; i < g.length; i++) {
+      while (ti < i && g[ti].stars >= PET_MAX_STARS) ti++;
+      if (ti >= i) continue;
+      const t = g[ti], food = g[i];
+      t.stars = Math.min(PET_MAX_STARS, t.stars + 1 + food.stars);
+      s.pets = s.pets.filter((x) => x !== food);
+      if (s.activePet === food.uid) s.activePet = t.uid;
+      merged++;
+    }
+  }
+  return merged;
+}
+/** 등급 이하 펫 일괄 보내기 (동행 중 제외) */
+export function sellPetsUpTo(s: GameState, grade: Grade): Result {
+  const list = s.pets.filter((p) => p.grade <= grade && p.uid !== s.activePet);
+  if (!list.length) return fail('보낼 펫이 없어요');
+  const gold = list.reduce((a, p) => a + petSellPrice(p), 0);
+  s.pets = s.pets.filter((p) => !list.includes(p));
+  s.gold += gold;
+  return { ok: true, msg: `${list.length}마리를 보냈어요 · +${fmtG(gold)}G` };
+}
+export let lastHatch: { kind: string; grade: Grade }[] = [];
 export function buyEggs(s: GameState, n: number): Result {
   const cost = EGG_PRICE * n;
   if (s.gold < cost) return fail('골드가 부족합니다');
   s.gold -= cost;
   const r = rngOf(s);
+  const before = s.pets.length;
   const got = Array.from({ length: n }, () => addPet(s, hatch(r)));
+  const merged = before + n - s.pets.length;
   const best = got.reduce((a, b) => (b.grade > a.grade ? b : a));
-  return { ok: true, msg: n === 1 ? `${PET_GRADE_NAME[best.grade]} ${PET_BY_ID[best.kind].name} 부화!` : `알 ${n}개 부화! 최고 등급: ${PET_GRADE_NAME[best.grade]} ${PET_BY_ID[best.kind].name}` };
+  lastHatch = got.map((p) => ({ kind: p.kind, grade: p.grade }));
+  return { ok: true, msg: `${n === 1 ? `${PET_GRADE_NAME[best.grade]} ${PET_BY_ID[best.kind].name} 부화!` : `알 ${n}개 부화! 최고 ${PET_GRADE_NAME[best.grade]} ${PET_BY_ID[best.kind].name}`}${merged ? ` · 중복 ${merged}마리 자동 합성` : ''}` };
 }
 export function setActivePet(s: GameState, uid: string): Result {
   const p = s.pets.find((x) => x.uid === uid);
@@ -826,7 +862,7 @@ export function migrate(raw: any): GameState | null {
   s.potions ??= {}; delete (s as any).hp;
   s.stoneStock ??= STONE_STOCK;
   s.refineStones ??= 0;
-  s.pets ??= []; s.activePet ??= null; s.shards ??= 0; s.cores ??= 0;
+  s.pets ??= []; s.activePet ??= null; s.shards ??= 0; s.cores ??= 0; autoMergePets(s);
   // 재화 통합: 어둠의 파편 → 군단장의 핵 (옛 핵 1개 = 새 핵 10개, 파편 1개 = 핵 1개)
   if (!s.coreMerged) { s.cores = s.cores * 10 + s.shards; s.shards = 0; s.coreMerged = true; } s.scales ??= 0; s.daily ??= { date: '', used: {}, cleared: {} }; s.raid ??= { week: 0, date: '', used: 0, dmg: {}, claimed: {}, everKilled: {}, best: 0 };
   s.boardLocks ??= s.board.map(() => false);

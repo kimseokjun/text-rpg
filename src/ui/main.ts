@@ -445,8 +445,8 @@ function viewParty() {
   const slots = Array.from({ length: G.PARTY_MAX }, (_, i) => ordered[i] ? pcard(ordered[i], true, full) : `<div class="pcard emptyslot"><span class="mute">빈 자리 · 아래에서 넣기</span></div>`).join('');
   const nFront = party.filter((c) => rowOf(c) === 'front').length;
   const bench = s.roster.filter((c) => !s.party.includes(c.uid))
-    .filter((c) => partyFilter === 'all' || JOBS[c.jobId].base === partyFilter)
-    .sort((a, b) => charPower(b) - charPower(a));
+    .filter((c) => partyFilter === 'all' || JOBS[c.jobId].base === partyFilter);
+  const benchSorted = sortRoster(bench);
   const healer = hasHealer(party);
   return `<div class="wrap">${backBtn()}
     <div class="row" style="justify-content:space-between"><h2>파티 편성</h2>
@@ -455,9 +455,9 @@ function viewParty() {
     <div class="row" style="margin-bottom:10px"><button class="btn sm" data-a="autoEquipParty">파티 자동 장착</button><button class="btn ghost sm" data-a="unequipParty">파티 장비 전체 해제</button><span class="small mute">새 용병으로 바꿀 땐 해제 → 자동 장착 순서로 누르면 편해요</span></div>
     <p class="small mute" style="margin:4px 0 8px">전열 ${nFront}명 · 후열 ${party.length - nFront}명 — 전열은 방어·마저 +5%에 적이 주로 노리고, 후열은 공격·마력 +5%에 덜 맞아요. 공격 대상: 자동(체력 낮은 적), 보스 우선, 잡몹 우선.</p>
     <div class="slots">${slots}</div>
-    <div class="row" style="margin-top:22px;justify-content:space-between"><h3>대기 중인 단원 ${s.roster.length - party.length}명</h3><span class="small mute">전투력 높은 순</span></div>
+    <div class="row" style="margin-top:22px;justify-content:space-between"><h3 style="margin:0">대기 중인 단원 ${s.roster.length - party.length}명</h3>${sortBar()}</div>
     <div class="tabs" role="group" aria-label="직업 필터" style="margin:8px 0">${JOB_FILTERS.map(([v, n]) => `<button class="${partyFilter === v ? 'on' : ''}" data-a="partyFilter" data-v="${v}">${n}</button>`).join('')}</div>
-    <div class="bench">${bench.map((c) => pcard(c, false, full)).join('') || '<p class="mute">대기 중인 단원이 없습니다. 길드에서 고용해 보세요.</p>'}</div>
+    <div class="bench">${benchSorted.map((c) => pcard(c, false, full)).join('') || '<p class="mute">대기 중인 단원이 없습니다. 길드에서 고용해 보세요.</p>'}</div>
   </div>`;
 }
 
@@ -506,7 +506,7 @@ function viewGuild() {
       <div class="row"><button class="btn sm" data-a="hire" data-i="${i}" ${owned?.awakening === 5 ? 'disabled' : ''}>${owned ? '각성' : '고용'}</button><button class="btn ghost sm" data-a="refresh" data-i="${i}" ${locked ? 'disabled title="잠금 중"' : ''}>${refreshSlotCost(lead)}G 교체</button></div>
     </div>`;
   }).join('');
-  const roster = s.roster.map((c) => charCard(c, { inParty: s.party.includes(c.uid) })).join('');
+  const roster = sortRoster(s.roster).map((c) => charCard(c, { inParty: s.party.includes(c.uid) })).join('');
   return `<div class="wrap">${backBtn()}
     <div class="row" style="justify-content:space-between"><h2>모험가 길드 <span class="mute small">Lv.${s.guildLevel}</span></h2>
       <button class="btn ghost sm" data-a="upgradeGuild">길드 확장 · ${fmt(G.guildUpgradeCost(s.guildLevel))}G</button></div>
@@ -520,7 +520,7 @@ function viewGuild() {
       <span class="small mute">최대 ${fmt(G.refreshAllCost(s) * autoTries)}G · 나오면 멈추고 그 칸을 잠가요</span></div>
     ${boardConfirmBox()}
     <div class="board">${board}</div>
-    <div class="row" style="margin-top:22px;justify-content:space-between"><h2>단원 ${s.roster.length}/${rosterLimit(s.guildLevel)}</h2><button class="btn sm" data-a="go" data-to="party">파티 편성 ${s.party.length}/${G.PARTY_MAX}</button></div>
+    <div class="row" style="margin-top:22px;justify-content:space-between;flex-wrap:wrap;gap:8px"><h2 style="margin:0">단원 ${s.roster.length}/${rosterLimit(s.guildLevel)}</h2><span class="row" style="gap:8px;flex-wrap:wrap">${sortBar()}<button class="btn sm" data-a="go" data-to="party">파티 편성 ${s.party.length}/${G.PARTY_MAX}</button></span></div>
     <div class="cards" style="margin-top:10px">${roster}</div>
   </div>`;
 }
@@ -592,7 +592,25 @@ function equipGroup(c: Character, mode: 'smith' | 'storage' | 'refine') {
     <div class="eqcells">${cells}</div></section>`;
 }
 
-const orderedRoster = (s: G.GameState) => [...G.partyChars(s), ...s.roster.filter((c) => !s.party.includes(c.uid))];
+// ───────── 단원 정렬 (길드·파티 편성·대장간 공통, 기기에 기억) ─────────
+type RosterSort = 'power' | 'level' | 'grade' | 'job' | 'hired';
+const SORTS: [RosterSort, string][] = [['power', '전투력'], ['level', '레벨'], ['grade', '등급'], ['job', '직업'], ['hired', '영입순']];
+let rosterSort: RosterSort = (() => { try { const v = localStorage.getItem('rpg-sort'); return SORTS.some(([k]) => k === v) ? v as RosterSort : 'power'; } catch { return 'power'; } })();
+const JOB_ORDER: Record<string, number> = { warrior: 0, archer: 1, mage: 2, priest: 3 };
+function sortRoster(list: Character[]) {
+  const s = S!;
+  const idx = (c: Character) => s.roster.indexOf(c);
+  const by: Record<RosterSort, (a: Character, b: Character) => number> = {
+    power: (a, b) => charPower(b) - charPower(a),
+    level: (a, b) => b.level - a.level || charPower(b) - charPower(a),
+    grade: (a, b) => b.grade - a.grade || JOBS[b.jobId].tier - JOBS[a.jobId].tier || charPower(b) - charPower(a),
+    job: (a, b) => (JOB_ORDER[JOBS[a.jobId].base] ?? 9) - (JOB_ORDER[JOBS[b.jobId].base] ?? 9) || charPower(b) - charPower(a),
+    hired: (a, b) => idx(a) - idx(b),
+  };
+  return [...list].sort(by[rosterSort]);
+}
+const sortBar = () => `<div class="sortbar" role="group" aria-label="단원 정렬"><span class="small mute">정렬</span>${SORTS.map(([k, n]) => `<button class="${rosterSort === k ? 'on' : ''}" data-a="rosterSort" data-v="${k}" aria-pressed="${rosterSort === k}">${n}</button>`).join('')}</div>`;
+const orderedRoster = (s: G.GameState) => [...sortRoster(G.partyChars(s)), ...sortRoster(s.roster.filter((c) => !s.party.includes(c.uid)))];
 
 function bagList(mode: 'smith' | 'storage' | 'refine') {
   const s = S!;
@@ -2429,6 +2447,7 @@ app.addEventListener('click', (ev) => {
     case 'profOpen': profOpen = profOpen === d.v ? null : d.v!; render(); break;
     case 'profCard': cardZoom = d.v!; render(); break;
     case 'profDuel': if (prof) { screen = 'duel'; duelLast = null; loadDuelLog(); render(); window.scrollTo(0, 0); } break;
+    case 'rosterSort': rosterSort = d.v as RosterSort; try { localStorage.setItem('rpg-sort', rosterSort); } catch { /* 저장 불가 */ } render(); break;
     case 'deckAuto': {
       if (d.v === 'close') { deckOpts = null; render(); break; }
       const o = G.autoDeckOptions(s!);

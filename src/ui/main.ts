@@ -542,6 +542,31 @@ function guestPanel() {
     ${fr.length ? `<div class="row" style="gap:6px;flex-wrap:wrap">${fr.map((f) => `<button class="btn ghost sm" data-a="guestFriend" data-v="${esc(f.other)}" ${guestBusy ? 'disabled' : ''}>${esc(f.username)} <span class="small mute">${fmt(f.power)}</span></button>`).join('')}</div>` : '<p class="small mute">친구를 추가하면 빌릴 수 있어요.</p>'}</div>`;
 }
 
+// ───────── 편성 프리셋 ─────────
+let presetOver: number | null = null;
+function presetBar(full: boolean) {
+  const s = S!;
+  const list = G.presetList(s);
+  const same = (p: G.Preset) => p.party.join() === s.party.join() && p.pet === s.activePet && p.deck.join() === (s.deck ?? []).join() && (p.title ?? '') === (s.title ?? '');
+  if (!full) {
+    const filled = list.map((p, i) => [p, i] as const).filter(([p]) => p);
+    if (!filled.length) return '';
+    return `<div class="presets mini"><span class="small mute">프리셋</span>${filled.map(([p, i]) => `<button class="btn ghost sm ${same(p!) ? 'on' : ''}" data-a="presetLoad" data-i="${i}" title="${esc(presetSum(p!))}">${esc(p!.name)}</button>`).join('')}</div>`;
+  }
+  return `<div class="presets"><div class="row" style="justify-content:space-between"><b>편성 프리셋</b><span class="small mute">파티·전열/후열·공격 대상·펫·카드 덱·칭호 (장비는 그대로)</span></div>
+    <div class="pslots">${list.map((p, i) => p ? `<div class="pslot ${same(p) ? 'on' : ''}">
+        <button class="pname" data-a="presetLoad" data-i="${i}"><b>${esc(p.name)}</b>${same(p) ? ' <span class="tag">사용 중</span>' : ''}<span class="small mute">${esc(presetSum(p))}</span></button>
+        <div class="row pact2">${presetOver === i ? `<button class="btn sm" data-a="presetSave" data-i="${i}">덮어쓰기 확인</button><button class="btn ghost sm" data-a="presetCancel">취소</button>`
+          : `<button class="btn ghost sm" data-a="presetAskSave" data-i="${i}">저장</button><button class="btn ghost sm" data-a="presetRename" data-i="${i}">이름</button><button class="btn ghost sm" data-a="presetDel" data-i="${i}" aria-label="지우기">✕</button>`}</div></div>`
+      : `<div class="pslot empty"><span class="small mute">${i + 1}번 · 비어 있음</span><button class="btn sm" data-a="presetSave" data-i="${i}">지금 편성 저장</button></div>`).join('')}</div></div>`;
+}
+function presetSum(p: G.Preset) {
+  const s = S!;
+  const names = p.party.map((u) => s.roster.find((c) => c.uid === u)?.name).filter(Boolean) as string[];
+  const pet = p.pet ? s.pets.find((x) => x.uid === p.pet) : null;
+  return [names.join(', ') || '단원 없음', pet ? PET_BY_ID[pet.kind].name : '', p.deck.length ? `카드 ${p.deck.length}장` : '', p.title && TITLE_BY_ID[p.title] ? `「${TITLE_BY_ID[p.title].name}」` : ''].filter(Boolean).join(' · ');
+}
+
 function viewParty() {
   const s = S!;
   const party = G.partyChars(s);
@@ -559,6 +584,7 @@ function viewParty() {
     <p class="small ${healer ? 'mute' : ''}" style="${healer ? '' : 'color:var(--gold)'}">${healer ? '회복 담당이 있어요.' : '성직자 계열이 없어요. 보스는 회복 없이 매우 어렵습니다.'}</p>
     <div class="row" style="margin-bottom:10px"><button class="btn sm" data-a="autoEquipParty">파티 자동 장착</button><button class="btn ghost sm" data-a="unequipParty">파티 장비 전체 해제</button><span class="small mute">새 용병으로 바꿀 땐 해제 → 자동 장착 순서로 누르면 편해요</span></div>
     <p class="small mute" style="margin:4px 0 8px">전열 ${nFront}명 · 후열 ${party.length - nFront}명 — 전열은 방어·마저 +5%에 적이 주로 노리고, 후열은 공격·마력 +5%에 덜 맞아요. 공격 대상: 자동(체력 낮은 적), 보스 우선, 잡몹 우선.</p>
+    ${presetBar(true)}
     <div class="slots">${slots}</div>
     ${guestPanel()}
     <div class="row" style="margin-top:22px;justify-content:space-between"><h3 style="margin:0">대기 중인 단원 ${s.roster.length - party.length}명</h3>${sortBar()}</div>
@@ -1419,6 +1445,7 @@ function viewDuel() {
     <h2>친구 결투 ⚔️</h2>
     <p class="small mute">내가 고른 단원과 친구의 출전 파티(전투력 높은 순)가 맞붙어요. 펫·카드 효과 포함, 친구가 접속해 있지 않아도 돼요. 결투에선 피해 60% · 회복 50%, 60라운드가 지나면 남은 HP가 많은 쪽이 이겨요. 보상 없이 전적만 남아요.</p>
     ${duelLast ? `<div class="panel dres ${duelLast.win ? 'w' : 'l'}"><b>${duelLast.win ? '🏆 승리!' : '💀 패배…'}</b> vs ${esc(duelLast.foe)} · ${duelLast.size}:${duelLast.size} · 남은 HP ${duelLast.hp[0]}% 대 ${duelLast.hp[1]}%</div>` : ''}
+    ${presetBar(false)}
     <div class="tabs" role="group" aria-label="인원">${[2, 3, 4].map((n) => `<button class="${duelSize === n ? 'on' : ''}" data-a="duelSize" data-v="${n}">${n}:${n}</button>`).join('')}</div>
     <div class="panel"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><h3 style="margin:0">내 단원 <span class="small mute">${duelPick.length}/${duelSize}명 선택</span></h3>${sortBar()}</div><div style="height:8px"></div><div class="dpicks">${pick}</div></div>
     <div class="panel"><h3 style="margin-top:0">도전할 친구</h3>
@@ -2059,7 +2086,7 @@ function viewGate() {
     <p class="small mute" style="margin-top:-6px">최고 기록보다 5층 이상 아래 층은 골드·경험치가 75%, 10층 이상 아래는 50%만 들어와요. 강화석·장비 드롭은 그대로예요.</p>
     <div class="cols" style="margin-top:12px">
       <section class="grid">
-        <h3>파티 <span class="small mute">전열/후열 · 공격 대상</span></h3><div class="cards">${[...party].sort((a, b) => (rowOf(a) === rowOf(b) ? 0 : rowOf(a) === 'front' ? -1 : 1)).map((c) => `<div class="gmem row-${rowOf(c)}">${charCard(c, { inParty: true })}${tacticsCtl(c)}</div>`).join('')}</div>
+        ${presetBar(false)}<h3>파티 <span class="small mute">전열/후열 · 공격 대상</span></h3><div class="cards">${[...party].sort((a, b) => (rowOf(a) === rowOf(b) ? 0 : rowOf(a) === 'front' ? -1 : 1)).map((c) => `<div class="gmem row-${rowOf(c)}">${charCard(c, { inParty: true })}${tacticsCtl(c)}</div>`).join('')}</div>
         <h3>동행 펫</h3>
         ${G.activePet(s) ? `<p class="small row" style="gap:8px">${petSprite(G.activePet(s)!.kind, G.activePet(s)!.grade, { size: 40 })}<b class="g${G.activePet(s)!.grade}">${esc(PET_BY_ID[G.activePet(s)!.kind].name)}</b> ${'★'.repeat(G.activePet(s)!.stars)} · ${esc(petEffectText(G.activePet(s)!))} <button class="btn ghost sm" data-a="go" data-to="pets">바꾸기</button></p>` : '<p class="small mute">펫이 없어요. 펫 우리에서 알을 사서 부화시켜 보세요. <button class="btn ghost sm" data-a="go" data-to="pets">펫 우리</button></p>'}
         <h3>버프 물약 <span class="small mute">최대 ${MAX_POTIONS}종, 입장할 때 마심</span></h3>
@@ -2860,6 +2887,12 @@ app.addEventListener('click', (ev) => {
     case 'forgeSet': forgeSet = d.v!; render(); break;
     case 'forgeJob': forgeJob = d.v as BaseJob; render(); break;
     case 'buyEgg': commit(G.buyEggs(s!, Number(d.n ?? 1))); break;
+    case 'presetLoad': presetOver = null; { const r = G.loadPreset(s!, +d.i!); if (r.ok && screen === 'duel') duelDefault(); commit(r); } break;
+    case 'presetSave': presetOver = null; commit(G.savePreset(s!, +d.i!)); break;
+    case 'presetAskSave': presetOver = +d.i!; render(); break;
+    case 'presetCancel': presetOver = null; render(); break;
+    case 'presetDel': presetOver = null; commit(G.deletePreset(s!, +d.i!)); break;
+    case 'presetRename': { const cur = G.presetList(s!)[+d.i!]; const n = window.prompt('프리셋 이름 (10자까지)', cur?.name ?? ''); if (n !== null) commit(G.renamePreset(s!, +d.i!, n)); break; }
     case 'achClaim': commit(G.claimAch(s!, d.v)); break;
     case 'achMs': commit(G.claimAchMs(s!)); break;
     case 'achCat': achCat = d.v as typeof achCat; render(); break;

@@ -683,3 +683,14 @@ svg.px{image-rendering:pixelated;flex:none}
 .achdots i{width:8px;height:8px;border-radius:50%;background:#3a2a30;display:inline-block}
 .achdots i.rdy{background:#f0b43c;box-shadow:0 0 4px #f0b43c}.achdots i.got{background:#7fbf6a}
 .nb{display:inline-block;min-width:16px;padding:0 4px;border-radius:99px;background:#c0563f;color:#fff;font-size:11px;line-height:16px}
+/* 편성 프리셋 */
+.presets{margin:6px 0 12px;padding:10px 12px;border-radius:12px;background:rgba(0,0,0,.18)}
+.presets.mini{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 10px;margin:6px 0 10px}
+.presets .btn.on{border-color:#f0b43c;color:#f0b43c}
+.pslots{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;margin-top:8px}
+.pslot{display:flex;flex-direction:column;gap:6px;padding:8px 10px;border-radius:10px;border:1px solid var(--line,#3a2a30);background:rgba(0,0,0,.2)}
+.pslot.on{border-color:#f0b43c;background:rgba(240,180,60,.07)}
+.pslot.empty{border-style:dashed;align-items:flex-start}
+.pname{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;background:none;border:0;color:inherit;padding:0;cursor:pointer}
+.pname .small{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pact2{gap:4px;flex-wrap:wrap}

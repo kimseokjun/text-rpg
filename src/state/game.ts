@@ -53,6 +53,8 @@ export interface GameState {
   ach?: Record<string, number>;
   achMs?: number;
   title?: string;
+  /** 편성 프리셋 (5칸) */
+  presets?: (Preset | null)[];
   pets: Pet[];
   /** 일일 던전: 날짜(KST)별 사용 횟수, 클리어한 최고 단계 */
   daily: { date: string; used: Record<string, number>; cleared: Record<string, number> };
@@ -1437,4 +1439,46 @@ export function setTitle(s: GameState, id: string | null): Result {
 export function achReadyCount(s: GameState) {
   const m = ACH_MS[s.achMs ?? 0];
   return ACHS.reduce((a, d) => a + achReady(s, d), 0) + (m && achPoints(s) >= m.pts ? 1 : 0);
+}
+
+// ───────── 편성 프리셋 (파티·열·대상·펫·덱·칭호, 장비 제외) ─────────
+export interface Preset { name: string; party: string[]; tac: Record<string, { row?: Row; target?: TargetPref }>; pet: string | null; deck: string[]; title?: string }
+export const PRESET_N = 5;
+export const presetList = (s: GameState) => Array.from({ length: PRESET_N }, (_, i) => s.presets?.[i] ?? null);
+export function savePreset(s: GameState, i: number): Result {
+  if (i < 0 || i >= PRESET_N) return fail('없는 칸이에요');
+  const list = presetList(s);
+  const tac: Preset['tac'] = {};
+  for (const c of partyChars(s)) tac[c.uid] = { row: c.row, target: c.target };
+  list[i] = { name: list[i]?.name ?? `프리셋 ${i + 1}`, party: [...s.party], tac, pet: s.activePet, deck: [...(s.deck ?? [])], title: s.title };
+  s.presets = list;
+  return { ok: true, msg: `「${list[i]!.name}」에 지금 편성을 저장했어요` };
+}
+export function loadPreset(s: GameState, i: number): Result {
+  const p = presetList(s)[i];
+  if (!p) return fail('비어 있는 프리셋이에요');
+  const miss: string[] = [];
+  const party = p.party.filter((u) => s.roster.some((c) => c.uid === u));
+  if (!party.length) return fail('저장된 단원이 모두 없어요');
+  if (party.length < p.party.length) miss.push(`단원 ${p.party.length - party.length}명`);
+  s.party = party.slice(0, PARTY_MAX);
+  for (const c of partyChars(s)) { const tc = p.tac[c.uid]; if (tc) { c.row = tc.row; c.target = tc.target; } }
+  if (p.pet) { if (s.pets.some((x) => x.uid === p.pet)) s.activePet = p.pet; else miss.push('펫'); }
+  const deck = p.deck.filter((id) => s.cards?.[id]);
+  if (deck.length < p.deck.length) miss.push(`카드 ${p.deck.length - deck.length}장`);
+  s.deck = deck;
+  if (p.title && unlockedTitles(s).includes(p.title)) s.title = p.title; else if (!p.title) s.title = undefined;
+  return { ok: true, msg: `「${p.name}」 불러옴${miss.length ? ` (없어서 건너뜀: ${miss.join(', ')})` : ''}` };
+}
+export function renamePreset(s: GameState, i: number, name: string): Result {
+  const list = presetList(s);
+  if (!list[i]) return fail('먼저 저장해 주세요');
+  const n = name.trim().slice(0, 10);
+  if (!n) return fail('이름을 입력해 주세요');
+  list[i]!.name = n; s.presets = list;
+  return { ok: true };
+}
+export function deletePreset(s: GameState, i: number): Result {
+  const list = presetList(s); list[i] = null; s.presets = list;
+  return { ok: true, msg: '프리셋을 지웠어요' };
 }

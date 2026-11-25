@@ -1209,7 +1209,7 @@ async function adLoad(tab = adTab, force = false) {
   if (screen === 'admin') render();
 }
 async function adOpenUser(id: string) {
-  adSel = id; adSave = null; adSelEvents = []; render();
+  adSel = id; adUTab = 'sum'; adSave = null; adSelEvents = []; render();
   try {
     const [sv, ev] = await Promise.all([Cloud.adminUserSave(id), Cloud.adminEvents({ user: id, limit: 60 })]);
     adSave = sv; adSelEvents = ev;
@@ -1220,6 +1220,60 @@ const bars = (rows: { d: string; n: number }[]) => {
   const max = Math.max(1, ...rows.map((r) => r.n));
   return `<div class="adbars">${rows.map((r) => `<div class="ab" title="${r.d}: ${r.n}"><i style="height:${(r.n / max) * 100}%"></i><span>${r.d.slice(5)}</span><b>${r.n}</b></div>`).join('') || '<p class="small mute">데이터 없음</p>'}</div>`;
 };
+let adUTab: 'sum' | 'chars' | 'bag' | 'pets' | 'log' | 'manage' = 'sum';
+let adGs: { raw: unknown; gs: G.GameState | null } = { raw: null, gs: null };
+function adProfile(sel: Cloud.AdminUser) {
+  if (adSave !== adGs.raw) { adGs = { raw: adSave, gs: adSave ? G.migrate(JSON.parse(JSON.stringify(adSave))) : null }; }
+  const gs = adGs.gs;
+  const on = !!Cloud.online[sel.id];
+  const party = gs ? G.partyChars(gs) : [];
+  const lead = party[0] ?? gs?.roster[0];
+  const tiles = (rows: [string, string | number][]) => `<div class="adtiles">${rows.map(([k, v]) => `<div><span>${k}</span><b>${typeof v === 'number' ? fmt(v) : esc(String(v))}</b></div>`).join('')}</div>`;
+  const head = `<div class="adhead">
+      <div class="adava">${lead ? avatar(lead, 64) : ''}</div>
+      <div style="flex:1;min-width:0"><div class="row" style="gap:6px;flex-wrap:wrap;align-items:center"><span class="dot ${on ? 'on' : ''}"></span><h3 style="margin:0">${esc(sel.username)}</h3>${sel.is_admin ? '<span class="tag">관리자</span>' : ''}${sel.muted ? '<span class="tag mute">채팅 금지</span>' : ''}</div>
+        <div class="small mute">${on ? '접속 중' : `마지막 접속 ${ago(sel.last_seen)}`} · 가입 ${ymd(sel.created_at).slice(0, 10)} · 접속 ${sel.login_count}회</div>
+        <div class="small">${gs ? `${esc(gs.heroName)} · ${gs.day}일차 · ${esc(floorName(Math.max(1, gs.maxFloor)))} · 전투력 <b class="cp">${fmt(G.statePower(gs))}</b>` : '세이브 불러오는 중…'}</div></div>
+      <button class="btn ghost sm" data-a="adClose" aria-label="닫기">✕</button></div>`;
+  const utabs: [typeof adUTab, string][] = [['sum', '요약'], ['chars', `단원 ${gs?.roster.length ?? ''}`], ['bag', `가방 ${gs?.inventory.length ?? ''}`], ['pets', `펫 ${gs?.pets.length ?? ''}`], ['log', '활동'], ['manage', '관리']];
+  let body = '';
+  if (!gs && adUTab !== 'log' && adUTab !== 'manage') body = '<p class="mute">세이브를 불러오는 중이거나 서버 세이브가 없어요.</p>';
+  else if (adUTab === 'sum') {
+    body = `${tiles([['골드', gs!.gold], ['강화석', gs!.stones], ['축복', gs!.blessings], ['제련석', gs!.refineStones], ['군단장의 핵', gs!.cores], ['벨리알 파편', gs!.scales], ['물약', Object.values(gs!.potions).reduce((x, y) => x + y, 0)], ['길드', `Lv.${gs!.guildLevel}`]])}
+      <h4>진행</h4>${tiles([['최고 층', floorName(Math.max(1, gs!.maxFloor))], ['무한 탑', `${gs!.tower?.best ?? 0}층`], ['이번 주 레이드 최고', gs!.raid?.best ?? 0], ['보스 처치', gs!.bossesKilled.length], ['가이드 목표', `${gs!.questIdx ?? 0}/${QUESTS.length}`], ['용병 도감', `${(gs!.codex ?? []).length}/${MERCENARIES.length}`], ['전직 가능', G.advanceable(gs!).length], ['일차', gs!.day]])}
+      <h4>출전 파티</h4><div class="cards">${party.map((c) => charCard(c, { act: 'noop', inParty: true })).join('') || '<p class="small mute">없음</p>'}</div>`;
+  } else if (adUTab === 'chars') {
+    const order = [...gs!.roster].sort((x, y) => Number(gs!.party.includes(y.uid)) - Number(gs!.party.includes(x.uid)) || charPower(y) - charPower(x));
+    body = `<div class="adchars">${order.map((c) => {
+      const merc = c.mercId ? MERC_BY_ID[c.mercId] : null;
+      const traits = [...c.traitIds, ...(c.uniqueTraitId ? [c.uniqueTraitId] : [])].map((t) => traitTag(t, false)).join('');
+      const eq = (['weapon', 'armor', 'accessory'] as EquipSlot[]).map((sl) => { const e = c.equipment[sl]; return `<div class="adeq"><span class="small mute">${SLOT_NAME[sl]}</span>${e ? `<div>${equipLine(e)}</div>` : '<span class="small mute">비어 있음</span>'}</div>`; }).join('');
+      const skills = c.skillSlots.map((sl) => SKILLS[sl.skillId]?.name ?? sl.skillId).join(' → ');
+      return `<div class="adchar ${gs!.party.includes(c.uid) ? 'inparty' : ''}"><div class="row" style="gap:10px;align-items:center"><div class="ico">${avatar(c, 48)}</div>
+        <div style="flex:1;min-width:0"><b>${esc(c.name)}</b> ${stars(c.grade)}${c.awakening ? ` <span class="small g5">각성 ${c.awakening}</span>` : ''}${gs!.party.includes(c.uid) ? ' <span class="tag">출전</span>' : ''}
+          <div class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} · <span class="cp">전투력 ${fmt(charPower(c))}</span>${c.isHero ? ' · 주인공' : merc ? ` · ${GRADE_NAME[merc.grade]} 용병` : ''} · ${rowOf(c) === 'front' ? '전열' : '후열'} · ${TARGET_NAME[c.target ?? 'auto']}</div></div></div>
+        ${traits ? `<div class="tags" style="margin-top:6px">${traits}</div>` : ''}
+        <div class="adeqs">${eq}</div>
+        <div class="small mute" style="margin-top:6px">스킬 순서: ${esc(skills || '-')}</div></div>`;
+    }).join('')}</div>`;
+  } else if (adUTab === 'bag') {
+    const inv = [...gs!.inventory].sort((x, y) => y.rarity - x.rarity || y.enhance - x.enhance);
+    const pots = POTIONS.filter((pp) => (gs!.potions[pp.id] ?? 0) > 0).map((pp) => `<span class="tag">${esc(pp.name)} ×${gs!.potions[pp.id]}</span>`).join('');
+    body = `${pots ? `<div class="tags" style="margin-bottom:8px">${pots}</div>` : ''}<div class="adbag">${inv.map((e) => `<div class="adeq r${e.rarity}b">${equipLine(e)}</div>`).join('') || '<p class="small mute">가방이 비어 있어요.</p>'}</div>`;
+  } else if (adUTab === 'pets') {
+    const pets = [...gs!.pets].sort((x, y) => Number(y.uid === gs!.activePet) - Number(x.uid === gs!.activePet) || y.grade - x.grade || y.stars - x.stars);
+    body = `<div class="petbag">${pets.map((pp) => `<div class="pettile r${pp.grade}b ${pp.uid === gs!.activePet ? 'on' : ''}">${petSprite(pp.kind, pp.grade, { size: 56 })}<span class="pn g${pp.grade}">${esc(PET_BY_ID[pp.kind].name)}</span><span class="pg g${pp.grade}">${PET_GRADE_NAME[pp.grade]}${pp.uid === gs!.activePet ? ' · 동행' : ''}</span><span class="small" style="color:var(--gold)">${'★'.repeat(pp.stars)}</span></div>`).join('') || '<p class="small mute">펫이 없어요.</p>'}</div>`;
+  } else if (adUTab === 'log') {
+    body = `<div class="adlog">${adSelEvents.map(evRow).join('') || '<p class="small mute">활동 기록 없음</p>'}</div>`;
+  } else {
+    body = `<div class="row" style="gap:6px;flex-wrap:wrap;margin:4px 0 10px"><button class="btn ghost sm" data-a="adMute" data-v="${sel.id}">${sel.muted ? '채팅 금지 해제' : '채팅 금지'}</button>${sel.id !== Cloud.session?.user.id ? `<button class="btn ghost sm" data-a="adAdmin" data-v="${sel.id}">${sel.is_admin ? '관리자 해제' : '관리자 지정'}</button>` : ''}</div>
+      <form class="adgift" data-form="adgift"><b class="small" style="flex-basis:100%">재료 지급</b>${[['gold', '골드'], ['stones', '강화석'], ['blessings', '축복'], ['refineStones', '제련석'], ['cores', '핵'], ['scales', '벨리알 파편']].map(([k, n]) => `<label class="small">${n}<input type="number" min="0" step="1" name="${k}" value="0" inputmode="numeric"></label>`).join('')}<button class="btn sm" type="submit">지급</button></form>
+      <p class="small mute" style="margin:6px 0 0">지급하면 그 계정 서버 세이브에 바로 더해져요. 접속 중이면 새로고침해야 보여요 (그 전에 저장되면 덮어써짐).</p>`;
+  }
+  return `<div class="panel addetail">${head}
+    <div class="tabs" role="group" aria-label="회원 정보" style="margin:10px 0">${utabs.map(([k, n]) => `<button class="${adUTab === k ? 'on' : ''}" data-a="adUTab" data-v="${k}">${n}</button>`).join('')}</div>
+    ${body}</div>`;
+}
 function viewAdmin() {
   if (!Cloud.isAdmin) return `<div class="wrap">${backBtn()}<h2>관리자</h2><p class="mute">관리자만 볼 수 있어요.</p></div>`;
   if (!adAt[adTab] && !adLoading) setTimeout(() => adLoad(adTab), 0);
@@ -1242,14 +1296,7 @@ function viewAdmin() {
     const list = adUsers.filter((u) => !q || u.username.toLowerCase().includes(q)).sort((a, b) => adSort === 'joined' ? Date.parse(b.created_at) - Date.parse(a.created_at) : adSort === 'power' ? (b.power ?? 0) - (a.power ?? 0) : adSort === 'floor' ? (b.max_floor ?? 0) - (a.max_floor ?? 0) : Date.parse(b.last_seen) - Date.parse(a.last_seen));
     const sel = adUsers.find((u) => u.id === adSel);
     const sv = adSave;
-    const detail = sel ? `<div class="panel addetail"><div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap"><h3 style="margin:0"><span class="dot ${Cloud.online[sel.id] ? 'on' : ''}"></span> ${esc(sel.username)} ${sel.is_admin ? '<span class="tag">관리자</span>' : ''} ${sel.muted ? '<span class="tag mute">채팅 금지</span>' : ''}</h3><button class="btn ghost sm" data-a="adClose">닫기</button></div>
-      <div class="sum" style="margin:8px 0">${[['가입', ymd(sel.created_at)], ['마지막 접속', `${ago(sel.last_seen)}`], ['접속 횟수', sel.login_count], ['마지막 저장', ago(sel.saved_at)], ['일차', sel.day ?? '-'], ['최고 층', sel.max_floor ? floorName(sel.max_floor) : '-'], ['전투력', fmt(sel.power ?? 0)], ['무한 탑', `${sel.tower_best}층`], ['골드', fmt(sel.gold ?? 0)], ['활동 · 채팅', `${sel.events} · ${sel.chats}`]].map(([k, v]) => `<div><span class="small mute">${k}</span><b style="font-size:16px">${esc(String(v))}</b></div>`).join('')}</div>
-      ${sv ? `<p class="small"><b>재화</b> 강화석 ${fmt(sv.stones ?? 0)} · 축복 ${fmt(sv.blessings ?? 0)} · 제련석 ${fmt(sv.refineStones ?? 0)} · 핵 ${fmt(sv.cores ?? 0)} · 벨리알 파편 ${fmt(sv.scales ?? 0)} · 펫 ${(sv.pets ?? []).length}마리 · 단원 ${(sv.roster ?? []).length}명</p>
-        <p class="small"><b>출전 파티</b> ${(sv.party ?? []).map((u: string) => (sv.roster ?? []).find((c: Character) => c.uid === u)).filter(Boolean).map((c: Character) => `${esc(c.name)} (${esc(JOBS[c.jobId]?.name ?? c.jobId)} Lv.${c.level})`).join(' · ') || '-'}</p>` : '<p class="small mute">세이브 불러오는 중…</p>'}
-      <div class="row" style="gap:6px;flex-wrap:wrap;margin:8px 0"><button class="btn ghost sm" data-a="adMute" data-v="${sel.id}">${sel.muted ? '채팅 금지 해제' : '채팅 금지'}</button>${sel.id !== Cloud.session?.user.id ? `<button class="btn ghost sm" data-a="adAdmin" data-v="${sel.id}">${sel.is_admin ? '관리자 해제' : '관리자 지정'}</button>` : ''}</div>
-      <form class="adgift" data-form="adgift"><b class="small">재료 지급</b>${[['gold', '골드'], ['stones', '강화석'], ['blessings', '축복'], ['refineStones', '제련석'], ['cores', '핵'], ['scales', '벨리알 파편']].map(([k, n]) => `<label class="small">${n}<input type="number" min="0" step="1" name="${k}" value="0" inputmode="numeric"></label>`).join('')}<button class="btn sm" type="submit">지급</button></form>
-      <p class="small mute" style="margin:2px 0 8px">지급하면 그 계정 서버 세이브에 바로 더해져요. 접속 중이면 새로고침해야 보여요 (그 전에 저장되면 덮어써짐).</p>
-      <h4 style="margin:8px 0 4px">최근 활동</h4><div class="adlog">${adSelEvents.map(evRow).join('') || '<p class="small mute">없음</p>'}</div></div>` : '';
+    const detail = sel ? adProfile(sel) : '';
     body = `${detail}
       <div class="row" style="gap:8px;flex-wrap:wrap;margin:8px 0"><input id="adQ" placeholder="아이디 검색" value="${esc(adQ)}" style="flex:1;min-width:140px"><div class="seg mini" role="group" aria-label="정렬">${([['seen', '최근 접속'], ['joined', '가입순'], ['power', '전투력'], ['floor', '진행']] as const).map(([k, n]) => `<button class="${adSort === k ? 'on' : ''}" data-a="adSort" data-v="${k}">${n}</button>`).join('')}</div></div>
       <div class="rtbl"><table class="adtbl"><thead><tr><th>아이디</th><th>마지막 접속</th><th>가입</th><th>접속</th><th>진행</th><th>전투력</th><th>탑</th></tr></thead><tbody>
@@ -2084,6 +2131,8 @@ app.addEventListener('click', (ev) => {
     case 'adSort': adSort = d.v as typeof adSort; render(); break;
     case 'adUser': adOpenUser(d.v!); break;
     case 'adClose': adSel = null; render(); break;
+    case 'adUTab': adUTab = d.v as typeof adUTab; render(); break;
+    case 'noop': break;
     case 'adMute': { const u = adUsers.find((x) => x.id === d.v); if (u) Cloud.adminSet(u.id, !u.muted, u.is_admin).then((e) => { if (e) toast(e, true); else { u.muted = !u.muted; toast(u.muted ? '채팅 금지' : '채팅 금지 해제'); render(); } }); break; }
     case 'adAdmin': { const u = adUsers.find((x) => x.id === d.v); if (u) Cloud.adminSet(u.id, u.muted, !u.is_admin).then((e) => { if (e) toast(e, true); else { u.is_admin = !u.is_admin; toast(u.is_admin ? '관리자 지정' : '관리자 해제'); render(); } }); break; }
     case 'adDelChat': Cloud.adminDeleteChat(Number(d.v)).then(() => { adChats = adChats.filter((m) => m.id !== Number(d.v)); chatMsgs = chatMsgs.filter((m) => m.id !== Number(d.v)); render(); toast('삭제했어요'); }); break;

@@ -28,7 +28,8 @@ export function towerGimmick(t: number): Gimmick {
   const h = ((t * 2654435761) >>> 0) % 997;
   return GIMMICKS[1 + (h % (GIMMICKS.length - 1))];
 }
-const castle = ZONES.filter((z) => z.floors[0] > 50);
+/** 마왕성 4지역(51~70층)만: 마왕방(71~80층)은 탑에 안 섞음 */
+const castle = ZONES.filter((z) => z.floors[0] > 50 && z.floors[0] <= 70);
 export const TOWER_POOL = castle.flatMap((z) => z.pool.map((p) => p.id));
 export const TOWER_ELITES = castle.map((z) => z.elite);
 export const towerBoss = (t: number) => castle[(t / 10 - 1) % castle.length].boss;

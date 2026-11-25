@@ -158,10 +158,15 @@ export function runBattle(ctx: BattleContext): boolean {
   }
   for (ctx.round = 1; ctx.round <= limit; ctx.round++) {
     log.push({ t: 'round', n: ctx.round });
-    const order = [...alive(ctx.party), ...alive(ctx.enemies)]
-      .map((c) => ({ c, k: eff(c).stats.agi * rng.range(0.9, 1.1) + (ctx.round === 1 && c.passives.has('skyBow') ? 1e6 : 0) }))
-      .sort((a, b) => b.k - a.k)
-      .map((x) => x.c);
+    const speed = (l: Combatant[]) => l.map((c) => ({ c, k: eff(c).stats.agi * rng.range(0.9, 1.1) + (ctx.round === 1 && c.passives.has('skyBow') ? 1e6 : 0) })).sort((a, b) => b.k - a.k);
+    let order: Combatant[];
+    if (ctx.pvp) {
+      // 결투: 양 진영이 한 명씩 번갈아 행동. 진영 안 순서는 민첩, 선공은 가장 빠른 캐릭터가 있는 쪽
+      const p = speed(alive(ctx.party)), e = speed(alive(ctx.enemies));
+      const [first, second] = (p[0]?.k ?? 0) >= (e[0]?.k ?? 0) ? [p, e] : [e, p];
+      order = [];
+      for (let i = 0; i < Math.max(first.length, second.length); i++) { if (first[i]) order.push(first[i].c); if (second[i]) order.push(second[i].c); }
+    } else order = speed([...alive(ctx.party), ...alive(ctx.enemies)]).map((x) => x.c);
 
     for (const c of order) {
       if (!c.alive) continue;

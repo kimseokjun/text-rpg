@@ -206,9 +206,32 @@ export const MONSTERS: Record<string, MonsterDef> = {
     id: 'azazel', name: '마왕 아자젤', stats: s(18, 1.35, 1.35, 1.5, 1.5, 1.2, 15), attackScale: 'mag',
     skills: [{ skillId: 'm_summonGuard' }, { skillId: 'm_cleave' }, { skillId: 'm_doomRain' }, { skillId: 'm_chaosCurse' }], skillChance: 60, tags: ['boss', 'demon'], passives: ['bulwark', 'rampage'], exp: 6000, gold: 8000,
     phase2: { atkMagPct: 50, text: '아자젤이 옥좌에서 일어선다. "천 년의 봉인을 깬 자들이여, 내 손으로 직접 끝내주마!"' },
-    story: '마왕이 무너지며 성 전체가 흔들린다. 검은 하늘이 갈라지고 천 년 만에 햇빛이 지하까지 스며든다. 용병단의 이름은 전설이 되었다. (완)',
+    story: '아자젤이 무릎을 꿇으며 웃는다. "나는… 문지기였을 뿐이다." 옥좌 뒤의 벽이 갈라지고, 그 너머에서 진짜 마왕의 심장 소리가 울린다. — 마왕방이 열렸다.',
   },
   // ═════ 레이드: 군단장 벨리알 (주마다 형태가 바뀜) ═════
+  // ── 마왕방 (71~80층) ──
+  voidWraith: { id: 'voidWraith', name: '공허의 망령', stats: s(0.8, 0.2, 1.2, 0.7, 1.5, 1.2), attackScale: 'mag', skills: [{ skillId: 'm_nightmare' }, { skillId: 'm_drain' }], skillChance: 40, evade: 10, tags: ['demon', 'undead'], exp: 26, gold: 22 },
+  abyssKnight: { id: 'abyssKnight', name: '심연 기사', stats: s(2.6, 1.15, 0, 2.0, 1.4, 0.7), attackScale: 'atk', skills: [{ skillId: 'm_cleave' }], skillChance: 40, tags: ['demon'], exp: 27, gold: 23 },
+  soulReaper: { id: 'soulReaper', name: '영혼 수확자', stats: s(0.9, 1.3, 0, 0.8, 0.9, 1.4, 25), attackScale: 'atk', skills: [{ skillId: 'm_critStrike' }], skillChance: 35, tags: ['demon'], exp: 26, gold: 22 },
+  chaosHound: { id: 'chaosHound', name: '혼돈의 사냥개', stats: s(1.0, 1.1, 0.4, 0.9, 0.9, 1.6, 12), attackScale: 'atk', skills: [{ skillId: 'm_drain' }], skillChance: 30, tags: ['demon'], exp: 25, gold: 21 },
+  voidArchon: { id: 'voidArchon', name: '공허의 집정관', stats: s(3.4, 1.2, 1.3, 1.5, 1.6, 1.1, 15), attackScale: 'mag', skills: [{ skillId: 'm_arcaneStorm' }, { skillId: 'm_chaosCurse' }], skillChance: 55, tags: ['elite', 'demon'], exp: 140, gold: 130 },
+  shadowKing: {
+    id: 'shadowKing', name: '그림자 군주 네르갈', stats: s(20, 1.4, 1.4, 1.6, 1.6, 1.2, 15), attackScale: 'mag',
+    skills: [{ skillId: 'm_nightmare' }, { skillId: 'm_judgmentOfVoid' }, { skillId: 'm_doomRain' }], skillChance: 65, tags: ['boss', 'demon'], passives: ['rampage'], exp: 7000, gold: 9000,
+    phase2: { atkMagPct: 45, text: '네르갈의 그림자가 둘로 갈라진다. "주인님께 가는 길은 내 시체 위에 있다."' },
+    story: '그림자 군주가 흩어지며 마지막 문이 열린다. 공기가 무겁다. 심장 소리가 점점 가까워진다.',
+  },
+  fallenSeraph: { id: 'fallenSeraph', name: '타락 치천사', stats: s(1.0, 0.4, 1.3, 0.9, 1.6, 1.2, 10), attackScale: 'mag', skills: [{ skillId: 'm_hellfire' }], skillChance: 35, tags: ['demon'], exp: 29, gold: 25 },
+  hellTitan: { id: 'hellTitan', name: '지옥 거인', stats: s(3.0, 1.25, 0, 1.9, 1.2, 0.6), attackScale: 'atk', skills: [{ skillId: 'm_cleave' }], skillChance: 40, tags: ['demon'], exp: 30, gold: 26 },
+  mindFlayer: { id: 'mindFlayer', name: '정신 포식자', stats: s(0.9, 0.2, 1.25, 0.8, 1.4, 1.1), attackScale: 'mag', skills: [{ skillId: 'm_witchCurse' }, { skillId: 'm_nightmare' }], skillChance: 40, tags: ['demon'], exp: 28, gold: 24 },
+  doomBringer: { id: 'doomBringer', name: '파멸의 전령', stats: s(1.1, 1.3, 0.6, 1.0, 1.0, 1.3, 20), attackScale: 'atk', skills: [{ skillId: 'm_critStrike' }], skillChance: 35, tags: ['demon'], exp: 29, gold: 25 },
+  kingGuard: { id: 'kingGuard', name: '마왕 친위대장', stats: s(3.8, 1.3, 1.0, 1.7, 1.5, 1.0, 15), attackScale: 'atk', skills: [{ skillId: 'm_critStrike' }, { skillId: 'm_cleave' }], skillChance: 55, tags: ['elite', 'demon'], exp: 160, gold: 150 },
+  lucifel: {
+    id: 'lucifel', name: '마왕 루시펠', stats: s(26, 1.45, 1.45, 1.7, 1.7, 1.25, 18), attackScale: 'mag',
+    skills: [{ skillId: 'm_judgmentOfVoid' }, { skillId: 'm_hellfire' }, { skillId: 'm_summonGuard' }, { skillId: 'm_chaosCurse' }], skillChance: 65, tags: ['boss', 'demon'], passives: ['bulwark', 'rampage'], exp: 9000, gold: 12000,
+    phase2: { atkMagPct: 55, text: '루시펠의 여섯 날개가 펼쳐진다. "천 년을 기다렸다. 나를 깨운 대가를 치러라."' },
+    story: '마왕 루시펠이 쓰러지며 심장의 박동이 멈춘다. 마왕성 전체가 빛에 잠기고, 천 년의 어둠이 걷힌다. 용병단의 이름은 이제 신화가 되었다. (완)',
+  },
   abyssKing: {
     id: 'abyssKing', name: '심연의 왕 아바돈', stats: s(30, 1.2, 1.35, 1.6, 1.6, 0.9, 12), attackScale: 'mag',
     skills: [{ skillId: 'm_judgmentOfVoid' }, { skillId: 'm_hellfire' }, { skillId: 'm_cleave' }], skillChance: 70, tags: ['boss', 'demon', 'raid'], passives: ['rampage'], exp: 0, gold: 0,
@@ -430,9 +453,33 @@ export const ZONES: ZoneDef[] = [
       '마왕 아자젤: 근위병이 살아있으면 피해 -70%, 동시에 라운드마다 강해져요. 잡몹 우선 딜러와 보스 우선 딜러를 나눠 세우고 물약 3종을 모두 쓰세요.',
     ],
   },
+  {
+    id: 'chamberGate', name: '마왕방 · 심연의 문', floors: [71, 75],
+    pool: [{ id: 'voidWraith', weight: 25 }, { id: 'abyssKnight', weight: 25 }, { id: 'soulReaper', weight: 25 }, { id: 'chaosHound', weight: 25 }],
+    elite: 'voidArchon', boss: { floor: 75, id: 'shadowKing', adds: ['voidWraith', 'voidWraith'] },
+    tips: [
+      '공허의 망령은 기절을 걸고 피를 빨아요. 회복 담당이 둘이면 편해요.',
+      '심연 기사는 단단해요. 방어 무시 옵션이나 강화된 딜러로 뚫으세요.',
+      '영혼 수확자의 치명타가 아파요. 받는 피해 감소와 강철 물약을 챙기세요.',
+      '집정관이 금지된 주문으로 전체를 때려요. 마저와 마법 피해 감소가 중요해요.',
+      '그림자 군주 네르갈: 라운드마다 강해지고 기절을 걸어요. 신화·세트 장비로 단단하게, 최대한 빨리 잡으세요.',
+    ],
+  },
+  {
+    id: 'chamberHeart', name: '마왕방 · 마왕의 심장', floors: [76, 80],
+    pool: [{ id: 'fallenSeraph', weight: 25 }, { id: 'hellTitan', weight: 25 }, { id: 'mindFlayer', weight: 25 }, { id: 'doomBringer', weight: 25 }],
+    elite: 'kingGuard', boss: { floor: 80, id: 'lucifel', adds: ['doomGuard', 'doomGuard'] },
+    tips: [
+      '타락 치천사의 지옥불이 파티 전체를 태워요. 정화(엘레노어)가 있으면 좋아요.',
+      '지옥 거인은 전열을 쓸어버려요. 전열엔 가장 단단한 탱커만.',
+      '정신 포식자의 저주가 공격력을 깎아요. 빨리 끊어야 해요.',
+      '친위대장의 치명타 일격을 조심하세요. HP가 낮은 후열이 먼저 노려져요.',
+      '마왕 루시펠: 근위병이 있으면 피해 -70%, 라운드마다 강해지고 50%에서 광폭. 잡몹 우선 딜러로 근위병을 끊고 물약 3종을 모두 쓰세요. 최종 보스예요.',
+    ],
+  },
 ];
 
-export const MAX_FLOOR = 70;
+export const MAX_FLOOR = 80;
 /** 1부 마지막 층 */
 export const PART1_FLOOR = 50;
 /** 층별 권장 레벨: 1~10층은 손으로, 11층부터 층당 +1.3 (50층 ≈ Lv.78), 51층부터 +1.1 (70층 = Lv.100) */
@@ -441,7 +488,7 @@ export const floorLevel = (floor: number) => floor <= 10 ? FLOOR_LEVEL_10[Math.m
   : floor <= 50 ? Math.round(26 + (floor - 10) * 1.3) : Math.round(78 + (floor - 50) * 1.1);
 /** 권장 레벨의 기준 스탯 (숙련 등급 B 성향 캐릭터, 장비 없음) */
 /** 방어 비율 감소 도입 후 몬스터 피해 보정 (층별, src/cli/comptune.ts) — 기존 난이도 유지용 */
-export const DEF_COMP: number[] = [1.3, 1.35, 1.4, 1.45, 1.47, 1.78, 1.72, 1.6, 1.89, 1.88, 2.1, 2.06, 2, 2.18, 2.38, 2.54, 2.16, 2.12, 2.04, 1.77, 2.31, 2.23, 2.04, 2.54, 2.32, 2.53, 2.24, 2.15, 2.44, 2.37, 2.59, 2.17, 2.63, 2.69, 1.96, 2.7, 2.93, 2.82, 3.04, 2.6, 2.69, 2.7, 2.69, 3.1, 4.23, 2.32, 1.9, 2.87, 2.51, 2.4, 3.55, 3.31, 3.31, 3.76, 4.44, 3.91, 4.08, 4.42, 4.29, 3.93, 3.44, 3.49, 3.19, 3.34, 3.19, 4.17, 4.21, 3.74, 3.8, 4.21];
+export const DEF_COMP: number[] = [1.3, 1.35, 1.4, 1.45, 1.47, 1.78, 1.72, 1.6, 1.89, 1.88, 2.1, 2.06, 2, 2.18, 2.38, 2.54, 2.16, 2.12, 2.04, 1.77, 2.31, 2.23, 2.04, 2.54, 2.32, 2.53, 2.24, 2.15, 2.44, 2.37, 2.59, 2.17, 2.63, 2.69, 1.96, 2.7, 2.93, 2.82, 3.04, 2.6, 2.69, 2.7, 2.69, 3.1, 4.23, 2.32, 1.9, 2.87, 2.51, 2.4, 3.55, 3.31, 3.31, 3.76, 4.44, 3.91, 4.08, 4.42, 4.29, 3.93, 3.44, 3.49, 3.19, 3.34, 3.19, 4.17, 4.21, 3.74, 3.8, 4.21, 4.3, 4.3, 4.3, 4.3, 4.3, 4.4, 4.4, 4.4, 4.4, 4.4];
 export const defComp = (floor: number) => DEF_COMP[floor - 1] ?? 1.6;
 export function refStats(level: number): Stats {
   const g = (level - 1) * 1.15;
@@ -458,7 +505,7 @@ export const DIFF_SLOPE = { hp: 0.07, dmg: 0.035 };
  * 층별 추가 배율 m (HP ×m, 공격 ×m^0.6)
  * src/cli/tune.ts로 "표준 파티"(권장 레벨·구간 장비·기대 강화) 기준 1~50층 일반 70%/보스 45%, 마왕성 51~70층 일반 55%/보스 30%가 되게 찾은 값
  */
-export const DIFF_TUNE: Record<number, number> = {5: 1.46, 6: 1.92, 7: 1.68, 8: 1.01, 9: 1.81, 10: 0.94, 11: 4.22, 12: 4.0, 13: 2.93, 14: 3.85, 15: 1.94, 16: 3.49, 17: 3.75, 18: 2.81, 19: 2.64, 20: 1.5, 21: 3.34, 22: 3.06, 23: 2.18, 24: 2.69, 25: 1.93, 26: 3.39, 27: 3.06, 28: 2.0, 29: 2.92, 30: 1.36, 31: 3.95, 32: 4.58, 33: 3.25, 34: 3.62, 35: 1.91, 36: 8.25, 37: 7.68, 38: 5.97, 39: 5.97, 40: 1.62, 41: 4.6, 42: 5.07, 43: 2.93, 44: 6.27, 45: 2.34, 46: 7.76, 47: 6.92, 48: 5.15, 49: 4.88, 50: 2.1, 51: 19.17, 52: 21.58, 53: 14.99, 54: 13.5, 55: 7.85, 56: 20.34, 57: 17.53, 58: 11.94, 59: 13.19, 60: 3.38, 61: 17.03, 62: 13.55, 63: 10.11, 64: 10.17, 65: 4.5, 66: 14.1, 67: 14.15, 68: 10.99, 69: 10.77, 70: 2.83};
+export const DIFF_TUNE: Record<number, number> = {5: 1.46, 6: 1.92, 7: 1.68, 8: 1.01, 9: 1.81, 10: 0.94, 11: 4.22, 12: 4.0, 13: 2.93, 14: 3.85, 15: 1.94, 16: 3.49, 17: 3.75, 18: 2.81, 19: 2.64, 20: 1.5, 21: 3.34, 22: 3.06, 23: 2.18, 24: 2.69, 25: 1.93, 26: 3.39, 27: 3.06, 28: 2.0, 29: 2.92, 30: 1.36, 31: 3.95, 32: 4.58, 33: 3.25, 34: 3.62, 35: 1.91, 36: 8.25, 37: 7.68, 38: 5.97, 39: 5.97, 40: 1.62, 41: 4.6, 42: 5.07, 43: 2.93, 44: 6.27, 45: 2.34, 46: 7.76, 47: 6.92, 48: 5.15, 49: 4.88, 50: 2.1, 51: 19.17, 52: 21.58, 53: 14.99, 54: 13.5, 55: 7.85, 56: 20.34, 57: 17.53, 58: 11.94, 59: 13.19, 60: 3.38, 61: 17.03, 62: 13.55, 63: 10.11, 64: 10.17, 65: 4.5, 66: 14.1, 67: 14.15, 68: 10.99, 69: 10.77, 70: 2.83, 71: 50.36, 72: 69.69, 73: 56.53, 74: 66.92, 75: 12.08, 76: 91.31, 77: 105.75, 78: 83.01, 79: 91.02, 80: 14.21};
 export const difficulty = (floor: number, tune?: number) => {
   const b = floor <= 10
     ? DIFFICULTY[Math.max(1, floor) - 1]
@@ -477,7 +524,7 @@ export interface RegionDef { id: string; name: string; floors: [number, number] 
 export const REGIONS: RegionDef[] = [
   { id: 'forest', name: '마왕숲', floors: [1, 50], desc: '서브 던전 · 10개 구역 50층 · 한 층 반복 파밍 가능', repeat: true },
   { id: 'castle', name: '마왕성 입구', floors: [51, 70], desc: '메인 던전 · 4개 구역 20층 · 반복 불가, 조합과 물약이 필수', repeat: false },
-  { id: 'chamber', name: '마왕방', floors: null, desc: '준비 중 — 마왕성 입구 너머, 진짜 마왕이 기다린다', repeat: false },
+  { id: 'chamber', name: '마왕방', floors: [71, 80], desc: '최종 던전 · 2개 구역 10층 · 반복 불가, 신화·세트 장비가 필요한 난이도', repeat: false },
 ];
 export const regionOf = (floor: number) => REGIONS.find((r) => r.floors && floor >= r.floors[0] && floor <= r.floors[1]) ?? REGIONS[0];
 /** 지역 안에서의 층 번호 */

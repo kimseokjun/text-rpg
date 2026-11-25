@@ -8,6 +8,7 @@ import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Character, type 
 import { EQUIP_BASES, EQUIP_BY_ID, OPTION_POOL, OPTION_SLOTS, POTIONS, MAX_POTIONS, RARITY_MULT, TIER_INFO, refineGoldCost, refineStoneCost, rollOption, rollLine, rollLines, POT_NAME, POT_UP, POT_PITY, addRuneCost } from '../data/items';
 import { MAX_FLOOR, MONSTERS, floorName, regionOf } from '../data/monsters';
 import { R4, r4Reward, r4Today, type R4Diff } from '../data/raid4';
+import { ATTEND, CHESTS, MISSIONS, dRewardText, type DReward } from '../data/missions';
 import { CRAFT_COST, MYTH_CRAFT_COST, MYTH_SET, RAID_CRAFT_COST, RAID_SET } from '../data/sets';
 import { DAILY_BY_ID, DAILY_LIMIT, dailyReward, kstDate, type DailyDef } from '../data/daily';
 import { rewardScale } from '../data/monsters';
@@ -33,6 +34,10 @@ export interface GameState {
   refineStones: number;
   /** 줍자마자 자동 처리: 체크한 등급은 가방에 안 넣고 분해/판매 */
   autoLoot?: { on: boolean; rarities: Rarity[]; mode: 'dismantle' | 'sell' };
+  /** 출석: 마지막 출석 날짜(KST), 누적 일수 */
+  att?: { last: string; n: number };
+  /** 일일 미션: 날짜, 그날 시작 때 카운터, 받은 상자 */
+  dm?: { date: string; base: Record<string, number>; chests: number[] };
   /** 신화의 정수: 4인 레이드 보상, 신화 장비 재료 */
   mythEss?: number;
   /** 4인 레이드: 날짜(KST)별 난이도 보상 수령 */
@@ -207,7 +212,12 @@ export function dailyState(s: GameState) {
 export const dailyLeft = (s: GameState, id: string) => DAILY_LIMIT - (dailyState(s).used[id] ?? 0);
 export const dailyOpen = (s: GameState, d: DailyDef) => s.maxFloor >= d.unlockFloor;
 export const stageOpen = (s: GameState, d: DailyDef, k: number) => dailyOpen(s, d) && s.maxFloor >= d.stageUnlock(k);
-export const bump = (s: GameState, k: string, n = 1) => { s.cnt ??= {}; s.cnt[k] = (s.cnt[k] ?? 0) + n; };
+export const bump = (s: GameState, k: string, n = 1) => {
+  s.cnt ??= {};
+  // 날짜가 바뀐 뒤 첫 행동이면 일일 미션 기준을 먼저 잡음 (오늘 한 것부터 셈)
+  if (s.dm?.date !== kstDate()) s.dm = { date: kstDate(), base: { ...s.cnt }, chests: [] };
+  s.cnt[k] = (s.cnt[k] ?? 0) + n;
+};
 export function startDaily(s: GameState, id: string, stage: number, potions: string[]): Expedition | string {
   const d = DAILY_BY_ID[id];
   if (!d || !stageOpen(s, d, stage)) return '아직 열리지 않은 단계예요';
@@ -597,6 +607,7 @@ export function enhanceEquip(s: GameState, equipUid: string, useBlessing: boolea
   if (s.stones < cost.stone) return fail('강화석이 부족합니다');
   if (s.gold < cost.gold) return fail('골드가 부족합니다');
   if (useBlessing && s.blessings < 1) return fail('축복 주문서가 없습니다');
+  bump(s, 'enh');
   s.stones -= cost.stone;
   s.gold -= cost.gold;
   if (useBlessing) s.blessings--;
@@ -697,6 +708,7 @@ export function buyDeal(s: GameState, i: number): Result {
   if (!d || d.sold) return fail('이미 팔린 상품입니다');
   if (s.gold < d.price) return fail('골드가 부족합니다');
   s.gold -= d.price;
+  bump(s, 'buy');
   s.inventory.push({ ...d.equip, uid: `e_${s.seed++}` });
   d.sold = true;
   return { ok: true, msg: `${EQUIP_BY_ID[d.equip.baseId].name} 구매` };
@@ -713,6 +725,7 @@ export function buyPack(s: GameState, n: number): Result {
   if (s.gold < cost) return fail('골드가 부족합니다');
   s.gold -= cost;
   s.packBought = (s.packBought ?? 0) + k;
+  bump(s, 'buy');
   s.cardPacks = (s.cardPacks ?? 0) + k;
   return { ok: true, msg: `신비 카드 팩 ${k}개 구매 (카드 보관함에서 개봉)` };
 }
@@ -724,6 +737,7 @@ export function buyStones(s: GameState, n: number): Result {
   const cost = stonePrice(s) * k;
   if (s.gold < cost) return fail('골드가 부족합니다');
   s.gold -= cost; s.stones += k; s.stoneStock -= k;
+  bump(s, 'buy');
   return { ok: true, msg: `강화석 ${k}개 구매` };
 }
 
@@ -880,6 +894,7 @@ export function buyPotion(s: GameState, id: string, n = 1): Result {
   s.gold -= p.price * n;
   s.potions[id] = (s.potions[id] ?? 0) + n;
   bump(s, 'potionBuy', n);
+  bump(s, 'buy');
   return { ok: true, msg: `${p.name} ${n}개 구매` };
 }
 export const blessingPrice = 1200;
@@ -924,7 +939,7 @@ export interface ExpeditionSummary {
   repeat: boolean;
   runs: number;
   insured: boolean;
-  gold: number; exp: number; stones: number; blessings: number; refineStones: number; shards: number; cores: number; runes?: number;
+  gold: number; exp: number; stones: number; blessings: number; refineStones: number; shards: number; cores: number; runes?: number; ess?: number;
   autoLine?: string;
   report?: Report;
   towerLines?: string[];
@@ -955,8 +970,10 @@ export function finishExpedition(s: GameState, ex: Expedition): ExpeditionSummar
   s.blessings += ex.loot.blessings;
   s.refineStones += ex.loot.refineStones;
   s.runes = (s.runes ?? 0) + (ex.loot.runes ?? 0);
+  s.mythEss = (s.mythEss ?? 0) + (ex.loot.ess ?? 0);
   s.shards += ex.loot.shards;
   s.cores += ex.loot.cores;
+  if (!ex.settings.daily && !ex.settings.raid && !ex.settings.tower && !ex.settings.duel) bump(s, 'run');
   const auto = applyAutoLoot(s, ex.loot.equips);
   ex.loot.equips = auto.kept;
   s.inventory.push(...ex.loot.equips);
@@ -1007,7 +1024,7 @@ export function finishExpedition(s: GameState, ex: Expedition): ExpeditionSummar
     raidLines,
     insured: !!ex.settings.insured,
     floor: ex.floor, repeat: ex.repeating, runs: ex.floorsCleared, gold: ex.loot.gold, exp: ex.loot.exp,
-    stones: ex.loot.stones, blessings: ex.loot.blessings, refineStones: ex.loot.refineStones, runes: ex.loot.runes ?? 0, shards: ex.loot.shards, cores: ex.loot.cores, equips: ex.loot.equips, levelUps,
+    stones: ex.loot.stones, blessings: ex.loot.blessings, refineStones: ex.loot.refineStones, runes: ex.loot.runes ?? 0, ess: ex.loot.ess ?? 0, shards: ex.loot.shards, cores: ex.loot.cores, equips: ex.loot.equips, levelUps,
     bosses: ex.bossesKilled, newMaxFloor: newMax,
   };
 }
@@ -1065,6 +1082,7 @@ function applyTower(s: GameState, ex: Expedition): string[] {
 
 /** 멀티 던전 보상: 재화·장비는 전원 동일, 경험치는 내가 데려간 단원 비율만큼 내 단원에게 */
 export function applyMultiReward(s: GameState, r: { gold: number; exp: number; stones: number; blessings: number; refineStones: number; cores: number; cardPacks?: number; equips: Equip[] }, myUids: string[], totalChars: number) {
+  bump(s, 'multi');
   s.gold += r.gold; s.stones += r.stones; s.blessings += r.blessings; s.refineStones += r.refineStones; s.cores += r.cores;
   s.cardPacks = (s.cardPacks ?? 0) + (r.cardPacks ?? 0);
   const auto = applyAutoLoot(s, r.equips.map((e) => ({ ...e, uid: newUid('e') })));
@@ -1199,6 +1217,7 @@ export function awakenCard(s: GameState, id: string): Result {
 export const r4Claimed = (s: GameState, diff: R4Diff) => s.r4?.date === r4Today() && s.r4.done.includes(diff);
 export function claimR4(s: GameState, diff: R4Diff, frac: number, win: boolean): string[] {
   if (r4Claimed(s, diff)) return [`오늘 ${R4[diff].name} 보상은 이미 받았어요 (자정에 초기화)`];
+  bump(s, 'raid4');
   if (s.r4?.date !== r4Today()) s.r4 = { date: r4Today(), done: [] };
   s.r4!.done.push(diff);
   const r = r4Reward(diff, frac, win);
@@ -1227,4 +1246,40 @@ export function receiveMail(s: GameState, item: any): Result {
   const e: Equip = { ...item, uid: newUid('e'), enhance: Math.max(0, Math.min(15, Number(item.enhance) || 0)), failStack: 0, options: Array.isArray(item.options) ? item.options : [] };
   s.inventory.push(e);
   return { ok: true, msg: `${EQUIP_BY_ID[e.baseId].name} 받았어요` };
+}
+
+// ───────── 출석 · 일일 미션 ─────────
+function giveDReward(s: GameState, r: DReward): string {
+  s.gold += r.gold ?? 0; s.stones += r.stones ?? 0; s.blessings += r.blessings ?? 0; s.refineStones += r.refineStones ?? 0;
+  s.runes = (s.runes ?? 0) + (r.runes ?? 0); s.cores += r.cores ?? 0; s.cardPacks = (s.cardPacks ?? 0) + (r.cardPacks ?? 0); s.mythEss = (s.mythEss ?? 0) + (r.mythEss ?? 0);
+  let extra = '';
+  if (r.egg) { const p = addPet(s, hatch(rngOf(s), r.egg as Grade)); extra = ` · ${PET_GRADE_NAME[p.grade]} ${PET_BY_ID[p.kind].name} 부화!`; }
+  return dRewardText(r) + extra;
+}
+export const attendedToday = (s: GameState) => s.att?.last === kstDate();
+/** 오늘 출석하면 받을 날짜 번호 (1~28) */
+export const attendDay = (s: GameState) => attendedToday(s) ? s.att!.n : ((s.att?.n ?? 0) % 28) + 1;
+export function attend(s: GameState): Result {
+  if (attendedToday(s)) return fail('오늘은 이미 출석했어요');
+  const n = ((s.att?.n ?? 0) % 28) + 1;
+  s.att = { last: kstDate(), n };
+  return { ok: true, msg: `출석 ${n}일째! ${giveDReward(s, ATTEND[n - 1])}` };
+}
+/** 일일 미션 상태 (날짜가 바뀌면 오늘 기준으로 다시 셈) */
+export function missionState(s: GameState) {
+  const today = kstDate();
+  s.cnt ??= {};
+  if (s.dm?.date !== today) s.dm = { date: today, base: { ...s.cnt }, chests: [] };
+  const list = MISSIONS.map((m) => { const have = Math.max(0, (s.cnt![m.key] ?? 0) - (s.dm!.base[m.key] ?? 0)); return { ...m, have: Math.min(have, m.need), done: have >= m.need }; });
+  const pts = list.filter((m) => m.done).reduce((a, m) => a + m.pts, 0);
+  return { list, pts, chests: CHESTS.map((c, i) => ({ ...c, i, ready: pts >= c.pts && !s.dm!.chests.includes(i), claimed: s.dm!.chests.includes(i) })) };
+}
+export function claimChest(s: GameState, i: number): Result {
+  const st = missionState(s);
+  const c = st.chests[i];
+  if (!c) return fail('없는 상자예요');
+  if (c.claimed) return fail('이미 받았어요');
+  if (!c.ready) return fail(`${c.pts}포인트가 필요해요`);
+  s.dm!.chests.push(i);
+  return { ok: true, msg: `${c.pts}포인트 상자: ${giveDReward(s, c.reward)}` };
 }

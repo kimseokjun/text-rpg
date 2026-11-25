@@ -25,6 +25,7 @@ import { slotsFor } from '../server/multi';
 import { DEFAULT_SETTINGS, Expedition } from '../core/dungeon';
 import { Raid4Battle, type R4Member, type R4State } from '../core/raid4battle';
 import { mountStage, playEvents, setBanner, setPanel, stageMounted, updateStage } from './r4stage';
+import { ATTEND, CHESTS, dRewardText } from '../data/missions';
 import { R4, R4_DIFFS, R4_MAX, R4_ROUNDS, R4_TURN_SEC, r4Reward, type R4Diff } from '../data/raid4';
 import { Rng } from '../core/rng';
 import { CARDS, CARD_BY_ID, CARD_SETS, DECK_SIZE, MAX_AWAKEN, PACK_ODDS, SET_BY_ID as CARD_SET_BY_ID, cardEffectText, cardMods } from '../data/cards';
@@ -400,6 +401,27 @@ function questPanel() {
     <div class="row" style="justify-content:space-between;gap:10px;align-items:center"><div><b>${ok ? '✔ ' : ''}${esc(q.title)}</b>${q.hint ? `<div class="small mute">${esc(q.hint)}</div>` : ''}</div>
     <button class="btn sm ${ok ? '' : 'ghost'}" data-a="claimQuest" ${ok ? '' : 'disabled'}>${ok ? '보상 받기' : '진행 중'}</button></div></div>`;
 }
+/** 오늘의 할 일: 출석 + 일일 미션 */
+let todoOpen = true;
+function todoPanel() {
+  const s = S!;
+  const st = G.missionState(s);
+  const attended = G.attendedToday(s), day = G.attendDay(s);
+  const list = st.list.filter((m) => !m.cloud || CLOUD);
+  const maxPts = list.reduce((a, m) => a + m.pts, 0);
+  const ready = st.chests.filter((c) => c.ready).length + (attended ? 0 : 1);
+  const week = Math.floor((day - 1) / 7) * 7;
+  const days = ATTEND.slice(week, week + 7).map((r, i) => { const d = week + i + 1; const done = d < day || (d === day && attended); const big = d % 7 === 0; return `<div class="attd ${done ? 'done' : ''} ${d === day && !attended ? 'now' : ''} ${big ? 'big' : ''}" title="${esc(dRewardText(r))}"><b>${d}일</b><span>${big ? '🎁' : done ? '✔' : '·'}</span></div>`; }).join('');
+  return `<details class="panel todo" ${todoOpen ? 'open' : ''} data-todo><summary><h3>오늘의 할 일</h3>${ready ? `<span class="tag up">받을 보상 ${ready}</span>` : '<span class="small mute">모두 완료</span>'}</summary>
+    <div class="attrow"><div class="attdays">${days}</div>
+      <div class="attact"><div class="small">${attended ? `출석 ${day}일째 완료` : `출석 ${day}일째 보상`}: <b>${esc(dRewardText(ATTEND[day - 1]))}</b></div>
+      <button class="btn sm" data-a="attend" ${attended ? 'disabled' : ''}>${attended ? '내일 또 와요' : '출석하기'}</button></div></div>
+    <div class="mlist">${list.map((m) => `<div class="mrow ${m.done ? 'done' : ''}"><span>${m.done ? '✔' : '○'} ${esc(m.name)}</span><span class="small mute">${m.have}/${m.need} · ${m.pts}점</span></div>`).join('')}</div>
+    <div class="chests"><div class="bar xp"><i style="width:${Math.min(100, (st.pts / Math.max(1, CHESTS[CHESTS.length - 1].pts)) * 100)}%"></i></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px"><span class="small">오늘 <b>${st.pts}</b>/${maxPts}점</span>${st.chests.map((c) => `<button class="btn sm ${c.ready ? '' : 'ghost'}" data-a="chest" data-v="${c.i}" ${c.ready ? '' : 'disabled'} title="${esc(dRewardText(c.reward))}">${c.claimed ? '✔ ' : '🎁 '}${c.pts}점</button>`).join('')}</div>
+      <div class="small mute" style="margin-top:4px">${st.chests.map((c) => `${c.pts}점: ${esc(dRewardText(c.reward))}`).join(' · ')}</div></div>
+  </details>`;
+}
 function viewTown() {
   const s = S!;
   const party = G.partyChars(s);
@@ -421,6 +443,7 @@ function viewTown() {
     <div class="scene">${townScene()}</div>
     ${noticeStrip()}
     ${questPanel()}
+    ${todoPanel()}
     ${(() => { const a = G.advanceable(s); return a.length ? `<button class="advnote" data-a="openChar" data-uid="${esc(a[0].uid)}"><b>⚡ 전직할 수 있어요!</b> <span>${a.slice(0, 4).map((c) => esc(c.name)).join(', ')}${a.length > 4 ? ` 외 ${a.length - 4}명` : ''}</span><span class="small mute">눌러서 전직하기 →</span></button>` : ''; })()}
     <nav class="signs">${signs.map(([to, n, d, c]) => `<button class="sign ${c ?? ''}" data-a="go" data-to="${to}"><span class="sico">${SIGN_ICON[to]?.() ?? ''}</span><b>${n}</b><span>${d}</span></button>`).join('')}</nav>
     <div class="cols">
@@ -877,7 +900,7 @@ function viewRegions() {
     const open = s.maxFloor + 1 >= a;
     const best = Math.max(0, Math.min(s.maxFloor, b) - a + 1);
     const total = b - a + 1;
-    const zones = ZONES.filter((z) => z.floors[0] >= a && z.floors[1] <= b).map((z) => z.name.replace(/^마왕성 · /, '')).join(' · ');
+    const zones = ZONES.filter((z) => z.floors[0] >= a && z.floors[1] <= b).map((z) => z.name.replace(/^마왕(성|방) · /, '')).join(' · ');
     return `<button class="region ${open ? '' : 'locked'}" data-a="pickRegion" data-v="${r.id}" ${open ? '' : 'disabled'}>
       <h3>${esc(r.name)}</h3><p class="small">${esc(r.desc)}</p>
       <div class="small mute">${esc(zones)}</div>
@@ -1314,6 +1337,7 @@ function finishDuel() {
   const d = ex.settings.duel!;
   duelLast = { win: ex.duelWin, foe: d.foeName, size: ex.party.length, hp: ex.duelHp };
   if (duelFoe) Cloud.recordDuel(duelFoe.id, ex.party.length, ex.duelWin).then(loadDuelLog);
+  G.bump(S!, 'duel'); commit();
   Cloud.logEvent('duel', `${d.foeName}와 ${ex.party.length}:${ex.party.length} 결투 ${ex.duelWin ? '승리' : '패배'}`);
   EX = null;
   screen = 'duel';
@@ -1500,7 +1524,7 @@ function viewMulti() {
   const me = Cloud.session?.user.id;
   if (!myRoom) {
     if (Date.now() - roomListAt > 10000) setTimeout(refreshRooms, 0);
-    const riftOpts = ZONES.map((z) => ({ z, f: z.floors[0] + 2 })).filter((o) => (s.maxFloor || 0) >= o.f || o.z.floors[0] === 1);
+    const riftOpts = ZONES.filter((z) => z.floors[1] <= 70).map((z) => ({ z, f: z.floors[0] + 2 })).filter((o) => (s.maxFloor || 0) >= o.f || o.z.floors[0] === 1);
     if (!riftOpts.some((o) => o.f === mFloor)) mFloor = riftOpts[riftOpts.length - 1].f;
     return `<div class="wrap">${backBtn()}
       <h2>멀티 던전</h2>
@@ -2401,6 +2425,7 @@ function viewResult() {
       <div><span class="small mute">제련석</span><b>+${r.refineStones ?? 0}</b></div>
       ${r.cores ? `<div><span class="small mute">군단장의 핵</span><b>+${r.cores}</b></div>` : ''}
       ${r.runes ? `<div><span class="small mute">고대 룬석</span><b>+${r.runes}</b></div>` : ''}
+      ${r.ess ? `<div><span class="small mute">신화의 정수</span><b style="color:#c8a8ff">+${r.ess}</b></div>` : ''}
       ${(r as { cardPacks?: number }).cardPacks ? `<div><span class="small mute">신비 카드 팩</span><b style="color:var(--gold)">+${(r as { cardPacks?: number }).cardPacks}</b></div>` : ''}
     </div>
     ${r.levelUps.length ? `<div class="panel"><h3>레벨 업</h3><p>${r.levelUps.map((l) => `${esc(l.name)} Lv.${l.to}`).join(' · ')}</p></div>` : ''}
@@ -2817,6 +2842,8 @@ app.addEventListener('click', (ev) => {
     case 'mailSend': sendMailItem(d.e!); break;
     case 'mailClaim': claimMails([Number(d.v)]); break;
     case 'mailClaimAll': claimMails(mailbox.map((m) => m.id)); break;
+    case 'attend': commit(G.attend(s!)); break;
+    case 'chest': commit(G.claimChest(s!, Number(d.v))); break;
     case 'deckAuto': {
       if (d.v === 'close') { deckOpts = null; render(); break; }
       const o = G.autoDeckOptions(s!);
@@ -2937,6 +2964,7 @@ app.addEventListener('change', (ev) => {
 app.addEventListener('toggle', (ev) => {
   const el = ev.target as HTMLElement;
   if (el.hasAttribute?.('data-bulk')) bulkOpen = (el as HTMLDetailsElement).open;
+  if (el.hasAttribute?.('data-todo')) todoOpen = (el as HTMLDetailsElement).open;
   if (el.hasAttribute?.('data-drops')) dropOpen = (el as HTMLDetailsElement).open;
 }, true);
 

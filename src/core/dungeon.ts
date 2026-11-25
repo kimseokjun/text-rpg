@@ -58,7 +58,7 @@ export const RIFT_FLOORS = 10;
 export const RIFT_TUNE = { normal: 0.6, elite: 0.5, boss: 0.8 };
 /** 구역별 보정 (src/cli/rifttune.ts) */
 export const RIFT_ZONE_K: Record<string, number> = {catacomb:  1.74,  mine:  0.67,  frost:  0.68,  nest:  0.63,  rift:  0.55,  wall:  0.9,  library:  0.85,  temple:  0.43,  swamp:  0.67,  lava:  0.7,  sunken:  0.8,  core:  0.59,  blood:  0.62,  throne:  0.6};
-export interface Loot { gold: number; exp: number; stones: number; blessings: number; refineStones: number; shards: number; cores: number; cardPacks?: number; runes?: number; equips: Equip[] }
+export interface Loot { gold: number; exp: number; stones: number; blessings: number; refineStones: number; shards: number; cores: number; cardPacks?: number; runes?: number; ess?: number; equips: Equip[] }
 
 export interface FloorResult { floor: number; win: boolean; log: BattleEvent[]; story?: string }
 
@@ -282,7 +282,7 @@ export class Expedition {
       const low = lowFloorRate(f, this.settings.bestFloor);
       this.loot.exp += d.exp * sc * low;
       this.loot.gold += d.gold * sc * this.goldMult * low;
-      if (boss) { this.loot.stones += 3 + Math.floor(f / 2); this.loot.blessings += 1 + Math.floor(f / 20); }
+      if (boss) { this.loot.stones += 3 + Math.floor(f / 2); this.loot.blessings += 1 + Math.floor(f / 20); if (f > 70) this.loot.ess = (this.loot.ess ?? 0) + (f >= 80 ? 25 : 10); }
       else if (elite) { if (this.rng.chance(STONE_CHANCE(f).elite)) this.loot.stones += 1; if (this.rng.chance(BLESS_CHANCE(f).elite)) this.loot.blessings += 1; }
       else if (this.rng.chance(STONE_CHANCE(f).normal)) this.loot.stones += 1 + Math.floor(f / 15);
       if (this.rng.chance(boss ? REFINE_CHANCE.boss : elite ? REFINE_CHANCE.elite : REFINE_CHANCE.normal)) this.loot.refineStones += boss && this.floor > 50 ? 2 : 1;

@@ -135,6 +135,7 @@ export function joinPresence(onChange: () => void) {
   if (!sb || !session || presCh) return;
   presCh = sb.channel('online', { config: { presence: { key: session.user.id } } });
   presCh.on('broadcast', { event: 'invite' }, (m) => { const p = m.payload as { to: string; from: string; room: string; floor: number }; if (p?.to === session?.user.id) onInvite?.(p); });
+  presCh.on('broadcast', { event: 'r4invite' }, (m) => { const p = m.payload as { to: string; from: string; code: string; diff: string }; if (p?.to === session?.user.id) onR4Invite?.(p); });
   presCh.on('presence', { event: 'sync' }, () => {
     const st = presCh!.presenceState() as Record<string, { username?: string }[]>;
     online = Object.fromEntries(Object.entries(st).map(([k, v]) => [k, v[0]?.username ?? '']));
@@ -382,4 +383,28 @@ export async function loadDuels(): Promise<DuelRow[]> {
   if (!sb || !session) return [];
   const { data } = await sb.from('duels').select('*').order('id', { ascending: false }).limit(30);
   return (data ?? []) as DuelRow[];
+}
+
+// ───────── 4인 레이드 (실시간 채널: 방장이 전투 진행, 나머지는 선택만 보냄) ─────────
+let onR4Invite: ((p: { from: string; code: string; diff: string }) => void) | null = null;
+export function setR4InviteHandler(h: typeof onR4Invite) { onR4Invite = h; }
+export function sendR4Invite(to: string, code: string, diff: string) {
+  presCh?.send({ type: 'broadcast', event: 'r4invite', payload: { to, from: username, code, diff } });
+}
+export interface R4Presence { id: string; name: string; host: boolean; ready: boolean; diff?: string; pick?: { uid: string; name: string; jobId: string; level: number; power: number } }
+export interface R4Channel { send: (event: string, payload: unknown) => void; track: (p: R4Presence) => void; leave: () => void; members: () => R4Presence[] }
+export function joinR4(code: string, onSync: (m: R4Presence[]) => void, onMsg: (event: string, payload: any) => void): R4Channel | null {
+  if (!sb || !session) return null;
+  const ch = sb.channel(`r4-${code}`, { config: { presence: { key: session.user.id }, broadcast: { self: false } } });
+  let me: R4Presence | null = null;
+  const members = () => Object.values(ch.presenceState() as Record<string, R4Presence[]>).map((v) => v[0]).filter(Boolean);
+  ch.on('presence', { event: 'sync' }, () => onSync(members()));
+  for (const ev of ['char', 'begin', 'tick', 'choose', 'end', 'abort', 'kick', 'diff']) ch.on('broadcast', { event: ev }, (m) => onMsg(ev, m.payload));
+  ch.subscribe(async (status) => { if (status === 'SUBSCRIBED' && me) await ch.track(me); });
+  return {
+    send: (event, payload) => { ch.send({ type: 'broadcast', event, payload }); },
+    track: (p) => { me = p; ch.track(p); },
+    leave: () => { ch.untrack(); sb!.removeChannel(ch); },
+    members,
+  };
 }

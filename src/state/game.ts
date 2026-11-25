@@ -7,7 +7,8 @@ import { enhance as doEnhance, enhanceCost, hire as doHire, refreshSlotCost, rol
 import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Character, type Equip, type Modifier, type EquipSlot, EQUIP_SLOTS, wornSlots, type JobId, type Rarity, type Row, type TargetPref } from '../core/types';
 import { EQUIP_BASES, EQUIP_BY_ID, OPTION_POOL, OPTION_SLOTS, POTIONS, MAX_POTIONS, RARITY_MULT, TIER_INFO, refineGoldCost, refineStoneCost, rollOption, rollLine, rollLines, POT_NAME, POT_UP, POT_PITY, addRuneCost } from '../data/items';
 import { MAX_FLOOR, MONSTERS, floorName, regionOf } from '../data/monsters';
-import { CRAFT_COST, RAID_CRAFT_COST, RAID_SET } from '../data/sets';
+import { R4, r4Reward, r4Today, type R4Diff } from '../data/raid4';
+import { CRAFT_COST, MYTH_CRAFT_COST, MYTH_SET, RAID_CRAFT_COST, RAID_SET } from '../data/sets';
 import { DAILY_BY_ID, DAILY_LIMIT, dailyReward, kstDate, type DailyDef } from '../data/daily';
 import { rewardScale } from '../data/monsters';
 import { MILESTONES, MILESTONE_SCALES, RAID_DIFF, RAID_DIFF_NAME, RAID_LIMIT, attemptReward, raidMaxHp, raidWeek, type RaidDiff } from '../data/raid';
@@ -32,6 +33,10 @@ export interface GameState {
   refineStones: number;
   /** 줍자마자 자동 처리: 체크한 등급은 가방에 안 넣고 분해/판매 */
   autoLoot?: { on: boolean; rarities: Rarity[]; mode: 'dismantle' | 'sell' };
+  /** 신화의 정수: 4인 레이드 보상, 신화 장비 재료 */
+  mythEss?: number;
+  /** 4인 레이드: 날짜(KST)별 난이도 보상 수령 */
+  r4?: { date: string; done: string[] };
   /** 고대 룬석: 에디셔널 잠재 재료 */
   runes?: number;
   pets: Pet[];
@@ -304,6 +309,16 @@ function applyRaid(s: GameState, ex: Expedition): string[] {
 export function craftSet(s: GameState, baseId: string): Result {
   const b = EQUIP_BY_ID[baseId];
   if (!b?.set) return fail('제작할 수 없는 장비예요');
+  if (b.set === MYTH_SET) {
+    const mc = MYTH_CRAFT_COST[b.slot];
+    if ((s.mythEss ?? 0) < mc.ess) return fail(`신화의 정수가 부족해요 (${mc.ess}개 필요)`);
+    if (s.gold < mc.gold) return fail('골드가 부족합니다');
+    s.mythEss = (s.mythEss ?? 0) - mc.ess; s.gold -= mc.gold;
+    const e = rollSetEquip(rngOf(s), b.set, b.id);
+    s.inventory.push(e);
+    bump(s, 'craft');
+    return { ok: true, msg: `신화 장비 ${b.name} 완성! (가방에 들어갔어요)` };
+  }
   if (b.set === RAID_SET) {
     const rc = RAID_CRAFT_COST[b.slot];
     if (s.scales < rc.scales) return fail(`벨리알의 파편이 부족해요 (${rc.scales}개 필요)`);
@@ -1178,4 +1193,22 @@ export function awakenCard(s: GameState, id: string): Result {
   if (o.count - 1 < need) return fail(`같은 카드가 ${need}장 더 필요해요`);
   o.count -= need; o.awaken++;
   return { ok: true, msg: `${CARD_BY_ID[id].name} 각성 ${o.awaken}단계!` };
+}
+
+// ───────── 4인 레이드 보상 (난이도마다 하루 1번) ─────────
+export const r4Claimed = (s: GameState, diff: R4Diff) => s.r4?.date === r4Today() && s.r4.done.includes(diff);
+export function claimR4(s: GameState, diff: R4Diff, frac: number, win: boolean): string[] {
+  if (r4Claimed(s, diff)) return [`오늘 ${R4[diff].name} 보상은 이미 받았어요 (자정에 초기화)`];
+  if (s.r4?.date !== r4Today()) s.r4 = { date: r4Today(), done: [] };
+  s.r4!.done.push(diff);
+  const r = r4Reward(diff, frac, win);
+  s.mythEss = (s.mythEss ?? 0) + r.ess; s.cores += r.cores; s.runes = (s.runes ?? 0) + r.runes; s.gold += r.gold;
+  const lines = [`${win ? '처치 보상' : `도전 보상 (${Math.round(frac * 100)}%)`}: 신화의 정수 ${r.ess} · 군단장의 핵 ${r.cores} · 고대 룬석 ${r.runes} · ${r.gold.toLocaleString('ko-KR')}G`];
+  if (win && rngOf(s).chance(R4[diff].mythChance)) {
+    const e = rollSetEquip(rngOf(s), MYTH_SET);
+    s.inventory.push(e);
+    lines.push(`✨ 신화 장비 「${EQUIP_BY_ID[e.baseId].name}」 획득!`);
+  }
+  news(s, `4인 레이드 ${R4[diff].name} ${win ? '처치!' : '도전'} — ${lines[0]}`);
+  return lines;
 }

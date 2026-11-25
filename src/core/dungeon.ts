@@ -1,7 +1,7 @@
 import { EQUIP_BASES, OPTION_POOL, POTIONS, REFINE_CHANCE, rollLines, rollOption, tierOfFloor } from '../data/items';
 import { DAILY_BY_ID, DAILY_TUNE, dailyReward } from '../data/daily';
 import { RAID_DIFF, RAID_ROUNDS, raidForm, type RaidDiff } from '../data/raid';
-import { CORE_CHANCE, RAID_SET, SET_BASES, SET_DROP_CHANCE, SET_RARITY, SHARD_CHANCE } from '../data/sets';
+import { CORE_CHANCE, MYTH_SET, RAID_SET, SET_BASES, SET_DROP_CHANCE, SET_RARITY, SHARD_CHANCE } from '../data/sets';
 import { DIFF_TUNE, MAX_FLOOR, MONSTERS, regionOf, rewardScale, zoneOf } from '../data/monsters';
 import { gainExp, newUid } from './character';
 import { newReport, type Report } from './report';
@@ -410,8 +410,8 @@ export const STONE_CHANCE = (floor: number) => ({ normal: 6 + floor * 0.2, elite
 export const BLESS_CHANCE = (floor: number) => ({ elite: 8, bossCount: 1 + Math.floor(floor / 20) });
 /** 세트 장비: 세트·부위 무작위 (지정 가능), 영웅 70% / 전설 30% */
 export function rollSetEquip(rng: Rng, setId?: string, baseId?: string): Equip {
-  const base = baseId ? EQUIP_BASES.find((b) => b.id === baseId)! : rng.pick(SET_BASES.filter((b) => (setId ? b.set === setId : b.set !== RAID_SET)));
-  const r = rng.weighted([4, 5] as Rarity[], (x) => SET_RARITY[x as 4 | 5]);
+  const base = baseId ? EQUIP_BASES.find((b) => b.id === baseId)! : rng.pick(SET_BASES.filter((b) => (setId ? b.set === setId : b.set !== RAID_SET && b.set !== MYTH_SET)));
+  const r = base.set === MYTH_SET ? 5 as Rarity : rng.weighted([4, 5] as Rarity[], (x) => SET_RARITY[x as 4 | 5]);
   const pot = r === 5 ? 2 : 1;
   return { uid: newUid('e'), baseId: base.id, rarity: r, enhance: 0, failStack: 0, options: rollLines(rng, base.slot, base.tier, pot, r - 2), pot };
 }

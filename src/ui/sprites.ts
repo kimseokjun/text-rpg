@@ -67,6 +67,7 @@ const SET_PAL: Record<string, { m: string; l: string; j: string; r: string; g: s
   grim: { m: '#24163a', l: '#b080ff', j: '#30f0c8', r: '#30f0c8', g: '#7a5ad8', glow: '#7a40ff', glow2: '#30f0c8' },
   hunter: { m: '#3a2418', l: '#ffb060', j: '#ff7a20', r: '#ff7a20', g: '#c8803a', glow: '#ff8a30', glow2: '#3a1008' },
   saint: { m: '#e8e4f0', l: '#fff6c8', j: '#7fd4ff', r: '#ffd95e', g: '#ffd95e', glow: '#fff2a8', glow2: '#7fd4ff' },
+  myth: { m: '#140a2a', l: '#9ff6ff', j: '#ff5af0', r: '#7a40ff', g: '#9ff6ff', glow: '#7a40ff', glow2: '#ff5af0' },
   demon: { m: '#120810', l: '#ffd95e', j: '#ff2040', r: '#ffb020', g: '#ffd95e', glow: '#ffb020', glow2: '#ff2040' },
 };
 export function equipSprite(kind: Kind, tier: number, opts: { size?: number; set?: string } = {}) {
@@ -179,7 +180,7 @@ const MON_LOOK: Record<string, [string, string, string?]> = {
   crystalSpirit: ['crystal', '#b070ff'], shardGolem: ['golem', '#7a50c0'], crystalHeart: ['crystal', '#ff60c0'],
   rockGiant: ['giant', '#8a7a6a'], stoneBeetle: ['spider', '#6a6050'], quarryLord: ['knight', '#8a7a5a'],
   trainingDummy: ['zombie', '#c8a060', '#8a6a3a'], swordInstructor: ['knight', '#3a5a8a'], grandMaster: ['robe', '#e8e0d0'],
-  archDemon: ['demon', '#8a1a3a'], nightmare: ['ghost', '#3a0a4a'], doomGuard: ['knight', '#4a1a2a'], succubus: ['demon', '#c84a8a'], demonDuke: ['demon', '#4a0a2a'], azazel: ['demon', '#4a0a28'],
+  abyssKing: ['demon', '#2a0a4a', '#7a40ff'], archDemon: ['demon', '#8a1a3a'], nightmare: ['ghost', '#3a0a4a'], doomGuard: ['knight', '#4a1a2a'], succubus: ['demon', '#c84a8a'], demonDuke: ['demon', '#4a0a2a'], azazel: ['demon', '#4a0a28'],
 };
 const EYE: Record<string, string> = { undead: '#80ffb0', demon: '#ff3030' };
 export function monsterSprite(id: string, opts: { size?: number; boss?: boolean; elite?: boolean; tags?: string[] } = {}) {

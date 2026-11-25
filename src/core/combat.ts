@@ -157,48 +157,11 @@ export function runBattle(ctx: BattleContext): boolean {
     ctx.rep.firstDeath = undefined; // 진단은 마지막 싸움 기준
   }
   for (ctx.round = 1; ctx.round <= limit; ctx.round++) {
-    log.push({ t: 'round', n: ctx.round });
-    const speed = (l: Combatant[]) => l.map((c) => ({ c, k: eff(c).stats.agi * rng.range(0.9, 1.1) + (ctx.round === 1 && c.passives.has('skyBow') ? 1e6 : 0) })).sort((a, b) => b.k - a.k);
-    let order: Combatant[];
-    if (ctx.pvp) {
-      // 결투: 양 진영이 한 명씩 번갈아 행동. 진영 안 순서는 민첩, 선공은 가장 빠른 캐릭터가 있는 쪽
-      const p = speed(alive(ctx.party)), e = speed(alive(ctx.enemies));
-      const [first, second] = (p[0]?.k ?? 0) >= (e[0]?.k ?? 0) ? [p, e] : [e, p];
-      order = [];
-      for (let i = 0; i < Math.max(first.length, second.length); i++) { if (first[i]) order.push(first[i].c); if (second[i]) order.push(second[i].c); }
-    } else order = speed([...alive(ctx.party), ...alive(ctx.enemies)]).map((x) => x.c);
-
+    const order = startRound(ctx);
     for (const c of order) {
       if (!c.alive) continue;
       if (!alive(ctx.party).length || !alive(ctx.enemies).length) break;
-      c.flags.firstHitDone = false;
-      if (c.status.stun) {
-        log.push({ t: 'stunned', who: c.name });
-        delete c.status.stun;
-        continue;
-      }
-      act(ctx, c);
-      // 늑대 소환: 추가 공격 (야수왕 패시브면 2배)
-      if (c.alive && c.buffs.some((b) => b.flag === 'extraHit')) {
-        const t = pickFoe(ctx, c);
-        if (t) {
-          log.push({ t: 'special', who: c.name, text: '늑대가 함께 달려든다!' });
-          dealDamage(ctx, c, t, { type: 'damage', scale: 'atk', power: c.passives.has('packLeader') ? 1.2 : 0.6, target: 'single' }, true);
-        }
-      }
-      // 해골 군단: 해골 2구 추가 공격
-      if (c.alive && c.buffs.some((b) => b.flag === 'skeletons')) {
-        log.push({ t: 'special', who: c.name, text: '해골 군단이 진격한다!' });
-        for (let i = 0; i < 2; i++) {
-          const t = pickFoe(ctx, c);
-          if (t) dealDamage(ctx, c, t, { type: 'damage', scale: 'mag', power: 0.5, target: 'single' }, true);
-        }
-      }
-      // 별의 계시
-      if (c.alive && c.passives.has('starOracle') && ctx.round % 3 === 0 && alive(ctx.enemies).length) {
-        log.push({ t: 'special', who: c.name, text: '별의 계시! 하늘에서 별빛이 쏟아진다' });
-        for (const t of alive(foes(ctx, c))) dealDamage(ctx, c, t, { type: 'damage', scale: 'mag', power: 2.0, target: 'all' }, false);
-      }
+      takeTurn(ctx, c);
     }
     if (!alive(ctx.enemies).length || !alive(ctx.party).length) break;
     endOfRound(ctx);
@@ -211,6 +174,65 @@ export function runBattle(ctx: BattleContext): boolean {
   for (const c of ctx.party) { c.buffs = []; c.status = {}; c.taunt = 0; }
   return win;
 }
+
+/** 라운드 시작: 'round' 기록 + 행동 순서 (수동 전투용으로도 사용) */
+export function startRound(ctx: BattleContext): Combatant[] {
+  const { rng, log } = ctx;
+  log.push({ t: 'round', n: ctx.round });
+  const speed = (l: Combatant[]) => l.map((c) => ({ c, k: eff(c).stats.agi * rng.range(0.9, 1.1) + (ctx.round === 1 && c.passives.has('skyBow') ? 1e6 : 0) })).sort((a, b) => b.k - a.k);
+  if (ctx.pvp) {
+    // 결투: 양 진영이 한 명씩 번갈아 행동. 진영 안 순서는 민첩, 선공은 가장 빠른 캐릭터가 있는 쪽
+    const p = speed(alive(ctx.party)), e = speed(alive(ctx.enemies));
+    const [first, second] = (p[0]?.k ?? 0) >= (e[0]?.k ?? 0) ? [p, e] : [e, p];
+    const order: Combatant[] = [];
+    for (let i = 0; i < Math.max(first.length, second.length); i++) { if (first[i]) order.push(first[i].c); if (second[i]) order.push(second[i].c); }
+    return order;
+  }
+  return speed([...alive(ctx.party), ...alive(ctx.enemies)]).map((x) => x.c);
+}
+/** 한 명의 차례: 기절 처리 → 행동(forced = 직접 고른 스킬 id 또는 'attack') → 부가 공격 */
+export function takeTurn(ctx: BattleContext, c: Combatant, forced?: string) {
+  const { log } = ctx;
+  c.flags.firstHitDone = false;
+  if (c.status.stun) {
+    log.push({ t: 'stunned', who: c.name });
+    delete c.status.stun;
+    return;
+  }
+  act(ctx, c, forced);
+  // 늑대 소환: 추가 공격 (야수왕 패시브면 2배)
+  if (c.alive && c.buffs.some((b) => b.flag === 'extraHit')) {
+    const t = pickFoe(ctx, c);
+    if (t) {
+      log.push({ t: 'special', who: c.name, text: '늑대가 함께 달려든다!' });
+      dealDamage(ctx, c, t, { type: 'damage', scale: 'atk', power: c.passives.has('packLeader') ? 1.2 : 0.6, target: 'single' }, true);
+    }
+  }
+  // 해골 군단: 해골 2구 추가 공격
+  if (c.alive && c.buffs.some((b) => b.flag === 'skeletons')) {
+    log.push({ t: 'special', who: c.name, text: '해골 군단이 진격한다!' });
+    for (let i = 0; i < 2; i++) {
+      const t = pickFoe(ctx, c);
+      if (t) dealDamage(ctx, c, t, { type: 'damage', scale: 'mag', power: 0.5, target: 'single' }, true);
+    }
+  }
+  // 별의 계시
+  if (c.alive && c.passives.has('starOracle') && ctx.round % 3 === 0 && alive(ctx.enemies).length) {
+    log.push({ t: 'special', who: c.name, text: '별의 계시! 하늘에서 별빛이 쏟아진다' });
+    for (const t of alive(foes(ctx, c))) dealDamage(ctx, c, t, { type: 'damage', scale: 'mag', power: 2.0, target: 'all' }, false);
+  }
+}
+/** 수동 전투: 이 캐릭터가 지금 쓸 수 있는 스킬 (MP·사용 가능 여부) */
+export function usableSkills(ctx: BattleContext, c: Combatant): { skillId: string; name: string; mp: number; ok: boolean; why?: string }[] {
+  return c.slots.map((slot) => {
+    const sk = SKILLS[slot.skillId];
+    if (!sk) return null;
+    const cost = mpCost(ctx, c, sk);
+    const why = c.mp < cost ? 'MP 부족' : !skillUsable(ctx, c, sk) ? '지금은 못 써요' : isActive(ctx, c, sk) ? '이미 걸려 있어요' : undefined;
+    return { skillId: slot.skillId, name: sk.name, mp: cost, ok: c.mp >= cost && skillUsable(ctx, c, sk), why };
+  }).filter(Boolean) as { skillId: string; name: string; mp: number; ok: boolean; why?: string }[];
+}
+export const endRound = (ctx: BattleContext) => endOfRound(ctx);
 
 function endOfRound(ctx: BattleContext) {
   for (const side of ctx.pvp ? [ctx.party, ctx.enemies] : [ctx.party]) {
@@ -259,7 +281,7 @@ function endOfRound(ctx: BattleContext) {
 }
 
 // ───────── 행동 선택 ─────────
-function act(ctx: BattleContext, c: Combatant) {
+function act(ctx: BattleContext, c: Combatant, forced?: string) {
   // 보스 페이즈 2
   if (c.mdef?.phase2 && !c.flags.phase2Done && pctOf(c) <= 50) {
     c.flags.phase2Done = true;
@@ -268,7 +290,13 @@ function act(ctx: BattleContext, c: Combatant) {
     ctx.log.push({ t: 'special', who: c.name, text: c.mdef.phase2.text });
   }
 
-  const trySkills = c.side === 'party' || ctx.rng.chance(c.skillChance);
+  // 직접 고른 행동 (수동 전투)
+  if (forced && forced !== 'attack') {
+    const sk = SKILLS[forced];
+    const cost = sk ? mpCost(ctx, c, sk) : Infinity;
+    if (sk && c.slots.some((x) => x.skillId === forced) && c.mp >= cost && skillUsable(ctx, c, sk)) { c.mp -= cost; useSkill(ctx, c, sk); return; }
+  }
+  const trySkills = forced !== 'attack' && (c.side === 'party' || ctx.rng.chance(c.skillChance));
   if (trySkills) {
     for (const slot of c.slots) {
       const sk = SKILLS[slot.skillId];

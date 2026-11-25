@@ -9,7 +9,7 @@ import { equipStats } from '../core/stats';
 import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Row, type TargetPref, type UnitSnap, type BaseJob, type BattleEvent, type JobId, type Character, type Equip, type EquipSlot, type BaseSlot, type Rarity, type StatKey, type Modifier, EQUIP_SLOTS, wornSlots } from '../core/types';
 import { raidWeek, MILESTONE_SCALES, RAID_DIFF, RAID_DIFFS, RAID_DIFF_NAME, RAID_LIMIT, RAID_ROUNDS, nextResetText, raidForm, raidMaxHp, type RaidDiff } from '../data/raid';
 import { DAILIES, DAILY_BY_ID, DAILY_LIMIT, DAILY_STAGES, dailyReward } from '../data/daily';
-import { CRAFT_COST, RAID_CRAFT_COST, RAID_SET, SETS, SET_BASES, SET_BY_ID, SET_DROP_CHANCE, SET_RARITY, SHARD_CHANCE } from '../data/sets';
+import { CRAFT_COST, MYTH_CRAFT_COST, MYTH_SET, RAID_CRAFT_COST, RAID_SET, SETS, SET_BASES, SET_BY_ID, SET_DROP_CHANCE, SET_RARITY, SHARD_CHANCE } from '../data/sets';
 import { PET_KINDS, EGG_ODDS, EGG_PRICE, PET_BY_ID, PET_GRADE_NAME, PET_GRADE_PCT, PET_MAX_STARS, petEffectText, petSellPrice, type Pet } from '../data/pets';
 import { EQUIP_BASES, EQUIP_BY_ID, MAX_POTIONS, OPTION_SLOTS, POTIONS, REFINE_CHANCE, tierOfFloor, POT_NAME, POT_UP, POT_PITY } from '../data/items';
 import { ADVANCE_AT, JOBS, advanceOptions } from '../data/jobs';
@@ -23,6 +23,8 @@ import { QUESTS, rewardText } from '../data/quests';
 import { WB_LIMIT, wbInfo } from '../server/worldboss';
 import { slotsFor } from '../server/multi';
 import { DEFAULT_SETTINGS, Expedition } from '../core/dungeon';
+import { Raid4Battle, type R4Member, type R4State } from '../core/raid4battle';
+import { R4, R4_DIFFS, R4_MAX, R4_ROUNDS, R4_TURN_SEC, r4Reward, type R4Diff } from '../data/raid4';
 import { Rng } from '../core/rng';
 import { CARDS, CARD_BY_ID, CARD_SETS, DECK_SIZE, MAX_AWAKEN, PACK_ODDS, SET_BY_ID as CARD_SET_BY_ID, cardEffectText, cardMods } from '../data/cards';
 import { CARD_IMAGES, cardHtml } from './cardart';
@@ -35,7 +37,7 @@ import { townScene } from './art';
 import { charSprite } from './pixel';
 import { equipKind, equipSprite, itemSprite, monsterSprite, petSprite } from './sprites';
 
-type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex' | 'admin' | 'notice' | 'cards' | 'duel' | 'profile';
+type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex' | 'admin' | 'notice' | 'cards' | 'duel' | 'profile' | 'raid4';
 
 let S: G.GameState | null = null;
 let screen: Screen = 'title';
@@ -150,6 +152,13 @@ function renderInvite() {
   app.insertAdjacentHTML('beforeend', `<div class="invite" role="alertdialog"><b>${esc(invitePending.from)}</b>님이 ${esc(zoneOf(invitePending.floor).name)} 균열에 초대했어요<div class="row" style="gap:6px;margin-top:8px"><button class="btn sm" data-a="mInviteJoin" data-v="${esc(invitePending.room)}">참가</button><button class="btn ghost sm" data-a="mInviteNo">거절</button></div></div>`);
 }
 Cloud.setInviteHandler((p) => { invitePending = p; renderInvite(); });
+let r4Invite: { from: string; code: string; diff: string } | null = null;
+function renderR4Invite() {
+  document.querySelector('.invite.r4i')?.remove();
+  if (!r4Invite) return;
+  app.insertAdjacentHTML('beforeend', `<div class="invite r4i" role="alertdialog"><b>${esc(r4Invite.from)}</b>님이 4인 레이드 <b>${esc(R4[r4Invite.diff as R4Diff]?.name ?? '')}</b>에 초대했어요<div class="row" style="gap:6px;margin-top:8px"><button class="btn sm" data-a="r4InviteJoin">참가</button><button class="btn ghost sm" data-a="r4InviteNo">거절</button></div></div>`);
+}
+Cloud.setR4InviteHandler((p) => { r4Invite = p; renderR4Invite(); });
 function stopSocial() { clearInterval(touchTimer); Cloud.leaveRealtime(); socialOn = false; chatOpen = false; chatMsgs = []; friends = []; renderChat(); }
 const msgHtml = (m: Cloud.ChatMsg) => `<div class="cmsg ${m.user_id === Cloud.session?.user.id ? 'mine' : ''}"><span class="cn">${esc(m.username)}</span><span class="cb">${esc(m.body)}</span><span class="ct">${hhmm(m.created_at)}</span></div>`;
 const hhmm = (t: string) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
@@ -261,7 +270,7 @@ const HUBS: { id: string; name: string; tabs: [string, string][] }[] = [
   { id: 'smith', name: '대장간', tabs: [['smith', '강화'], ['refinery', '제련'], ['forge', '제작']] },
   { id: 'adv', name: '모험', tabs: [['gate', '던전'], ['tower', '무한 탑'], ['daily', '일일'], ['raid', '레이드']] },
 ];
-if (CLOUD) HUBS[2].tabs.push(['multi', '멀티'], ['world', '월드보스'], ['duel', '결투']);
+if (CLOUD) HUBS[2].tabs.push(['multi', '멀티'], ['raid4', '4인 레이드'], ['world', '월드보스'], ['duel', '결투']);
 const hubOf = (sc: string) => HUBS.find((h) => h.tabs.some(([t]) => t === sc));
 const hubTabs = () => {
   const h = hubOf(screen);
@@ -659,12 +668,13 @@ function viewForge() {
   const bases = SET_BASES.filter((b) => b.set === forgeSet && (b.slot !== 'weapon' || b.jobs?.[0] === forgeJob)).sort((a, b) => BASE_ORDER[a.slot] - BASE_ORDER[b.slot]);
   const raidSet = forgeSet === RAID_SET;
   const card = (b: typeof bases[number]) => {
-    const c = CRAFT_COST[b.slot], rc = RAID_CRAFT_COST[b.slot];
-    const can = raidSet ? s.scales >= rc.scales && s.gold >= rc.gold : s.cores >= c.cores && s.gold >= c.gold;
+    const c = CRAFT_COST[b.slot], rc = RAID_CRAFT_COST[b.slot], mc = MYTH_CRAFT_COST[b.slot];
+    const myth = forgeSet === MYTH_SET;
+    const can = myth ? (s.mythEss ?? 0) >= mc.ess && s.gold >= mc.gold : raidSet ? s.scales >= rc.scales && s.gold >= rc.gold : s.cores >= c.cores && s.gold >= c.gold;
     const st = Object.entries(b.stats).map(([k, v]) => `${STAT_LABEL[k as StatKey]} +${v}`).join(', ');
     return `<div class="icard r5b forgecard"><div class="row" style="gap:10px;align-items:center"><span class="eico r5e setico" style="width:64px;height:64px">${equipSprite(equipKind(b.slot, b.jobs?.[0]), 8, { size: 60, set: b.set })}</span>
       <div><b class="r5">${esc(b.name)}</b><div class="small mute">${KIND_NAME_EQ[b.slot]}${b.jobs ? ` · ${JOBS[b.jobs[0]].name}` : ''} · 기본 ${st}</div></div></div>
-      <div class="small">재료: ${raidSet ? `벨리알의 파편 ${rc.scales} · ${fmt(rc.gold)}G` : `군단장의 핵 ${c.cores} · ${fmt(c.gold)}G`}</div>
+      <div class="small">재료: ${myth ? `신화의 정수 ${mc.ess} · ${fmt(mc.gold)}G` : raidSet ? `벨리알의 파편 ${rc.scales} · ${fmt(rc.gold)}G` : `군단장의 핵 ${c.cores} · ${fmt(c.gold)}G`}</div>
       <button class="btn" data-a="craft" data-id="${b.id}" ${can ? '' : 'disabled'}>제작</button></div>`;
   };
   return `<div class="wrap">${backBtn()}
@@ -674,9 +684,11 @@ function viewForge() {
     <div class="panel row" style="gap:16px;flex-wrap:wrap">
       <span class="row" style="gap:6px">${equipSprite('accessory', 8, { size: 36, set: 'demon' })}<span>군단장의 핵 <b>${s.cores}</b></span></span>
       <span class="row" style="gap:6px">${monsterSprite('belialFire', { size: 36, tags: ['demon'] })}<span>벨리알의 파편 <b>${s.scales}</b></span></span>
+      <span class="row" style="gap:6px">${equipSprite('ring', 8, { size: 36, set: 'myth' })}<span>신화의 정수 <b>${s.mythEss ?? 0}</b></span></span>
       <span>골드 <b>${fmt(s.gold)}</b></span>
     </div>
-    <div class="tabs" role="group" aria-label="세트" style="margin-top:12px">${SETS.map((x) => `<button class="${forgeSet === x.id ? 'on' : ''}" data-a="forgeSet" data-v="${x.id}">${x.id === RAID_SET ? '레이드 · ' : ''}${esc(x.name)}</button>`).join('')}</div>
+    <div class="tabs" role="group" aria-label="세트" style="margin-top:12px">${SETS.map((x) => `<button class="${forgeSet === x.id ? 'on' : ''}" data-a="forgeSet" data-v="${x.id}">${x.id === RAID_SET ? '레이드 · ' : ''}${x.id === MYTH_SET ? '✨ ' : ''}${esc(x.name)}</button>`).join('')}</div>
+    ${forgeSet === MYTH_SET ? '<p class="small mute">신화 장비는 4인 레이드(심연의 왕 아바돈)에서 얻는 신화의 정수로 만들어요. 항상 전설 등급으로 나와요. 하드·헬 처치 시 낮은 확률로 신화 장비가 바로 나오기도 해요.</p>' : ''}
     ${raidSet ? '<p class="small mute">레이드 장비는 개인 레이드에서 얻는 벨리알의 파편으로 만들어요. 레이드 보스에게만 강해지는 대신 다른 세트 효과를 포기해야 해요.</p>' : ''}
     <div class="panel setinfo"><b class="r5">${esc(set.name)} 세트</b> <span class="small mute">${esc(set.desc)}</span>
       <div class="small" style="margin-top:6px">${setSteps(set).map(([k, t]) => `<b>${k}세트</b> ${esc(t)}`).join(' · ')}</div>
@@ -987,6 +999,223 @@ function wbHpBar(b: Cloud.WBBoss | null) {
   const pct = Math.max(0, (b.hp / b.max_hp) * 100);
   return `<div id="wbhp"><div class="bar e big"><i style="width:${pct}%"></i></div><p class="small" style="margin:4px 0 0">${b.killed_at ? `☠ 처치 완료${b.killer ? ` · 막타 ${esc(b.killer)}` : ''}` : `HP ${fmt(b.hp)} / ${fmt(b.max_hp)} (${pct.toFixed(1)}%)`}</p></div>`;
 }
+// ───────── 4인 레이드 (방장 화면이 전투 진행, 실시간 채널로 공유) ─────────
+interface R4Room {
+  code: string; host: boolean; diff: R4Diff; ch: Cloud.R4Channel; members: Cloud.R4Presence[];
+  pick: string | null; ready: boolean; chars: Record<string, R4Member>;
+  phase: 'lobby' | 'battle' | 'done'; st: R4State | null; log: { c: string; t: string }[];
+  choice: { turn: string; owner: string; skills: { skillId: string; name: string; mp: number; ok: boolean; why?: string }[]; deadline: number } | null;
+  result?: { win: boolean; frac: number; lines: string[] }; battle?: Raid4Battle; timer?: number; inBattle: string[]; sawHost?: boolean;
+}
+let r4: R4Room | null = null;
+let r4CodeDraft = '';
+let r4Tick = 0;
+const myId = () => Cloud.session?.user.id ?? '';
+function r4Track() {
+  if (!r4) return;
+  const c = r4.pick ? G.byUid(S!, r4.pick) : null;
+  r4.ch.track({ id: myId(), name: Cloud.username, host: r4.host, ready: r4.ready, diff: r4.host ? r4.diff : undefined, pick: c ? { uid: c.uid, name: c.name, jobId: c.jobId, level: c.level, power: charPower(c, G.petPartyMods(S!)) } : undefined });
+}
+function r4Open(code: string, host: boolean, diff: R4Diff = 'normal') {
+  if (r4) r4Leave();
+  const ch = Cloud.joinR4(code, r4Sync, r4Msg);
+  if (!ch) { toast('로그인이 필요해요', true); return; }
+  r4 = { code, host, diff, ch, members: [], pick: null, ready: false, chars: {}, phase: 'lobby', st: null, log: [], choice: null, inBattle: [] };
+  const best = sortRoster(G.partyChars(S!))[0];
+  if (best) r4.pick = best.uid;
+  r4Track();
+  screen = 'raid4'; render();
+}
+function r4Leave() {
+  if (!r4) return;
+  if (r4.host && r4.phase === 'battle') r4.ch.send('abort', { reason: '방장이 나갔어요' });
+  clearTimeout(r4.timer);
+  r4.ch.leave();
+  r4 = null;
+}
+function r4Sync(m: Cloud.R4Presence[]) {
+  if (!r4) return;
+  r4.members = m;
+  const host = m.find((x) => x.host);
+  if (!r4.host && host?.diff && R4[host.diff as R4Diff]) r4.diff = host.diff as R4Diff;
+  if (host) r4.sawHost = true;
+  if (!r4.host && !host && r4.sawHost) { toast('방장이 나가서 방이 닫혔어요', true); r4Leave(); if (screen === 'raid4') render(); return; }
+  if (r4.host && r4.phase === 'battle') r4.members = m; // 나간 사람 차례는 자동으로
+  if (screen === 'raid4') render();
+}
+function r4SendChar() {
+  if (!r4 || !r4.pick) return;
+  const c = G.byUid(S!, r4.pick);
+  if (!c) return;
+  const mem: R4Member = { owner: myId(), ownerName: Cloud.username, char: JSON.parse(JSON.stringify(c)), mods: G.petPartyMods(S!) };
+  if (r4.host) r4.chars[myId()] = mem; else r4.ch.send('char', mem);
+}
+const r4Line = (e: BattleEvent): { c: string; t: string } | null => {
+  switch (e.t) {
+    case 'skill': return { c: 'sk', t: `${e.actor}의 [${e.skill}]` };
+    case 'attack': return { c: 'dm', t: `${e.actor}의 공격` };
+    case 'damage': return { c: e.crit ? 'cr' : 'dm', t: `  ${e.from} → ${e.to} ${fmt(e.amount)}${e.crit ? ' 치명타!' : ''}` };
+    case 'heal': return { c: 'hl', t: `  ${e.to} +${fmt(e.amount)} 회복` };
+    case 'evade': return { c: 'st', t: `  ${e.to}이(가) 피했다` };
+    case 'status': return { c: 'st', t: `  ${e.to}: ${e.label}` };
+    case 'dot': return { c: 'st', t: `  ${e.to} ${e.status === 'poison' ? '독' : '화상'} ${fmt(e.amount)}` };
+    case 'stunned': return { c: 'st', t: `  ${e.who} 기절` };
+    case 'death': return { c: 'de', t: `  ${e.who} 쓰러짐` };
+    case 'special': return { c: 'sp', t: `  ✦ ${e.who}: ${e.text}` };
+    case 'round': return { c: 'w', t: `── ${e.n}라운드 ──` };
+    case 'result': return { c: 'res', t: e.win ? `승리! (${e.rounds}라운드)` : '패배…' };
+    default: return null;
+  }
+};
+function r4Apply(events: BattleEvent[], st: R4State, choice: R4Room['choice']) {
+  if (!r4) return;
+  for (const e of events) { const l = r4Line(e); if (l) r4.log.push(l); }
+  if (r4.log.length > 200) r4.log = r4.log.slice(-200);
+  r4.st = st; r4.choice = choice;
+  if (screen === 'raid4') { render(); const lg = document.getElementById('r4log'); if (lg) lg.scrollTop = lg.scrollHeight; }
+}
+function r4Msg(ev: string, p: any) {
+  if (!r4) return;
+  if (ev === 'char' && r4.host) { r4.chars[p.owner] = p as R4Member; if (screen === 'raid4') render(); }
+  else if (ev === 'diff' && !r4.host) { r4.diff = p.diff; if (screen === 'raid4') render(); }
+  else if (ev === 'begin') { r4.phase = 'battle'; r4.log = []; r4.result = undefined; r4.inBattle = p.members; r4.diff = p.diff; screen = 'raid4'; render(); }
+  else if (ev === 'tick') r4Apply(p.events, p.st, p.choice);
+  else if (ev === 'choose' && r4.host) r4Take(p.turn, p.skill, p.from);
+  else if (ev === 'end') { r4Apply(p.events, p.st, null); r4Finish(p.win, p.frac); }
+  else if (ev === 'abort') { toast(p.reason ?? '레이드가 중단됐어요', true); r4.phase = 'lobby'; r4.ready = false; r4Track(); if (screen === 'raid4') render(); }
+}
+/** 방장: 전투 시작 */
+function r4Start() {
+  if (!r4?.host) return;
+  const ids = r4.members.map((m) => m.id);
+  if (r4.members.some((m) => !m.ready)) { toast('모두 준비해야 시작할 수 있어요', true); return; }
+  r4SendChar();
+  const missing = ids.filter((id) => !r4!.chars[id]);
+  if (missing.length) { toast('단원 정보를 받는 중이에요. 잠시 후 다시 눌러주세요', true); return; }
+  const mems = ids.map((id) => r4!.chars[id]);
+  r4.battle = new Raid4Battle(mems, r4.diff, (Date.now() % 1e9) | 0);
+  r4.phase = 'battle'; r4.log = []; r4.result = undefined; r4.inBattle = ids;
+  r4.ch.send('begin', { diff: r4.diff, members: ids });
+  Cloud.logEvent('raid4', `${R4[r4.diff].name} 시작 · ${r4.members.map((m) => m.name).join(', ')}`);
+  r4Pump();
+}
+function r4Pump() {
+  const room = r4;
+  if (!room?.host || !room.battle) return;
+  const b = room.battle;
+  clearTimeout(room.timer);
+  if (b.over) {
+    const st = b.state(), frac = st.dealt / st.maxHp;
+    const events = b.drain();
+    room.ch.send('end', { events, st, win: b.win, frac });
+    r4Apply(events, st, null);
+    r4Finish(b.win, frac);
+    return;
+  }
+  const cur = b.current!;
+  if (b.needsChoice) {
+    const owner = b.ownerOf(cur)!;
+    const here = owner === myId() || room.members.some((m) => m.id === owner);
+    const choice = { turn: cur.id, owner, skills: b.skillsOf(cur), deadline: Date.now() + (here ? R4_TURN_SEC : 1.5) * 1000 };
+    const events = b.drain(), st = b.state();
+    room.ch.send('tick', { events, st, choice });
+    r4Apply(events, st, choice);
+    room.timer = window.setTimeout(() => r4Take(cur.id, undefined, owner), (here ? R4_TURN_SEC : 1.5) * 1000);
+  } else {
+    const events = b.drain(), st = b.state();
+    room.ch.send('tick', { events, st, choice: null });
+    r4Apply(events, st, null);
+    room.timer = window.setTimeout(() => { if (r4 === room) { b.step(); r4Pump(); } }, 900);
+  }
+}
+/** 방장: 차례 적용 (from = 고른 사람) */
+function r4Take(turn: string, skill: string | undefined, from: string) {
+  const room = r4;
+  if (!room?.host || !room.battle || !room.choice || room.choice.turn !== turn || room.choice.owner !== from) return;
+  clearTimeout(room.timer);
+  room.choice = null;
+  room.battle.step(skill);
+  r4Pump();
+}
+function r4Choose(skill: string) {
+  if (!r4?.choice || r4.choice.owner !== myId()) return;
+  const turn = r4.choice.turn;
+  if (r4.host) r4Take(turn, skill, myId());
+  else { r4.ch.send('choose', { turn, skill, from: myId() }); r4.choice = { ...r4.choice, deadline: 0 }; render(); }
+}
+function r4Finish(win: boolean, frac: number) {
+  if (!r4) return;
+  r4.phase = 'done'; r4.ready = false;
+  const mine = r4.inBattle.includes(myId());
+  r4.result = { win, frac, lines: mine ? G.claimR4(S!, r4.diff, frac, win) : ['이번 전투에 참가하지 않았어요'] };
+  if (mine) Cloud.logEvent('raid4', `${R4[r4.diff].name} ${win ? '처치' : `실패 (${Math.round(frac * 100)}%)`}`);
+  r4Track();
+  commit();
+}
+const unitIcon = (u: { jobId?: string; name: string; boss?: boolean }, size: number) => u.boss ? monsterSprite('abyssKing', { size, boss: true, tags: ['demon'] }) : u.jobId ? charSprite(JOBS[u.jobId as JobId].base, u.name.replace(/\(.+\)$/, ''), JOBS[u.jobId as JobId].tier, { size }) : '';
+function viewRaid4() {
+  const s = S!;
+  if (!CLOUD || !Cloud.session) return `<div class="wrap">${backBtn()}<h2>4인 레이드</h2><p class="mute">로그인해야 할 수 있어요.</p></div>`;
+  const essLine = `<span class="row" style="gap:6px">${equipSprite('ring', 8, { size: 30, set: 'myth' })}<span>신화의 정수 <b>${s.mythEss ?? 0}</b></span></span>`;
+  if (!r4) {
+    return `<div class="wrap">${backBtn()}
+      <h2>4인 레이드 · 심연의 왕 아바돈</h2>
+      <p class="small mute">친구 최대 4명이 <b>단원 1명씩</b> 데려와 싸워요. 내 단원 차례가 오면 <b>스킬을 직접 골라요</b> (${R4_TURN_SEC}초 안에 안 고르면 자동). ${R4_ROUNDS}라운드 안에 쓰러뜨려야 해요. 방장 화면이 전투를 진행하니 방장은 끝까지 창을 켜 두세요.</p>
+      <div class="panel row" style="gap:16px;flex-wrap:wrap">${essLine}<span class="small mute">신화의 정수로 제작소에서 <b>신화 세트</b>를 만들어요</span></div>
+      <div class="r4diffs">${R4_DIFFS.map((d) => { const r = r4Reward(d, 1, true); return `<div class="panel r4d ${d}"><h3 style="margin:0">${R4[d].name}</h3><div class="small">권장 전투력 <b class="cp">1인 ${fmt(R4[d].power)}</b></div>
+        <div class="small mute">처치: 정수 ${r.ess} · 핵 ${r.cores} · 룬석 ${r.runes} · ${fmt(r.gold)}G${R4[d].mythChance ? ` · 신화 장비 ${R4[d].mythChance}%` : ''}</div>
+        <div class="small ${G.r4Claimed(s, d) ? 'mute' : ''}">${G.r4Claimed(s, d) ? '오늘 보상 받음' : '오늘 보상 가능'}</div>
+        <button class="btn sm" data-a="r4Create" data-v="${d}">${R4[d].name} 방 만들기</button></div>`; }).join('')}</div>
+      <form class="panel row" data-form="r4join" style="gap:8px;flex-wrap:wrap"><b>코드로 참가</b><input id="r4code" maxlength="6" placeholder="방 코드 6자리" value="${esc(r4CodeDraft)}" autocomplete="off" style="width:140px;text-transform:uppercase"><button class="btn sm" type="submit">참가</button></form>
+    </div>`;
+  }
+  const room = r4;
+  if (room.phase !== 'battle' || !room.st) {
+    const slots = Array.from({ length: R4_MAX }, (_, i) => room.members[i]).map((m) => m ? `<div class="r4slot ${m.ready ? 'ready' : ''}">${m.pick ? `<span class="ico">${charSprite(JOBS[m.pick.jobId as JobId].base, m.pick.name, JOBS[m.pick.jobId as JobId].tier, { size: 44 })}</span>` : '<span class="ico mute">?</span>'}
+      <div><b>${esc(m.name)}</b>${m.host ? ' <span class="tag">방장</span>' : ''}<div class="small mute">${m.pick ? `${esc(m.pick.name)} · ${esc(JOBS[m.pick.jobId as JobId].name)} · <span class="cp">${fmt(m.pick.power)}</span>` : '단원 고르는 중'}</div></div>
+      <span class="small ${m.ready ? 'okt' : 'mute'}">${m.ready ? '준비 완료' : '대기'}${room.host && m.ready && !room.chars[m.id] && m.id !== myId() ? ' · 정보 받는 중' : ''}</span></div>` : '<div class="r4slot empty2"><span class="small mute">빈 자리</span></div>').join('');
+    const picks = sortRoster(s.roster).map((c) => `<button class="dpick ${room.pick === c.uid ? 'on' : ''}" data-a="r4Pick" data-uid="${esc(c.uid)}" ${room.ready ? 'disabled' : ''}><span class="ico">${avatar(c, 30)}</span><span><b class="small">${esc(c.name)}</b><span class="small mute"> ${esc(JOBS[c.jobId].name)} · <span class="cp">${fmt(charPower(c, G.petPartyMods(s)))}</span></span></span></button>`).join('');
+    const fr = friends.filter((f) => f.status === 'accepted' && Cloud.online[f.other] && !room.members.some((m) => m.id === f.other));
+    const allReady = room.members.length > 0 && room.members.every((m) => m.ready);
+    return `<div class="wrap">${backBtn()}
+      <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><h2 style="margin:0">4인 레이드 · ${R4[room.diff].name}</h2><span class="row" style="gap:8px"><span>방 코드 <b class="r4code">${esc(room.code)}</b></span><button class="btn ghost sm" data-a="r4Leave">나가기</button></span></div>
+      ${room.result ? `<div class="panel dres ${room.result.win ? 'w' : 'l'}"><b>${room.result.win ? '🏆 아바돈 처치!' : `💀 실패 · ${Math.round(room.result.frac * 100)}% 피해`}</b>${room.result.lines.map((l) => `<div class="small">${esc(l)}</div>`).join('')}</div>` : ''}
+      ${room.host ? `<div class="tabs" role="group" aria-label="난이도" style="margin:10px 0">${R4_DIFFS.map((d) => `<button class="${room.diff === d ? 'on' : ''}" data-a="r4Diff" data-v="${d}">${R4[d].name} · 1인 ${fmt(R4[d].power)}</button>`).join('')}</div>` : `<p class="small mute">난이도는 방장이 정해요 · 권장 1인 전투력 ${fmt(R4[room.diff].power)}</p>`}
+      <div class="r4slots">${slots}</div>
+      <div class="panel"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><h3 style="margin:0">데려갈 단원 1명</h3>${sortBar()}</div><div class="dpicks" style="margin-top:8px">${picks}</div>
+        <div class="row" style="gap:8px;margin-top:10px"><button class="btn ${room.ready ? 'ghost' : ''}" data-a="r4Ready" ${room.pick ? '' : 'disabled'}>${room.ready ? '준비 취소' : '준비'}</button>${room.host ? `<button class="btn" data-a="r4Start" ${allReady ? '' : 'disabled'}>전투 시작 (${room.members.length}명)</button>` : ''}</div></div>
+      <div class="panel"><h3 style="margin-top:0">친구 초대 <span class="small mute">접속 중인 친구</span></h3>${fr.map((f) => `<div class="item"><div><b>${esc(f.username)}</b> <span class="small mute">전투력 ${fmt(f.power)}</span></div><button class="btn sm" data-a="r4Invite" data-v="${esc(f.other)}">초대</button></div>`).join('') || '<p class="small mute">접속 중인 친구가 없어요. 방 코드를 알려줘도 돼요.</p>'}</div>
+    </div>`;
+  }
+  // ── 전투 화면 ──
+  const st = room.st;
+  const by = Object.fromEntries(st.units.map((u) => [u.id, u]));
+  const boss = st.units.find((u) => u.boss)!;
+  const party = st.units.filter((u) => !u.boss);
+  const turnU = st.turn ? by[st.turn] : null;
+  const mine = room.choice && room.choice.owner === myId() && room.choice.deadline > 0;
+  const left = room.choice ? Math.max(0, Math.ceil((room.choice.deadline - Date.now()) / 1000)) : 0;
+  const order = st.order.slice(0, 8).map((id, i) => { const u = by[id]; return u ? `<div class="r4o ${i === 0 ? 'now' : ''} ${u.boss ? 'boss' : u.owner === myId() ? 'me' : ''}" title="${esc(u.name)}">${unitIcon(u, 36)}</div>` : ''; }).join('');
+  const unit = (u: typeof party[number]) => `<div class="r4u ${u.alive ? '' : 'dead'} ${u.id === st.turn ? 'turn' : ''} ${u.owner === myId() ? 'me' : ''}"><div class="r4fig">${unitIcon(u, 64)}</div>
+    <div class="r4ui"><b>${esc(u.name)}</b><span class="uown ${u.owner === myId() ? 'me' : ''}">${esc(u.ownerName ?? '')}</span>
+      <div class="bar"><i style="width:${pctW(u.hp, u.maxHp)}"></i></div><div class="small mute">${fmt(u.hp)} / ${fmt(u.maxHp)}</div>
+      <div class="bar mp"><i style="width:${pctW(u.mp, Math.max(1, u.maxMp))}"></i></div></div></div>`;
+  const act = mine ? `<div class="r4act"><div class="r4turn">⚔️ 나의 턴 <span class="r4cd" id="r4cd">${left}</span></div>
+      <div class="r4sk">${room.choice!.skills.map((k) => `<button class="btn sm ${k.ok ? '' : 'ghost'}" data-a="r4Skill" data-v="${esc(k.skillId)}" ${k.ok ? '' : 'disabled'} title="${esc(k.why ?? '')}">${skillTip(k.skillId)}<span class="small mute"> MP ${k.mp}</span></button>`).join('')}
+        <button class="btn ghost sm" data-a="r4Skill" data-v="attack">일반 공격</button><button class="btn ghost sm" data-a="r4Skill" data-v="">자동</button></div></div>`
+    : `<div class="r4act wait"><span>${turnU ? (turnU.boss ? '아바돈의 차례…' : room.choice ? `${esc(turnU.ownerName ?? '')}의 ${esc(turnU.name)} 차례 · 고르는 중 <span id="r4cd">${left}</span>` : `${esc(turnU.name)} 행동 중…`) : '…'}</span></div>`;
+  return `<div class="wrap r4wrap">
+    <div class="row" style="justify-content:space-between"><b>4인 레이드 · ${R4[room.diff].name}</b><span class="small">라운드 <b>${st.round}</b> / ${R4_ROUNDS}</span></div>
+    <div class="r4order">${order}</div>
+    <div class="r4stage"><div class="r4party">${party.map(unit).join('')}</div>
+      <div class="r4boss ${boss.alive ? '' : 'dead'}"><div class="r4bfig">${unitIcon(boss, 150)}</div><b>${esc(boss.name)}</b>
+        <div class="bar e big"><i style="width:${pctW(boss.hp, boss.maxHp)}"></i></div><div class="small">${fmt(boss.hp)} / ${fmt(boss.maxHp)} · ${(boss.hp / boss.maxHp * 100).toFixed(1)}%</div></div></div>
+    ${act}
+    <div class="log r4log" id="r4log">${room.log.slice(-60).map((l) => `<div class="${l.c}">${esc(l.t)}</div>`).join('')}</div>
+  </div>`;
+}
+setInterval(() => { if (screen !== 'raid4' || !r4?.choice) return; const el = document.getElementById('r4cd'); if (el) el.textContent = String(Math.max(0, Math.ceil((r4.choice.deadline - Date.now()) / 1000))); r4Tick++; }, 500);
+
 // ───────── 친구 결투 ─────────
 let duelSize = 3;
 let duelPick: string[] = [];
@@ -2263,7 +2492,7 @@ function renderNow() {
   }
   const body = !S || screen === 'title' ? viewTitle()
     : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
-    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'admin' ? viewAdmin() : screen === 'notice' ? viewNotice() : screen === 'cards' ? viewCards() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : screen === 'duel' ? viewDuel() : screen === 'profile' ? viewProfile() : viewResult();
+    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'admin' ? viewAdmin() : screen === 'notice' ? viewNotice() : screen === 'cards' ? viewCards() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : screen === 'duel' ? viewDuel() : screen === 'profile' ? viewProfile() : screen === 'raid4' ? viewRaid4() : viewResult();
   app.innerHTML = (screen === 'title' ? '' : topbar()) + body;
   document.querySelector('.hubtabs .on')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
   renderModal();
@@ -2476,6 +2705,16 @@ app.addEventListener('click', (ev) => {
     case 'profCard': cardZoom = d.v!; render(); break;
     case 'profDuel': if (prof) { screen = 'duel'; duelLast = null; loadDuelLog(); render(); window.scrollTo(0, 0); } break;
     case 'rosterSort': rosterSort = d.v as RosterSort; try { localStorage.setItem('rpg-sort', rosterSort); } catch { /* 저장 불가 */ } render(); break;
+    case 'r4Create': { const code = Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join(''); r4Open(code, true, d.v as R4Diff); break; }
+    case 'r4Leave': r4Leave(); render(); break;
+    case 'r4Pick': if (r4 && !r4.ready) { r4.pick = d.uid!; r4Track(); render(); } break;
+    case 'r4Ready': if (r4) { r4.ready = !r4.ready; if (r4.ready) r4SendChar(); r4Track(); render(); } break;
+    case 'r4Diff': if (r4?.host) { r4.diff = d.v as R4Diff; r4.ch.send('diff', { diff: r4.diff }); r4Track(); render(); } break;
+    case 'r4Start': r4Start(); break;
+    case 'r4Skill': r4Choose(d.v ?? ''); break;
+    case 'r4Invite': if (r4) { Cloud.sendR4Invite(d.v!, r4.code, r4.diff); toast('초대를 보냈어요'); } break;
+    case 'r4InviteJoin': if (r4Invite) { const p = r4Invite; r4Invite = null; renderR4Invite(); r4Open(p.code, false, p.diff as R4Diff); } break;
+    case 'r4InviteNo': r4Invite = null; renderR4Invite(); break;
     case 'deckAuto': {
       if (d.v === 'close') { deckOpts = null; render(); break; }
       const o = G.autoDeckOptions(s!);
@@ -2565,6 +2804,7 @@ app.addEventListener('submit', (ev) => {
     Cloud.sendChat(v, `room:${myRoom}`).then((e) => { if (e) { toast(e, true); inp.value = v; roomDraft = v; } });
   }
   if (f.dataset.form === 'friend') { ev.preventDefault(); submitFriend(); }
+  if (f.dataset.form === 'r4join') { ev.preventDefault(); const v = ((document.getElementById('r4code') as HTMLInputElement).value || '').trim().toUpperCase(); if (v.length === 6) { r4CodeDraft = ''; r4Open(v, false); } else toast('방 코드 6자리를 넣어주세요', true); }
 });
 app.addEventListener('change', (ev) => {
   const sel = ev.target as HTMLSelectElement;

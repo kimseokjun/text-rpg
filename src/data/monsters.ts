@@ -209,6 +209,11 @@ export const MONSTERS: Record<string, MonsterDef> = {
     story: '마왕이 무너지며 성 전체가 흔들린다. 검은 하늘이 갈라지고 천 년 만에 햇빛이 지하까지 스며든다. 용병단의 이름은 전설이 되었다. (완)',
   },
   // ═════ 레이드: 군단장 벨리알 (주마다 형태가 바뀜) ═════
+  abyssKing: {
+    id: 'abyssKing', name: '심연의 왕 아바돈', stats: s(30, 1.2, 1.35, 1.6, 1.6, 0.9, 12), attackScale: 'mag',
+    skills: [{ skillId: 'm_judgmentOfVoid' }, { skillId: 'm_hellfire' }, { skillId: 'm_cleave' }], skillChance: 70, tags: ['boss', 'demon', 'raid'], passives: ['rampage'], exp: 0, gold: 0,
+    phase2: { atkMagPct: 35, text: '심연이 갈라지며 아바돈의 진짜 모습이 드러난다. "버러지들이 감히… 무릎 꿇어라."' },
+  },
   belialFire: {
     id: 'belialFire', name: '군단장 벨리알 · 화염', stats: s(30, 1.2, 1.3, 1.3, 1.6, 1.0, 12), attackScale: 'mag',
     skills: [{ skillId: 'm_hellfire' }, { skillId: 'm_doomRain' }, { skillId: 'm_cleave' }], skillChance: 65, tags: ['boss', 'demon', 'raid'], passives: ['rampage'], exp: 0, gold: 0,

@@ -150,7 +150,7 @@ const OUTFITS: Record<string, string[]> = {
 };
 const CAPES: Record<string, string> = { warrior: '#9a2a2a', mage: '#3a1f6a', archer: '#2a4a2a', priest: '#c89b3c' };
 
-export function charSprite(base: 'warrior' | 'mage' | 'archer' | 'priest', name: string, tier = 1, opts: { size?: number; glow?: string } = {}) {
+export function charSprite(base: 'warrior' | 'mage' | 'archer' | 'priest', name: string, tier = 1, opts: { size?: number; glow?: string; cape?: string } = {}) {
   const hs = hash(name), r = (n: number) => (hs >>> n) & 0xff;
   const look = LOOK[base];
   const hair = look.hair[r(0) % look.hair.length];
@@ -163,7 +163,7 @@ export function charSprite(base: 'warrior' | 'mage' | 'archer' | 'priest', name:
   const cv = canvas();
   // 뒤쪽: 날개/망토
   if (t >= 5) put(cv, WINGS, 0, 6);
-  if (t >= 4) put(cv, CAPE, 3, 11);
+  if (t >= 4 || opts.cape) put(cv, CAPE, 3, 11);
   // 몸
   put(cv, BODY[base], 4, 11);
   if (t >= 3) put(cv, base === 'warrior' || base === 'archer' ? PAULDRON : ['gg........gg', '.g........g.'], 4, 11);
@@ -192,6 +192,47 @@ export function charSprite(base: 'warrior' | 'mage' | 'archer' | 'priest', name:
   };
   if (t >= 5) { pal.m = '#fff3c0'; pal.w = '#c89b3c'; pal.p = '#ffd95e'; }
   else if (t >= 4) { pal.w = '#5a3020'; }
+  if (opts.cape) pal.r = opts.cape;
   const glow = opts.glow ?? (t >= 5 ? JOB_GLOW[base] : undefined);
   return sprite(grid, pal, { size: opts.size, glow, glow2: t >= 5 ? '#fff6c8' : t >= 4 ? JOB_GLOW[base] : undefined, title: name });
+}
+
+// ───────── 용병단장 아바타 (직접 꾸미기) ─────────
+import type { AvatarLook } from '../data/cosmetics';
+export type { AvatarLook };
+export const AVATAR_SKINS = [...SKIN, '#f8e0c8', '#7a4e30'];
+export const AVATAR_HAIRS = [...HAIR, '#e85a8a', '#4ac0d8', '#f0f0f8', '#c8302a'];
+export const AVATAR_PARTS = {
+  hair: Object.keys(HAIRSTYLE), head: ['none', ...Object.keys(HEADGEAR)], weapon: Object.keys(WEAPON), shield: ['none', ...Object.keys(SHIELD)],
+};
+export const PART_KO: Record<string, string> = {
+  short: '짧은 머리', long: '긴 머리', pony: '포니테일', spiky: '뾰족 머리', bun: '올림머리', bald: '민머리', mohawk: '모히칸',
+  none: '없음', helm: '투구', hornhelm: '뿔 투구', greathelm: '대형 투구', bandana: '두건', wizard: '마법사 모자', hood: '후드', circlet: '서클릿', feather: '깃털 모자', mitre: '주교관', crown: '왕관',
+  sword: '검', axe: '도끼', spear: '창', greatsword: '대검', orbstaff: '오브 지팡이', crook: '굽은 지팡이', book: '마법서', bow: '활', crossbow: '석궁', crossstaff: '십자 지팡이', mace: '철퇴',
+  round: '원형 방패', kite: '연 방패', tower: '탑 방패',
+  warrior: '전사 복장', mage: '로브', archer: '경갑', priest: '사제복',
+};
+export const DEFAULT_AVATAR: AvatarLook = { body: 'warrior', hair: 'short', hairColor: HAIR[1], skin: SKIN[0], head: 'none', outfit: '#5b6fa0', trim: '#c89b3c', weapon: 'sword', shield: 'none', beard: false, cape: null, wings: null };
+export function avatarSprite(a0: Partial<AvatarLook>, opts: { size?: number; glow?: string; title?: string } = {}) {
+  const a = { ...DEFAULT_AVATAR, ...a0 };
+  const cv = canvas();
+  if (a.wings) put(cv, WINGS, 0, 6);
+  if (a.cape) put(cv, CAPE, 3, 11);
+  put(cv, BODY[a.body] ?? BODY.warrior, 4, 11);
+  put(cv, FACE, 6, 4);
+  const hg = a.head !== 'none' ? HEADGEAR[a.head] : null;
+  if (!hg?.hideHair) for (const p of HAIRSTYLE[a.hair] ?? HAIRSTYLE.short) put(cv, p.g, p.x, p.y);
+  if (a.beard && a.head !== 'greathelm') put(cv, BEARD, 6, 7);
+  if (hg) put(cv, hg.g, hg.x, hg.y);
+  const wg = WEAPON[a.weapon] ?? WEAPON.sword;
+  put(cv, wg, 14, a.weapon === 'book' || a.weapon === 'crossbow' ? 5 : 16 - wg.length + 1);
+  if (a.shield !== 'none' && SHIELD[a.shield]) put(cv, SHIELD[a.shield], 1, 13);
+  const grid = cv.map((row) => row.join(''));
+  const wing = a.wings ?? '#e8e4dc';
+  const pal: Palette = {
+    s: a.skin, e: '#1a0f14', k: shade(a.skin, -0.25), h: a.hairColor, a: a.outfit, b: shade(a.outfit, -0.35), l: shade(a.outfit, 0.35), g: a.trim, c: '#3a2a22',
+    m: '#c8d0dc', p: '#9aa2ae', n: '#efe6cc', w: '#7a5230', j: shade(a.trim, 0.2), q: shade(a.outfit, -0.15), r: a.cape ?? '#9a2a2a', y: '#ffe680', f: '#e85a3a', W: '#f4f0e8',
+    v: wing, u: shade(wing, 0.45), x: '#fff6c8',
+  };
+  return sprite(grid, pal, { size: opts.size, glow: opts.glow, title: opts.title });
 }

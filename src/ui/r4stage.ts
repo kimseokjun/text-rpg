@@ -1,6 +1,7 @@
 /** 4인 레이드 전투 무대: 눈 내리는 밤 숲 배경, 좌측 파티 · 우측 보스, 스킬 이펙트 */
 import type { BattleEvent } from '../core/types';
 import type { R4State, R4Unit } from '../core/raid4battle';
+import { COS_BY_ID } from '../data/cosmetics';
 
 export interface StageHelpers {
   icon: (u: R4Unit, size: number) => string;
@@ -73,8 +74,9 @@ function unitHtml(u: R4Unit, p: { x: number; y: number }, boss: boolean, add = f
   return `<div class="r4unit ${boss ? 'boss' : ''} ${add ? 'add' : ''} ${u.owner === h.me ? 'me' : ''}" data-uid="${h.esc(u.id)}" data-owner="${h.esc(u.owner ?? '')}" style="left:${p.x}%;top:${p.y}%">
     <div class="r4arrow">▼</div>
     <div class="r4hp"><i></i></div>${boss ? '' : '<div class="r4mp"><i></i></div>'}
-    <div class="r4spr">${h.icon(u, boss ? 160 : add ? 52 : 64)}</div>
-    <div class="r4name">${h.esc(u.name)}${!boss && u.ownerName ? ` <span>${h.esc(u.ownerName)}</span>` : ''}</div>
+    ${u.cos?.aura ? `<div class="cosaura" style="--ac:${COS_BY_ID[u.cos.aura]?.value ?? '#fff'}"></div>` : ''}
+    <div class="r4spr ${u.cos?.ent ? `ent1-${COS_BY_ID[u.cos.ent]?.value}` : ''}">${h.icon(u, boss ? 160 : add ? 52 : 64)}</div>
+    <div class="r4name ${u.cos?.plate ? `cosplate pl-${COS_BY_ID[u.cos.plate]?.value}` : ''}">${h.esc(u.name)}${!boss && u.ownerName ? ` <span>${h.esc(u.ownerName)}</span>` : ''}</div>
   </div>`;
 }
 export const stageMounted = () => !!host && document.body.contains(host);

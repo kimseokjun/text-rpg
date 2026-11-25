@@ -7,12 +7,13 @@ import { enhance as doEnhance, enhanceCost, hire as doHire, refreshSlotCost, rol
 import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Character, type Equip, type Modifier, type EquipSlot, EQUIP_SLOTS, wornSlots, type JobId, type Rarity, type Row, type TargetPref } from '../core/types';
 import { EQUIP_BASES, EQUIP_BY_ID, OPTION_POOL, OPTION_SLOTS, POTIONS, MAX_POTIONS, RARITY_MULT, TIER_INFO, refineGoldCost, refineStoneCost, rollOption, rollLine, rollLines, convertCritLines, POT_NAME, POT_UP, POT_PITY, addRuneCost } from '../data/items';
 import { MAX_FLOOR, MONSTERS, floorName, regionOf } from '../data/monsters';
-import { R4, r4Reward, r4Today, type R4Diff } from '../data/raid4';
+import { R4, r4Reward, r4Today, type R4BossId, type R4Diff } from '../data/raid4';
 import { CHESTS, MISSIONS, dRewardText, type DReward } from '../data/missions';
 import { CRAFT_COST, MYTH_CRAFT_COST, MYTH_SET, RAID_CRAFT_COST, RAID_SET } from '../data/sets';
 import { DAILY_BY_ID, DAILY_LIMIT, dailyReward, kstDate, type DailyDef } from '../data/daily';
 import { rewardScale } from '../data/monsters';
 import { MILESTONES, MILESTONE_SCALES, RAID_DIFF, RAID_DIFF_NAME, RAID_LIMIT, attemptReward, raidMaxHp, raidWeek, type RaidDiff } from '../data/raid';
+import { COS_BY_ID, FREE_HEADS, MERC_KINDS, raidCosmetics, type AvatarLook, type AvatarState, type CosKind } from '../data/cosmetics';
 import { ACHS, ACH_BY_ID, ACH_MS, ACH_REWARD, achPoints, achReady, titleMods, unlockedTitles, TITLE_BY_ID } from '../data/achievements';
 import { EGG_PRICE, PET_BY_ID, PET_EVO_GOLD, PET_GRADE_NAME, PET_MAX_STARS, hatch, petMods, petSellPrice, type Pet } from '../data/pets';
 import { charPower, partyPower } from '../core/power';
@@ -55,6 +56,9 @@ export interface GameState {
   title?: string;
   /** 편성 프리셋 (5칸) */
   presets?: (Preset | null)[];
+  /** 용병단장 아바타 · 가진 꾸미기 */
+  avatar?: AvatarState;
+  cos?: string[];
   pets: Pet[];
   /** 일일 던전: 날짜(KST)별 사용 횟수, 클리어한 최고 단계 */
   daily: { date: string; used: Record<string, number>; cleared: Record<string, number> };
@@ -1240,8 +1244,12 @@ export function awakenCard(s: GameState, id: string): Result {
 
 // ───────── 4인 레이드 보상 (난이도마다 하루 1번) ─────────
 export const r4Claimed = (s: GameState, diff: R4Diff) => s.r4?.date === r4Today() && s.r4.done.includes(diff);
-export function claimR4(s: GameState, diff: R4Diff, frac: number, win: boolean): string[] {
-  if (r4Claimed(s, diff)) return [`오늘 ${R4[diff].name} 보상은 이미 받았어요 (오전 4시에 초기화)`];
+export function claimR4(s: GameState, diff: R4Diff, frac: number, win: boolean, boss?: R4BossId): string[] {
+  // 처치 꾸미기는 보상 횟수와 상관없이 처음 잡았을 때 지급
+  const cos = win && boss ? raidCosmetics(boss, diff).filter((c) => !cosOwned(s, c.id)) : [];
+  for (const c of cos) (s.cos ??= []).push(c.id);
+  const cosLine = cos.length ? [`🎨 꾸미기 획득: ${cos.map((c) => c.name).join(', ')}`] : [];
+  if (r4Claimed(s, diff)) return [`오늘 ${R4[diff].name} 보상은 이미 받았어요 (오전 4시에 초기화)`, ...cosLine];
   bump(s, 'raid4');
   if (win) bump(s, `r4win_${diff}`);
   if (s.r4?.date !== r4Today()) s.r4 = { date: r4Today(), done: [] };
@@ -1255,7 +1263,7 @@ export function claimR4(s: GameState, diff: R4Diff, frac: number, win: boolean):
     lines.push(`✨ 신화 장비 「${EQUIP_BY_ID[e.baseId].name}」 획득!`);
   }
   news(s, `4인 레이드 ${R4[diff].name} ${win ? '처치!' : '도전'} — ${lines[0]}`);
-  return lines;
+  return [...lines, ...cosLine];
 }
 
 // ───────── 친구 우편 ─────────
@@ -1480,4 +1488,53 @@ export function renamePreset(s: GameState, i: number, name: string): Result {
 export function deletePreset(s: GameState, i: number): Result {
   const list = presetList(s); list[i] = null; s.presets = list;
   return { ok: true, msg: '프리셋을 지웠어요' };
+}
+
+// ───────── 꾸미기 ─────────
+/** 업적 점수 보상 단계(achMs)로 열리는 꾸미기도 가진 걸로 */
+export function cosOwned(s: GameState, id: string) {
+  const it = COS_BY_ID[id];
+  if (!it) return false;
+  if (s.cos?.includes(id)) return true;
+  const m = it.src?.match(/^ach:(\d+)$/);
+  return !!m && (s.achMs ?? 0) >= Number(m[1]);
+}
+export function buyCos(s: GameState, id: string): Result {
+  const it = COS_BY_ID[id];
+  if (!it) return fail('없는 꾸미기예요');
+  if (cosOwned(s, id)) return fail('이미 가지고 있어요');
+  if (!it.price) return fail(`${it.desc ?? '특별한 방법'}으로 얻을 수 있어요`);
+  if (s.gold < it.price) return fail(`골드가 부족해요 (${it.price.toLocaleString('ko-KR')}G)`);
+  s.gold -= it.price;
+  (s.cos ??= []).push(id);
+  return { ok: true, msg: `「${it.name}」 구매! 바로 꾸며보세요` };
+}
+export const avatarOf = (s: GameState): AvatarState => (s.avatar ??= { look: {} });
+/** 아바타 외형 바꾸기: 기본 부품은 자유, 특별한 건 가진 것만 */
+export function setAvatarLook(s: GameState, key: keyof AvatarLook, value: string | boolean | null): Result {
+  const av = avatarOf(s);
+  if (key === 'head' && typeof value === 'string' && !FREE_HEADS.includes(value) && !cosOwned(s, `head:${value}`)) return fail('상점에서 먼저 사야 해요');
+  (av.look as Record<string, unknown>)[key] = value;
+  return { ok: true };
+}
+/** 아바타·용병 공통: 아이템 id를 칸에 장착 (null = 해제) */
+export function wearCos(s: GameState, target: 'avatar' | string, kind: CosKind, id: string | null): Result {
+  if (id && !cosOwned(s, id)) return fail('아직 없는 꾸미기예요');
+  const it = id ? COS_BY_ID[id] : null;
+  if (it && it.kind !== kind) return fail('맞지 않는 칸이에요');
+  if (target === 'avatar') {
+    const av = avatarOf(s);
+    if (kind === 'cape') { av.capeId = id; av.look.cape = it?.value ?? null; }
+    else if (kind === 'wings') { av.wingsId = id; av.look.wings = it?.value ?? null; }
+    else if (kind === 'hairColor') { if (it) av.look.hairColor = it.value; }
+    else if (kind === 'head') { if (it) av.look.head = it.value; }
+    else if (kind === 'aura' || kind === 'plate' || kind === 'ent') av[kind] = id;
+    return { ok: true };
+  }
+  if (!MERC_KINDS.includes(kind)) return fail('용병은 망토·오라·이름표·등장 효과만 달 수 있어요');
+  const c = byUid(s, target);
+  if (!c) return fail('없는 단원이에요');
+  c.cos ??= {};
+  if (id) c.cos[kind as 'cape'] = id; else delete c.cos[kind as 'cape'];
+  return { ok: true, msg: it ? `${c.name}에게 「${it.name}」` : '해제했어요' };
 }

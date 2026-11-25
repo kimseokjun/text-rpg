@@ -412,8 +412,9 @@ export const BLESS_CHANCE = (floor: number) => ({ elite: 8, bossCount: 1 + Math.
 export function rollSetEquip(rng: Rng, setId?: string, baseId?: string): Equip {
   const base = baseId ? EQUIP_BASES.find((b) => b.id === baseId)! : rng.pick(SET_BASES.filter((b) => (setId ? b.set === setId : b.set !== RAID_SET && b.set !== MYTH_SET)));
   const r = base.set === MYTH_SET ? 5 as Rarity : rng.weighted([4, 5] as Rarity[], (x) => SET_RARITY[x as 4 | 5]);
-  const pot = r === 5 ? 2 : 1;
-  return { uid: newUid('e'), baseId: base.id, rarity: r, enhance: 0, failStack: 0, options: rollLines(rng, base.slot, base.tier, pot, r - 2), pot };
+  // 신화 세트: 항상 전설, 잠재는 유니크부터 3줄
+  const pot = base.set === MYTH_SET ? 3 : r === 5 ? 2 : 1;
+  return { uid: newUid('e'), baseId: base.id, rarity: r, enhance: 0, failStack: 0, options: rollLines(rng, base.slot, base.tier, pot, base.set === MYTH_SET ? 3 : r - 2), pot };
 }
 export function rollEquip(rng: Rng, floor: number, minRarity: Rarity = 1): Equip {
   const tier = tierOfFloor(floor);

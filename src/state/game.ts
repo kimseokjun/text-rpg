@@ -13,6 +13,7 @@ import { CRAFT_COST, MYTH_CRAFT_COST, MYTH_SET, RAID_CRAFT_COST, RAID_SET } from
 import { DAILY_BY_ID, DAILY_LIMIT, dailyReward, kstDate, type DailyDef } from '../data/daily';
 import { rewardScale } from '../data/monsters';
 import { MILESTONES, MILESTONE_SCALES, RAID_DIFF, RAID_DIFF_NAME, RAID_LIMIT, attemptReward, raidMaxHp, raidWeek, type RaidDiff } from '../data/raid';
+import { ACHS, ACH_BY_ID, ACH_MS, ACH_REWARD, achPoints, achReady, titleMods, unlockedTitles, TITLE_BY_ID } from '../data/achievements';
 import { EGG_PRICE, PET_BY_ID, PET_EVO_GOLD, PET_GRADE_NAME, PET_MAX_STARS, hatch, petMods, petSellPrice, type Pet } from '../data/pets';
 import { charPower, partyPower } from '../core/power';
 import { JOBS } from '../data/jobs';
@@ -48,6 +49,10 @@ export interface GameState {
   r4?: { date: string; done: string[] };
   /** 고대 룬석: 에디셔널 잠재 재료 */
   runes?: number;
+  /** 업적: 받은 단계 수, 받은 점수 마일스톤 수, 장착 칭호 */
+  ach?: Record<string, number>;
+  achMs?: number;
+  title?: string;
   pets: Pet[];
   /** 일일 던전: 날짜(KST)별 사용 횟수, 클리어한 최고 단계 */
   daily: { date: string; used: Record<string, number>; cleared: Record<string, number> };
@@ -355,7 +360,7 @@ export function craftSet(s: GameState, baseId: string): Result {
 
 // ───────── 펫 우리 ─────────
 export const activePet = (s: GameState) => s.pets.find((p) => p.uid === s.activePet);
-export const petPartyMods = (s: GameState) => [...petMods(activePet(s)), ...cardMods(s.cards ?? {}, s.deck ?? []).mods];
+export const petPartyMods = (s: GameState) => [...petMods(activePet(s)), ...cardMods(s.cards ?? {}, s.deck ?? []).mods, ...titleMods(s.title)];
 /** 펫 효과까지 넣은 파티 전투력 */
 export const statePower = (s: GameState) => partyPower(partyChars(s), petPartyMods(s));
 function addPet(s: GameState, p: Omit<Pet, 'uid'>): Pet {
@@ -977,6 +982,9 @@ export function finishExpedition(s: GameState, ex: Expedition): ExpeditionSummar
   s.mythEss = (s.mythEss ?? 0) + (ex.loot.ess ?? 0);
   if (!ex.settings.multi) s.cardPacks = (s.cardPacks ?? 0) + (ex.loot.cardPacks ?? 0);
   if (ex.goblins) bump(s, 'goblin', ex.goblins);
+  if (ex.kills) bump(s, 'kill', ex.kills);
+  if (ex.bossesKilled.length) bump(s, 'boss', ex.bossesKilled.length);
+  if (ex.loot.gold > 0) bump(s, 'goldEarn', ex.loot.gold);
   s.shards += ex.loot.shards;
   s.cores += ex.loot.cores;
   if (!ex.settings.daily && !ex.settings.raid && !ex.settings.tower && !ex.settings.duel) bump(s, 'run');
@@ -1225,6 +1233,7 @@ export const r4Claimed = (s: GameState, diff: R4Diff) => s.r4?.date === r4Today(
 export function claimR4(s: GameState, diff: R4Diff, frac: number, win: boolean): string[] {
   if (r4Claimed(s, diff)) return [`오늘 ${R4[diff].name} 보상은 이미 받았어요 (자정에 초기화)`];
   bump(s, 'raid4');
+  if (win) bump(s, `r4win_${diff}`);
   if (s.r4?.date !== r4Today()) s.r4 = { date: r4Today(), done: [] };
   s.r4!.done.push(diff);
   const r = r4Reward(diff, frac, win);
@@ -1252,6 +1261,7 @@ export function receiveMail(s: GameState, item: any): Result {
   if (item?.kind === 'gift') {
     const g = Math.max(0, Math.min(1000000, Math.floor(Number(item.gold) || 0)));
     s.gold += g;
+    if (item.lend) bump(s, 'lent');
     return { ok: true, msg: `${item.text ?? '선물'}: ${g.toLocaleString('ko-KR')}G` };
   }
   if (!item || typeof item !== 'object' || !EQUIP_BY_ID[item.baseId]) return fail('알 수 없는 장비예요');
@@ -1380,4 +1390,51 @@ export function upgradeEquip(s: GameState, equipUid: string): Result {
   s.gold -= c.gold; s.stones -= c.stones;
   f.e.baseId = n.id;
   return { ok: true, msg: `${was} → ${n.name} (${n.tier}티어) 승급! 강화·잠재는 그대로` };
+}
+
+// ───────── 업적 · 칭호 ─────────
+function giveAch(s: GameState, r: { gold?: number; stones?: number; runes?: number; packs?: number; ess?: number }) {
+  const out: string[] = [];
+  if (r.gold) { s.gold += r.gold; out.push(`${r.gold.toLocaleString('ko-KR')}G`); }
+  if (r.stones) { s.stones += r.stones; out.push(`강화석 ${r.stones}`); }
+  if (r.runes) { s.runes = (s.runes ?? 0) + r.runes; out.push(`룬석 ${r.runes}`); }
+  if (r.packs) { s.cardPacks = (s.cardPacks ?? 0) + r.packs; out.push(`카드 팩 ${r.packs}`); }
+  if (r.ess) { s.mythEss = (s.mythEss ?? 0) + r.ess; out.push(`신화의 정수 ${r.ess}`); }
+  return out.join(' · ');
+}
+/** 받을 수 있는 단계를 전부 받음 (id 없으면 모든 업적) */
+export function claimAch(s: GameState, id?: string): Result {
+  s.ach ??= {};
+  const sum = { gold: 0, stones: 0, runes: 0, packs: 0 };
+  const titles: string[] = [];
+  let n = 0;
+  for (const d of id ? [ACH_BY_ID[id]].filter(Boolean) : ACHS) {
+    const k = achReady(s, d);
+    for (let j = 0; j < k; j++) {
+      const i = s.ach[d.id] ?? 0;
+      const r = ACH_REWARD[i];
+      sum.gold += r.gold; sum.stones += r.stones; sum.runes += r.runes; sum.packs += r.packs;
+      if (d.titles?.[i]) titles.push(TITLE_BY_ID[d.titles[i]].name);
+      s.ach[d.id] = i + 1; n++;
+    }
+  }
+  if (!n) return fail('받을 보상이 없어요');
+  return { ok: true, msg: `업적 ${n}단계 달성 보상: ${giveAch(s, sum)}${titles.length ? ` · 칭호 「${titles.join('」「')}」 획득!` : ''}` };
+}
+export function claimAchMs(s: GameState): Result {
+  const i = s.achMs ?? 0, m = ACH_MS[i];
+  if (!m) return fail('모든 점수 보상을 받았어요');
+  if (achPoints(s) < m.pts) return fail(`업적 점수 ${m.pts}점이 필요해요`);
+  s.achMs = i + 1;
+  return { ok: true, msg: `업적 점수 ${m.pts}점 보상: ${giveAch(s, m)}${m.title ? ` · 칭호 「${TITLE_BY_ID[m.title].name}」 획득!` : ''}` };
+}
+export function setTitle(s: GameState, id: string | null): Result {
+  if (id && !unlockedTitles(s).includes(id)) return fail('아직 얻지 못한 칭호예요');
+  s.title = id ?? undefined;
+  return { ok: true, msg: id ? `칭호 「${TITLE_BY_ID[id].name}」 장착 (${TITLE_BY_ID[id].desc})` : '칭호를 뗐어요' };
+}
+/** 받을 수 있는 업적 단계 수 + 마일스톤 */
+export function achReadyCount(s: GameState) {
+  const m = ACH_MS[s.achMs ?? 0];
+  return ACHS.reduce((a, d) => a + achReady(s, d), 0) + (m && achPoints(s) >= m.pts ? 1 : 0);
 }

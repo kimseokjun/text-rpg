@@ -96,16 +96,16 @@ export async function fetchRanks(kind: RankKind, raidWeek: number): Promise<{ to
 }
 
 // ───────── 채팅 ─────────
-export interface ChatMsg { id: number; user_id: string; username: string; body: string; created_at: string }
+export interface ChatMsg { id: number; user_id: string; username: string; body: string; created_at: string; title?: string | null }
 let chatCh: ReturnType<SupabaseClient['channel']> | null = null;
 export async function loadChat(): Promise<ChatMsg[]> {
   if (!sb || !session) return [];
-  const { data } = await sb.from('chat_messages').select('id, user_id, username, body, created_at').eq('channel', 'global').order('id', { ascending: false }).limit(60);
+  const { data } = await sb.from('chat_messages').select('id, user_id, username, body, created_at, title').eq('channel', 'global').order('id', { ascending: false }).limit(60);
   return ((data ?? []) as ChatMsg[]).reverse();
 }
 export async function loadRoomChat(room: string): Promise<ChatMsg[]> {
   if (!sb || !session) return [];
-  const { data } = await sb.from('chat_messages').select('id, user_id, username, body, created_at').eq('channel', `room:${room}`).order('id', { ascending: true }).limit(100);
+  const { data } = await sb.from('chat_messages').select('id, user_id, username, body, created_at, title').eq('channel', `room:${room}`).order('id', { ascending: true }).limit(100);
   return (data ?? []) as ChatMsg[];
 }
 export interface ChatMsg2 extends ChatMsg { channel?: string }
@@ -369,7 +369,7 @@ export async function setRoomSpeed(id: string, speed: number) { if (sb) await sb
 export interface DuelRow { id: number; attacker: string; defender: string; attacker_name: string; defender_name: string; size: number; win: boolean; created_at: string }
 let duelHandler: ((d: DuelRow) => void) | null = null;
 export function setDuelHandler(h: typeof duelHandler) { duelHandler = h; }
-export interface DuelTarget { username: string; roster: any[]; party: string[]; pets: any[]; activePet: string | null; cards: any; deck: string[]; maxFloor?: number; tower?: { best: number }; guildLevel?: number; codex?: number }
+export interface DuelTarget { username: string; roster: any[]; party: string[]; pets: any[]; activePet: string | null; cards: any; deck: string[]; maxFloor?: number; tower?: { best: number }; guildLevel?: number; codex?: number; title?: string | null; ach?: Record<string, number> }
 export async function duelTarget(id: string): Promise<DuelTarget | string> {
   if (!sb || !session) return '로그인이 필요해요';
   const { data, error } = await sb.rpc('duel_target', { p_target: id });

@@ -26,6 +26,7 @@ import { DEFAULT_SETTINGS, Expedition } from '../core/dungeon';
 import { Raid4Battle, type R4Member, type R4State } from '../core/raid4battle';
 import { mountStage, playEvents, setBanner, setPanel, stageMounted, updateStage } from './r4stage';
 import { ATTEND, CHESTS, dRewardText } from '../data/missions';
+import { ACHS, ACH_CAT, ACH_MAX_PTS, ACH_MS, ACH_REWARD, TITLES, TITLE_BY_ID, achPoints, achReady, unlockedTitles, type AchCat } from '../data/achievements';
 import { R4, R4_DIFFS, R4_MAX, R4_ROUNDS, R4_TURN_SEC, r4Reward, type R4Diff } from '../data/raid4';
 import { Rng } from '../core/rng';
 import { CARDS, CARD_BY_ID, CARD_SETS, DECK_SIZE, MAX_AWAKEN, PACK_ODDS, SET_BY_ID as CARD_SET_BY_ID, cardEffectText, cardMods } from '../data/cards';
@@ -39,7 +40,7 @@ import { townScene } from './art';
 import { charSprite } from './pixel';
 import { equipKind, equipSprite, itemSprite, monsterSprite, petSprite } from './sprites';
 
-type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex' | 'admin' | 'notice' | 'cards' | 'duel' | 'profile' | 'raid4';
+type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex' | 'admin' | 'notice' | 'cards' | 'duel' | 'profile' | 'raid4' | 'ach';
 
 let S: G.GameState | null = null;
 let screen: Screen = 'title';
@@ -164,7 +165,7 @@ function renderR4Invite() {
 }
 Cloud.setR4InviteHandler((p) => { r4Invite = p; renderR4Invite(); });
 function stopSocial() { clearInterval(touchTimer); Cloud.leaveRealtime(); socialOn = false; chatOpen = false; chatMsgs = []; friends = []; renderChat(); }
-const msgHtml = (m: Cloud.ChatMsg) => `<div class="cmsg ${m.user_id === Cloud.session?.user.id ? 'mine' : ''}"><span class="cn">${esc(m.username)}</span><span class="cb">${esc(m.body)}</span><span class="ct">${hhmm(m.created_at)}</span></div>`;
+const msgHtml = (m: Cloud.ChatMsg) => `<div class="cmsg ${m.user_id === Cloud.session?.user.id ? 'mine' : ''}"><span class="cn">${titleTag(m.title)}${esc(m.username)}</span><span class="cb">${esc(m.body)}</span><span class="ct">${hhmm(m.created_at)}</span></div>`;
 const hhmm = (t: string) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 function renderChat(scrollBottom = false) {
   const box = document.querySelector('.chatbox .clist');
@@ -223,7 +224,7 @@ function commit(r?: G.Result) {
   if (CLOUD && r?.ok && LOG_ACTIONS.has(curAction)) Cloud.logEvent(curAction, r.msg ?? '');
   if (r && !r.ok) toast(r.msg, true);
   else if (r?.msg) toast(r.msg);
-  if (S) saveGame(S);
+  if (S) { saveGame(S); achCheck(); }
   render();
 }
 
@@ -377,6 +378,7 @@ function viewTitle() {
 }
 
 const SIGN_ICON: Record<string, () => string> = {
+  ach: () => '<span class="trophy" aria-hidden="true">🏆</span>',
   guild: () => charSprite('warrior', '길드', 2, { size: 34 }),
   rank: () => equipSprite('accessory', 7, { size: 34 }),
   cards: () => cardHtml('c01', { size: 26, awaken: 0 }),
@@ -442,6 +444,7 @@ function viewTown() {
     ['smith', '대장간', `강화·제련·제작 · 강화석 ${s.stones} · 제련석 ${s.refineStones} · 룬석 ${s.runes ?? 0}`],
     ['cards', '카드 보관함', `신비 카드 ${Object.keys(s.cards ?? {}).length}/${CARDS.length}${s.cardPacks ? ` · 팩 ${s.cardPacks}개` : ''}`],
     ['pets', '펫 우리', G.activePet(s) ? `${PET_BY_ID[G.activePet(s)!.kind].name} 동행 · ${s.pets.length}마리` : `펫 알 ${fmt(EGG_PRICE)}G`],
+    ['ach', '업적', (() => { const n = G.achReadyCount(s); return `점수 ${achPoints(s)}${n ? ` · 🎁 받을 보상 ${n}` : ''}${s.title ? ` · 「${esc(TITLE_BY_ID[s.title]?.name ?? '')}」` : ''}`; })()],
     ['shop', '잡화점', `물약 ${Object.values(s.potions).reduce((a, b) => a + b, 0)}개 보유`],
     ['storage', '창고', `${mailbox.length ? `📮 우편 ${mailbox.length}개 · ` : ''}장비 ${allEquips().length}개 · 재료 보기`],
     ...(CLOUD ? [['rank', '명예의 전당', '무한 탑 · 전투력 · 레이드 순위'] as [string, string, string]] : []),
@@ -514,7 +517,7 @@ async function guestTake(uid: string) {
   const r = G.setGuest(s, g.id, g.name, c);
   guestPick = null;
   if (!r.ok) { commit(r); return; }
-  Cloud.sendMail(g.id, { kind: 'gift', gold: G.GUEST_GIFT, text: `${Cloud.username}님이 ${c.name}을(를) 빌려간 사례금` });
+  Cloud.sendMail(g.id, { kind: 'gift', lend: true, gold: G.GUEST_GIFT, text: `${Cloud.username}님이 ${c.name}을(를) 빌려간 사례금` });
   Cloud.logEvent('guest', `${g.name}의 ${c.name} 빌림`);
   commit(r);
 }
@@ -797,6 +800,57 @@ function viewForge() {
 
 let petSel: string | null = null;
 let petOdds = false;
+// ───────── 업적 · 칭호 ─────────
+let achCat: AchCat | 'all' = 'all';
+const achFmt = (n: number) => (n >= 1e6 ? `${+(n / 1e6).toFixed(1)}백만` : n >= 1e4 ? `${+(n / 1e4).toFixed(1)}만` : fmt(n));
+const titleTag = (id?: string | null) => (id && TITLE_BY_ID[id] ? `<span class="ttl t${TITLE_BY_ID[id].tone}">${esc(TITLE_BY_ID[id].name)}</span>` : '');
+function viewAch() {
+  const s = S!;
+  const pts = achPoints(s), msI = s.achMs ?? 0, ms = ACH_MS[msI];
+  const owned = unlockedTitles(s);
+  const titleSrc: Record<string, string> = {};
+  for (const d of ACHS) for (const [i, t] of Object.entries(d.titles ?? {})) titleSrc[t] = `${d.name} ${achFmt(d.goals[+i])}${d.unit}`;
+  ACH_MS.forEach((m) => { if (m.title) titleSrc[m.title] = `업적 점수 ${m.pts}점`; });
+  const titles = TITLES.map((tt) => {
+    const has = owned.includes(tt.id), on = s.title === tt.id;
+    return `<button class="tchip t${tt.tone} ${on ? 'on' : ''} ${has ? '' : 'lock'}" data-a="setTitle" data-v="${has ? tt.id : ''}" ${has ? '' : 'disabled'} aria-pressed="${on}" title="${esc(has ? tt.desc : `잠김 · ${titleSrc[tt.id] ?? ''}`)}"><b>${esc(tt.name)}</b><span>${has ? esc(tt.desc) : `🔒 ${esc(titleSrc[tt.id] ?? '')}`}</span></button>`;
+  }).join('');
+  const list = ACHS.filter((d) => achCat === 'all' || d.cat === achCat).map((d) => {
+    const v = d.get(s), got = s.ach?.[d.id] ?? 0, ready = achReady(s, d, v), done = got >= d.goals.length;
+    const goal = d.goals[Math.min(got, d.goals.length - 1)];
+    const pct = done ? 100 : Math.min(100, (v / goal) * 100);
+    const r = ACH_REWARD[got];
+    const tNext = d.titles?.[got];
+    const dots = d.goals.map((g, i) => `<i class="${i < got ? 'got' : v >= g ? 'rdy' : ''}" title="${achFmt(g)}${d.unit}${d.titles?.[i] ? ` · 칭호 ${TITLE_BY_ID[d.titles[i]].name}` : ''}"></i>`).join('');
+    return `<div class="achrow ${ready ? 'ready' : ''} ${done ? 'done' : ''}">
+      <div class="achn"><b>${esc(d.name)}</b> <span class="achdots">${dots}</span>${tNext ? ` <span class="small">${titleTag(tNext)}</span>` : ''}
+        <div class="small mute">${done ? '모든 단계 달성!' : `${achFmt(Math.min(v, goal))} / ${achFmt(goal)}${d.unit} · 보상 ${fmt(r.gold)}G · 강화석 ${r.stones}${r.runes ? ` · 룬석 ${r.runes}` : ''}${r.packs ? ` · 카드 팩 ${r.packs}` : ''} · ${r.pts}점`}</div>
+        <div class="bar xp"><i style="width:${pct}%"></i></div></div>
+      ${ready ? `<button class="btn sm" data-a="achClaim" data-v="${d.id}">받기${ready > 1 ? ` ×${ready}` : ''}</button>` : ''}</div>`;
+  }).join('');
+  const total = G.achReadyCount(s) - (ms && pts >= ms.pts ? 1 : 0);
+  return `<div class="wrap">${backBtn()}
+    <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><h2>업적 <span class="small mute">점수 <b class="cp">${pts}</b> / ${ACH_MAX_PTS}</span></h2>
+      <button class="btn sm" data-a="achClaim" ${total ? '' : 'disabled'}>모두 받기${total ? ` (${total})` : ''}</button></div>
+    <div class="panel">${ms ? `<div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap"><span class="small"><b>점수 보상 ${msI + 1}/${ACH_MS.length}</b> · ${ms.pts}점: ${fmt(ms.gold)}G · 카드 팩 ${ms.packs}${ms.ess ? ` · 신화의 정수 ${ms.ess}` : ''}${ms.title ? ` · 칭호 ${titleTag(ms.title)}` : ''}</span>
+      <button class="btn sm ${pts >= ms.pts ? '' : 'ghost'}" data-a="achMs" ${pts >= ms.pts ? '' : 'disabled'}>${pts >= ms.pts ? '받기' : `${ms.pts - pts}점 남음`}</button></div>
+      <div class="bar xp" style="margin-top:6px"><i style="width:${Math.min(100, (pts / ms.pts) * 100)}%"></i></div>` : '<span class="small">점수 보상을 모두 받았어요!</span>'}</div>
+    <h3>칭호 <span class="small mute">하나만 달 수 있어요 · 출전 파티 전원에게 효과 · 채팅·프로필에 표시</span></h3>
+    <div class="tgrid">${titles}${s.title ? `<button class="tchip" data-a="setTitle" data-v=""><b>칭호 떼기</b><span>효과 없음</span></button>` : ''}</div>
+    <div class="seg" role="group" aria-label="분류" style="margin:14px 0 8px;flex-wrap:wrap">${([['all', '전체'], ...ACH_CAT] as [string, string][]).map(([k, n]) => { const c = k === 'all' ? total : ACHS.filter((d) => d.cat === k).reduce((a, d) => a + achReady(s, d), 0); return `<button class="${achCat === k ? 'on' : ''}" data-a="achCat" data-v="${k}" aria-pressed="${achCat === k}">${n}${c ? ` <span class="nb">${c}</span>` : ''}</button>`; }).join('')}</div>
+    <div class="achlist">${list}</div>
+    <p class="small mute">처치 수·결투 승리·골드 벌이·빌려주기는 이번 업데이트부터 세요. 층·전투력·보유 용병·장비 같은 건 지금 상태로 바로 달성돼요.</p>
+  </div>`;
+}
+/** 새로 받을 수 있게 된 업적 알림 */
+let achSeen: number | null = null;
+function achCheck() {
+  if (!S) return;
+  const n = G.achReadyCount(S);
+  if (achSeen !== null && n > achSeen) setTimeout(() => toast(`🏆 업적 달성! 업적 화면에서 보상을 받으세요 (${n})`), 600);
+  achSeen = n;
+}
+
 function viewPets() {
   const s = S!;
   const act = G.activePet(s);
@@ -1385,7 +1439,7 @@ async function startDuel(id: string, name: string) {
   const rest = topBy(roster.filter((c) => !(t.party ?? []).includes(c.uid)));
   const foes = [...party, ...rest].slice(0, duelSize).map((c) => structuredClone(c));
   if (!foes.length) { toast('친구에게 단원이 없어요', true); render(); return; }
-  const foeState = { pets: t.pets ?? [], activePet: t.activePet ?? null, cards: t.cards ?? {}, deck: t.deck ?? [] } as unknown as G.GameState;
+  const foeState = { pets: t.pets ?? [], activePet: t.activePet ?? null, cards: t.cards ?? {}, deck: t.deck ?? [], title: t.title ?? undefined } as unknown as G.GameState;
   const mine = duelPick.map((u) => s.roster.find((c) => c.uid === u)!).filter(Boolean);
   duelFoe = { id, name: t.username || name };
   EX = new Expedition(mine, { ...DEFAULT_SETTINGS, insured: true, auto: true, potions: [], petMods: G.petPartyMods(s), duel: { foes, foeMods: G.petPartyMods(foeState), foeName: duelFoe.name } }, new Rng(Date.now() % 1e9));
@@ -1402,7 +1456,7 @@ function finishDuel() {
   const d = ex.settings.duel!;
   duelLast = { win: ex.duelWin, foe: d.foeName, size: ex.party.length, hp: ex.duelHp };
   if (duelFoe) Cloud.recordDuel(duelFoe.id, ex.party.length, ex.duelWin).then(loadDuelLog);
-  G.bump(S!, 'duel'); commit();
+  G.bump(S!, 'duel'); if (ex.duelWin) G.bump(S!, 'duelWin'); commit();
   Cloud.logEvent('duel', `${d.foeName}와 ${ex.party.length}:${ex.party.length} 결투 ${ex.duelWin ? '승리' : '패배'}`);
   EX = null;
   screen = 'duel';
@@ -1428,7 +1482,7 @@ function viewProfile() {
   const roster = (t.roster ?? []) as Character[];
   const partyIds = (t.party ?? []) as string[];
   const party = partyIds.map((u) => roster.find((c) => c.uid === u)).filter(Boolean) as Character[];
-  const pstate = { pets: t.pets ?? [], activePet: t.activePet ?? null, cards: t.cards ?? {}, deck: t.deck ?? [] } as unknown as G.GameState;
+  const pstate = { pets: t.pets ?? [], activePet: t.activePet ?? null, cards: t.cards ?? {}, deck: t.deck ?? [], title: t.title ?? undefined } as unknown as G.GameState;
   const mods = G.petPartyMods(pstate);
   const power = partyPower(party, mods);
   const pet = G.activePet(pstate);
@@ -1443,7 +1497,7 @@ function viewProfile() {
       ${on ? `<div class="profeq">${eq}<p class="small mute" style="margin:4px 0 0">특성: ${c.traitIds.map(esc).join(', ') || '없음'} · 스킬: ${c.skillSlots.map((x) => esc(SKILLS[x.skillId]?.name ?? '')).filter(Boolean).join(', ')}</p></div>` : ''}</div>`;
   }).join('');
   return `<div class="wrap"><div class="back"><button class="btn ghost sm" data-a="go" data-to="${profBack}">← 돌아가기</button></div>
-    <h2>${esc(t.username)}의 용병단</h2>
+    <h2>${titleTag(t.title)}${esc(t.username)}의 용병단</h2>
     <div class="sum" style="margin:10px 0">
       <div><span class="small mute">파티 전투력</span><b class="cp">${fmt(power)}</b></div>
       <div><span class="small mute">최고 층</span><b class="sm">${t.maxFloor ? esc(floorName(t.maxFloor)) : '-'}</b></div>
@@ -1451,6 +1505,7 @@ function viewProfile() {
       <div><span class="small mute">길드</span><b>Lv.${t.guildLevel ?? 1}</b></div>
       <div><span class="small mute">단원</span><b>${roster.length}명</b></div>
       <div><span class="small mute">용병 도감</span><b>${t.codex ?? 0}</b></div>
+      <div><span class="small mute">업적 점수</span><b>${achPoints({ ach: t.ach ?? {} } as never)}</b></div>
     </div>
     <div class="row" style="gap:6px;margin-bottom:10px">${CLOUD && prof.id !== Cloud.session?.user.id ? `<button class="btn sm" data-a="profDuel">⚔️ 결투 걸기</button>` : ''}</div>
     <h3>출전 파티 <span class="small mute">눌러서 장비 보기</span></h3>
@@ -2681,7 +2736,7 @@ function renderNow() {
     return;
   }
   const body = !S || screen === 'title' ? viewTitle()
-    : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
+    : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'ach' ? viewAch() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
     : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'admin' ? viewAdmin() : screen === 'notice' ? viewNotice() : screen === 'cards' ? viewCards() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : screen === 'duel' ? viewDuel() : screen === 'profile' ? viewProfile() : screen === 'raid4' ? viewRaid4() : viewResult();
   app.innerHTML = (screen === 'title' ? '' : topbar()) + body;
   if (screen === 'raid4' && r4?.phase === 'battle' && r4.st) r4Mount();
@@ -2805,6 +2860,10 @@ app.addEventListener('click', (ev) => {
     case 'forgeSet': forgeSet = d.v!; render(); break;
     case 'forgeJob': forgeJob = d.v as BaseJob; render(); break;
     case 'buyEgg': commit(G.buyEggs(s!, Number(d.n ?? 1))); break;
+    case 'achClaim': commit(G.claimAch(s!, d.v)); break;
+    case 'achMs': commit(G.claimAchMs(s!)); break;
+    case 'achCat': achCat = d.v as typeof achCat; render(); break;
+    case 'setTitle': commit(G.setTitle(s!, d.v || null)); break;
     case 'petEvolve': commit(G.evolvePet(s!, d.id!)); break;
     case 'upgrade': commit(G.upgradeEquip(s!, d.e!)); break;
     case 'petUse': petSel = null; commit(G.setActivePet(s!, d.id!)); break;

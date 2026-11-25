@@ -109,6 +109,7 @@ export class Expedition {
   /** 레이드 결과 */
   /** 이번 탐험에서 잡은 보물 고블린 */
   goblins = 0;
+  kills = 0;
   raidDealt = 0;
   raidKilled = false;
   get daily() { return this.settings.daily ? DAILY_BY_ID[this.settings.daily.id] : undefined; }
@@ -283,6 +284,7 @@ export class Expedition {
   }
 
   private collect(dead: Combatant[], f: number) {
+    this.kills += dead.filter((m) => !m.flags.fled).length;
     for (const m of dead) {
       if (m.flags.fled) continue;
       const d = m.mdef!;

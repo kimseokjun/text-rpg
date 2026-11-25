@@ -1855,6 +1855,7 @@ function renderNow() {
   checkPower();
   renderChat();
   renderInvite();
+  renderUpdate();
 }
 
 /** 전투력 변동 알림: 마을 화면에서 파티 전투력이 바뀌면 +/− 표시 */
@@ -2024,6 +2025,7 @@ app.addEventListener('click', (ev) => {
     case 'adMute': { const u = adUsers.find((x) => x.id === d.v); if (u) Cloud.adminSet(u.id, !u.muted, u.is_admin).then((e) => { if (e) toast(e, true); else { u.muted = !u.muted; toast(u.muted ? '채팅 금지' : '채팅 금지 해제'); render(); } }); break; }
     case 'adAdmin': { const u = adUsers.find((x) => x.id === d.v); if (u) Cloud.adminSet(u.id, u.muted, !u.is_admin).then((e) => { if (e) toast(e, true); else { u.is_admin = !u.is_admin; toast(u.is_admin ? '관리자 지정' : '관리자 해제'); render(); } }); break; }
     case 'adDelChat': Cloud.adminDeleteChat(Number(d.v)).then(() => { adChats = adChats.filter((m) => m.id !== Number(d.v)); chatMsgs = chatMsgs.filter((m) => m.id !== Number(d.v)); render(); toast('삭제했어요'); }); break;
+    case 'reload': if (S) saveGameNow(S).finally(() => location.reload()); else location.reload(); break;
     case 'claimQuest': commit(G.claimQuest(s!)); break;
     case 'whFilter': whFilter = d.v as WhFilter; render(); break;
     case 'whOpen': whOpen = whOpen === d.e ? null : d.e!; render(); break;
@@ -2131,6 +2133,21 @@ document.addEventListener('keydown', (ev) => {
 });
 
 // ───────── 시작 ─────────
+/** 새 버전 알림 (서버 버전에서만): 5분마다 version.json 확인 */
+let newVersion = false;
+function checkVersion() {
+  if (!CLOUD) return;
+  fetch(`./version.json?t=${Date.now()}`, { cache: 'no-store' }).then((r) => r.json()).then((v) => {
+    if (v?.build && v.build !== __BUILD__ && !newVersion) { newVersion = true; renderUpdate(); }
+  }).catch(() => {});
+}
+function renderUpdate() {
+  document.querySelector('.updbar')?.remove();
+  if (newVersion) app.insertAdjacentHTML('beforeend', '<button class="updbar" data-a="reload">✨ 새 버전이 나왔어요 · 눌러서 새로고침</button>');
+}
+setInterval(checkVersion, 300000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkVersion(); });
+
 async function boot() {
   render();
   await initRemote();

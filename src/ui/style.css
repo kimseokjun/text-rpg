@@ -433,3 +433,4 @@ svg.px{image-rendering:pixelated;flex:none}
 .adgift label{display:flex;flex-direction:column;gap:2px}
 .adgift input{width:96px;min-height:36px}
 .addetail{border-color:var(--gold)}
+.updbar{position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:80;border:0;border-radius:0 0 12px 12px;padding:10px 18px;background:var(--gold);color:#1b1622;font-weight:800;cursor:pointer;box-shadow:0 4px 16px #0008}

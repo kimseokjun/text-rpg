@@ -318,15 +318,17 @@ async function flushEvents() {
 // ───────── 관리자 ─────────
 export interface AdminUser { id: string; username: string; created_at: string; last_seen: string; login_count: number; is_admin: boolean; muted: boolean; day: number | null; max_floor: number | null; power: number | null; gold: number | null; tower_best: number; saved_at: string | null; events: number; chats: number }
 export interface EventRow { id: number; user_id: string; username: string; kind: string; detail: string; created_at: string }
-export const adminStats = async () => (sb ? (await sb.rpc('admin_stats')).data as any : null);
-export const adminUsers = async () => (sb ? ((await sb.rpc('admin_users')).data ?? []) as AdminUser[] : []);
+export const adminStats = async () => { if (!sb) return null; const r = await sb.rpc('admin_stats'); if (r.error) throw new Error(r.error.message); return r.data as any; };
+export const adminUsers = async () => { if (!sb) return [] as AdminUser[]; const r = await sb.rpc('admin_users'); if (r.error) throw new Error(r.error.message); return (r.data ?? []) as AdminUser[]; };
 export const adminUserSave = async (id: string) => (sb ? (await sb.rpc('admin_user_save', { p_user: id })).data as any : null);
 export async function adminEvents(opts: { user?: string; kind?: string; limit?: number } = {}): Promise<EventRow[]> {
   if (!sb) return [];
   let q = sb.from('events').select('*').order('id', { ascending: false }).limit(opts.limit ?? 200);
   if (opts.user) q = q.eq('user_id', opts.user);
   if (opts.kind) q = q.eq('kind', opts.kind);
-  return ((await q).data ?? []) as EventRow[];
+  const r = await q;
+  if (r.error) throw new Error(r.error.message);
+  return (r.data ?? []) as EventRow[];
 }
 export async function adminChats(limit = 150): Promise<(ChatMsg & { channel: string })[]> {
   if (!sb) return [];

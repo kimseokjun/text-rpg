@@ -1137,7 +1137,7 @@ let adTab: 'over' | 'users' | 'log' | 'chat' = 'over';
 let adStats: any = null, adUsers: Cloud.AdminUser[] = [], adEvents: Cloud.EventRow[] = [], adChats: (Cloud.ChatMsg & { channel: string })[] = [];
 let adSel: string | null = null, adSave: any = null, adSelEvents: Cloud.EventRow[] = [];
 let adSort: 'seen' | 'joined' | 'power' | 'floor' = 'seen', adQ = '', adKind = '';
-let adLoading = false, adAt: Record<string, number> = {};
+let adLoading = false, adAt: Record<string, number> = {}, adErr = '';
 const ago = (t?: string | null) => { if (!t) return '-'; const m = Math.floor((Date.now() - Date.parse(t)) / 60000); return m < 1 ? '방금' : m < 60 ? `${m}분 전` : m < 1440 ? `${Math.floor(m / 60)}시간 전` : `${Math.floor(m / 1440)}일 전`; };
 const ymd = (t?: string | null) => (t ? new Date(Date.parse(t) + 9 * 3600_000).toISOString().slice(0, 16).replace('T', ' ') : '-');
 async function adLoad(tab = adTab, force = false) {
@@ -1148,14 +1148,17 @@ async function adLoad(tab = adTab, force = false) {
     if (tab === 'users' || tab === 'over') adUsers = await Cloud.adminUsers();
     if (tab === 'log') adEvents = await Cloud.adminEvents({ kind: adKind || undefined, limit: 300 });
     if (tab === 'chat') adChats = await Cloud.adminChats(200);
-  } catch { toast('불러오기 실패', true); }
-  adAt[tab] = Date.now(); adLoading = false;
+  } catch (e) { adErr = `불러오기 실패: ${(e as Error).message}`; toast(adErr, true); adLoading = false; if (screen === 'admin') render(); return; }
+  adErr = ''; adAt[tab] = Date.now(); adLoading = false;
   if (screen === 'admin') render();
 }
 async function adOpenUser(id: string) {
   adSel = id; adSave = null; adSelEvents = []; render();
-  const [sv, ev] = await Promise.all([Cloud.adminUserSave(id), Cloud.adminEvents({ user: id, limit: 60 })]);
-  adSave = sv; adSelEvents = ev; render();
+  try {
+    const [sv, ev] = await Promise.all([Cloud.adminUserSave(id), Cloud.adminEvents({ user: id, limit: 60 })]);
+    adSave = sv; adSelEvents = ev;
+  } catch (e) { toast(`불러오기 실패: ${(e as Error).message}`, true); }
+  render();
 }
 const bars = (rows: { d: string; n: number }[]) => {
   const max = Math.max(1, ...rows.map((r) => r.n));
@@ -1204,6 +1207,8 @@ function viewAdmin() {
   return `<div class="wrap">${backBtn()}
     <div class="row" style="justify-content:space-between;align-items:center"><h2>관리자 대시보드</h2><button class="btn ghost sm" data-a="adRefresh" ${adLoading ? 'disabled' : ''}>${adLoading ? '불러오는 중…' : '새로고침'}</button></div>
     <div class="tabs" role="group" aria-label="관리자 메뉴">${tabs.map(([k, n]) => `<button class="${adTab === k ? 'on' : ''}" data-a="adTab" data-v="${k}">${n}</button>`).join('')}</div>
+    ${adErr ? `<p class="small" style="color:var(--bad)">${esc(adErr)}</p>` : ''}
+    ${adAt[adTab] ? `<p class="small mute" style="margin:4px 0">${ymd(new Date(adAt[adTab]).toISOString()).slice(11)} 기준</p>` : ''}
     ${body}
   </div>`;
 }

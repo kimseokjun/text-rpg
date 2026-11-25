@@ -662,3 +662,4 @@ svg.px{image-rendering:pixelated;flex:none}
 .attact{flex:1;min-width:200px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 .mlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:4px 12px;margin:8px 0}
 .mrow{display:flex;justify-content:space-between;gap:8px;font-size:14px;padding:3px 0;border-bottom:1px dashed var(--line)}.mrow.done span:first-child{color:var(--ok)}
+.idle{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0;padding:8px 10px;border-radius:10px;background:var(--bg2);border:1px solid var(--line)}.guest{margin-top:12px;border-color:#7fb3ff55}

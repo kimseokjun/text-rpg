@@ -46,6 +46,8 @@ export function lowFloorRate(floor: number, best = 0): number {
 }
 
 export const MAX_REPEAT = 50;
+/** 보물 고블린 출현 확률 % (일반 층 웨이브마다) */
+export const GOBLIN_CHANCE = 4;
 
 export const DEFAULT_SETTINGS: ExpeditionSettings = {
   startFloor: 1, mode: 'advance', repeatCount: 10, auto: true, retreatHpPct: 30, retreatOnDown: false, targetFloor: MAX_FLOOR, stopBeforeBoss: true, potions: [],
@@ -105,6 +107,8 @@ export class Expedition {
   }
   isBossFloor(f = this.floor) { if (this.settings.tower) return isTowerBoss(f); if (this.settings.rift) return f === 5 || f === RIFT_FLOORS; return !!this.settings.raid || (!this.settings.daily && zoneOf(f).boss.floor === f); }
   /** 레이드 결과 */
+  /** 이번 탐험에서 잡은 보물 고블린 */
+  goblins = 0;
   raidDealt = 0;
   raidKilled = false;
   get daily() { return this.settings.daily ? DAILY_BY_ID[this.settings.daily.id] : undefined; }
@@ -140,6 +144,11 @@ export class Expedition {
         if (this.rng.chance(10)) {
           elite = true;
           enemies[0] = fromMonster(MONSTERS[zone.elite], f);
+        }
+        // 보물 고블린: 일반 웨이브에 4% (4라운드 안에 잡아야 함)
+        if (!this.settings.multi && this.rng.chance(GOBLIN_CHANCE)) {
+          enemies.push(fromMonster(MONSTERS.treasureGoblin, f));
+          log.push({ t: 'special', who: '보물 고블린', text: '반짝이는 자루를 멘 고블린이 나타났다! 4라운드 안에 잡아라!' });
         }
       }
       nameUnique(enemies);
@@ -275,7 +284,18 @@ export class Expedition {
 
   private collect(dead: Combatant[], f: number) {
     for (const m of dead) {
+      if (m.flags.fled) continue;
       const d = m.mdef!;
+      if (d.id === 'treasureGoblin') {
+        // 잡으면 대박: 골드 대량 + 강화석·제련석, 확률로 룬석·카드 팩
+        const sc = rewardScale(f);
+        this.loot.gold += Math.round(900 * sc * this.goldMult);
+        this.loot.stones += 5 + Math.floor(f / 5); this.loot.refineStones += 2 + Math.floor(f / 20);
+        if (this.rng.chance(50)) this.loot.runes = (this.loot.runes ?? 0) + 2;
+        if (this.rng.chance(20)) this.loot.cardPacks = (this.loot.cardPacks ?? 0) + 1;
+        this.goblins++;
+        continue;
+      }
       const elite = d.tags.includes('elite'), boss = d.tags.includes('boss');
       // 보스는 기본 보상이 커서 스케일을 완만하게
       const sc = boss ? Math.sqrt(rewardScale(f)) : rewardScale(f);

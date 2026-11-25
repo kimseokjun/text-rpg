@@ -412,7 +412,13 @@ function todoPanel() {
   const ready = st.chests.filter((c) => c.ready).length + (attended ? 0 : 1);
   const week = Math.floor((day - 1) / 7) * 7;
   const days = ATTEND.slice(week, week + 7).map((r, i) => { const d = week + i + 1; const done = d < day || (d === day && attended); const big = d % 7 === 0; return `<div class="attd ${done ? 'done' : ''} ${d === day && !attended ? 'now' : ''} ${big ? 'big' : ''}" title="${esc(dRewardText(r))}"><b>${d}일</b><span>${big ? '🎁' : done ? '✔' : '·'}</span></div>`; }).join('');
-  return `<details class="panel todo" ${todoOpen ? 'open' : ''} data-todo><summary><h3>오늘의 할 일</h3>${ready ? `<span class="tag up">받을 보상 ${ready}</span>` : '<span class="small mute">모두 완료</span>'}</summary>
+  const idle = G.idlePending(s), ir = G.idleRate(s);
+  const ih = Math.floor(idle.hours), im = Math.floor((idle.hours - ih) * 60);
+  const idleOk = idle.hours >= 1 / 6;
+  return `<details class="panel todo" ${todoOpen ? 'open' : ''} data-todo><summary><h3>오늘의 할 일</h3>${ready + (idleOk ? 1 : 0) ? `<span class="tag up">받을 보상 ${ready + (idleOk ? 1 : 0)}</span>` : '<span class="small mute">모두 완료</span>'}</summary>
+    <div class="idle"><div><b>⏳ 파견 보상</b> <span class="small mute">${ih}시간 ${im}분 쌓임 (최대 ${G.IDLE_CAP_H}시간 · 마왕숲 ${ir.floor}층 기준)</span>
+      <div class="small">${fmt(idle.gold)}G · 경험치 ${fmt(idle.exp)} · 강화석 ${idle.stones} <span class="mute">(시간당 ${fmt(ir.gold)}G · ${fmt(ir.exp)} · ${ir.stones})</span></div></div>
+      <button class="btn sm ${idleOk ? '' : 'ghost'}" data-a="idleClaim" ${idleOk ? '' : 'disabled'}>받기</button></div>
     <div class="attrow"><div class="attdays">${days}</div>
       <div class="attact"><div class="small">${attended ? `출석 ${day}일째 완료` : `출석 ${day}일째 보상`}: <b>${esc(dRewardText(ATTEND[day - 1]))}</b></div>
       <button class="btn sm" data-a="attend" ${attended ? 'disabled' : ''}>${attended ? '내일 또 와요' : '출석하기'}</button></div></div>
@@ -485,6 +491,52 @@ function pcard(c: Character, inParty: boolean, full: boolean) {
   </div>`;
 }
 
+// ───────── 친구 용병 빌리기 ─────────
+let guestPick: { id: string; name: string; chars: Character[] } | null = null;
+let guestBusy = false;
+async function guestLoad(id: string) {
+  guestBusy = true; render();
+  const t = await Cloud.duelTarget(id);
+  guestBusy = false;
+  if (typeof t === 'string') { toast(t, true); render(); return; }
+  const roster = (t.roster ?? []) as Character[];
+  const party = roster.filter((c) => (t.party ?? []).includes(c.uid));
+  guestPick = { id, name: t.username, chars: (party.length ? party : roster).sort((a, b) => charPower(b) - charPower(a)).slice(0, 4) };
+  render();
+}
+async function guestTake(uid: string) {
+  const s = S!;
+  const g = guestPick;
+  const c = g?.chars.find((x) => x.uid === uid);
+  if (!g || !c) return;
+  const r = G.setGuest(s, g.id, g.name, c);
+  guestPick = null;
+  if (!r.ok) { commit(r); return; }
+  Cloud.sendMail(g.id, { kind: 'gift', gold: G.GUEST_GIFT, text: `${Cloud.username}님이 ${c.name}을(를) 빌려간 사례금` });
+  Cloud.logEvent('guest', `${g.name}의 ${c.name} 빌림`);
+  commit(r);
+}
+function guestPanel() {
+  if (!CLOUD || !Cloud.session) return '';
+  const s = S!;
+  const g = G.guestToday(s);
+  const full = G.partyChars(s).length >= G.PARTY_MAX;
+  if (g) {
+    const c = g.char;
+    return `<div class="panel guest"><div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><div class="row" style="gap:8px;align-items:center"><span class="ico">${avatar(c, 40)}</span>
+      <div><b>🤝 친구 용병 · ${esc(c.name)}</b><div class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} · 전투력 ${fmt(charPower(c))} · 오늘 자정까지</div>
+      <div class="small ${full ? '' : 'okt'}">${!g.on ? '쉬는 중' : full ? '파티가 꽉 차서 이번엔 같이 못 가요 (빈자리가 있으면 자동 합류)' : '던전·일일 던전에 자동 합류해요'}</div></div></div>
+      <button class="btn ghost sm" data-a="guestToggle">${g.on ? '쉬게 하기' : '같이 가기'}</button></div></div>`;
+  }
+  if (guestPick) {
+    return `<div class="panel guest"><div class="row" style="justify-content:space-between"><h3 style="margin:0">${esc(guestPick.name)}의 단원 중 1명 <span class="small mute">오늘 하루 동행 · 친구에게 사례금 ${fmt(G.GUEST_GIFT)}G가 가요 (내 골드는 안 들어요)</span></h3><button class="btn ghost sm" data-a="guestCancel">취소</button></div>
+      <div class="dpicks" style="margin-top:8px">${guestPick.chars.map((c) => `<button class="dpick" data-a="guestPick" data-uid="${esc(c.uid)}"><span class="ico">${avatar(c, 30)}</span><span><b class="small">${esc(c.name)}</b><span class="small mute"> ${esc(JOBS[c.jobId]?.name ?? '')} · <span class="cp">${fmt(charPower(c))}</span></span></span></button>`).join('')}</div></div>`;
+  }
+  const fr = friends.filter((f) => f.status === 'accepted');
+  return `<div class="panel guest"><h3 style="margin-top:0">🤝 친구 용병 빌리기 <span class="small mute">하루 1명 · 파티 빈자리에 합류해서 던전·일일 던전을 같이 가요</span></h3>
+    ${fr.length ? `<div class="row" style="gap:6px;flex-wrap:wrap">${fr.map((f) => `<button class="btn ghost sm" data-a="guestFriend" data-v="${esc(f.other)}" ${guestBusy ? 'disabled' : ''}>${esc(f.username)} <span class="small mute">${fmt(f.power)}</span></button>`).join('')}</div>` : '<p class="small mute">친구를 추가하면 빌릴 수 있어요.</p>'}</div>`;
+}
+
 function viewParty() {
   const s = S!;
   const party = G.partyChars(s);
@@ -503,6 +555,7 @@ function viewParty() {
     <div class="row" style="margin-bottom:10px"><button class="btn sm" data-a="autoEquipParty">파티 자동 장착</button><button class="btn ghost sm" data-a="unequipParty">파티 장비 전체 해제</button><span class="small mute">새 용병으로 바꿀 땐 해제 → 자동 장착 순서로 누르면 편해요</span></div>
     <p class="small mute" style="margin:4px 0 8px">전열 ${nFront}명 · 후열 ${party.length - nFront}명 — 전열은 방어·마저 +5%에 적이 주로 노리고, 후열은 공격·마력 +5%에 덜 맞아요. 공격 대상: 자동(체력 낮은 적), 보스 우선, 잡몹 우선.</p>
     <div class="slots">${slots}</div>
+    ${guestPanel()}
     <div class="row" style="margin-top:22px;justify-content:space-between"><h3 style="margin:0">대기 중인 단원 ${s.roster.length - party.length}명</h3>${sortBar()}</div>
     <div class="tabs" role="group" aria-label="직업 필터" style="margin:8px 0">${JOB_FILTERS.map(([v, n]) => `<button class="${partyFilter === v ? 'on' : ''}" data-a="partyFilter" data-v="${v}">${n}</button>`).join('')}</div>
     <div class="bench">${benchSorted.map((c) => pcard(c, false, full)).join('') || '<p class="mute">대기 중인 단원이 없습니다. 길드에서 고용해 보세요.</p>'}</div>
@@ -1934,6 +1987,7 @@ function viewGate() {
   const best = Math.min(s.maxFloor, rB) - rA + 1;
   return `<div class="wrap"><div class="back row" style="gap:8px"><button class="btn ghost sm" data-a="go" data-to="town">← 마을로</button><button class="btn ghost sm" data-a="pickRegion" data-v="">← 지역 선택</button></div>${hubTabs()}
     <h2>${esc(region.name)}</h2>
+    ${(() => { const g = G.guestToday(s); return g?.on && party.length < G.PARTY_MAX ? `<p class="small okt" style="margin:0 0 6px">🤝 친구 용병 ${esc(g.char.name)}이(가) 빈자리에 합류해요</p>` : ''; })()}
     <p class="mute">${esc(region.desc)}. 클리어한 최고 층: <b>${best > 0 ? `${best}층 (${esc(zoneOf(Math.min(s.maxFloor, rB)).name)})` : '없음'}</b></p>
     <p class="small mute" style="margin-top:-6px">최고 기록보다 5층 이상 아래 층은 골드·경험치가 75%, 10층 이상 아래는 50%만 들어와요. 강화석·장비 드롭은 그대로예요.</p>
     <div class="cols" style="margin-top:12px">
@@ -2113,7 +2167,7 @@ let mailBusy = false;
 async function loadMailbox() { mailbox = await Cloud.loadMail(); if (screen === 'storage' || screen === 'town') render(); }
 function mailPanel() {
   if (!CLOUD || !Cloud.session || !mailbox.length) return '';
-  const rows = mailbox.map((m) => { const ok = m.item && EQUIP_BY_ID[m.item.baseId]; return `<div class="item"><div><span class="small mute">${esc(m.sender_name)}님이 보냄 · ${hhmm(m.created_at)}</span><div>${ok ? equipLine(m.item as Equip) : '<span class="mute">알 수 없는 장비</span>'}</div></div><button class="btn sm" data-a="mailClaim" data-v="${m.id}" ${mailBusy ? 'disabled' : ''}>받기</button></div>`; }).join('');
+  const rows = mailbox.map((m) => { const ok = m.item && EQUIP_BY_ID[m.item.baseId]; const gift = m.item?.kind === 'gift'; return `<div class="item"><div><span class="small mute">${esc(m.sender_name)}님이 보냄 · ${hhmm(m.created_at)}</span><div>${gift ? `🎁 ${esc(m.item.text ?? '선물')} <b style="color:var(--gold)">${fmt(m.item.gold ?? 0)}G</b>` : ok ? equipLine(m.item as Equip) : '<span class="mute">알 수 없는 장비</span>'}</div></div><button class="btn sm" data-a="mailClaim" data-v="${m.id}" ${mailBusy ? 'disabled' : ''}>받기</button></div>`; }).join('');
   return `<div class="panel mailbox"><div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">📮 우편함 <span class="small mute">${mailbox.length}개</span></h3>${mailbox.length > 1 ? `<button class="btn sm" data-a="mailClaimAll" ${mailBusy ? 'disabled' : ''}>모두 받기</button>` : ''}</div><div class="items" style="margin-top:8px">${rows}</div></div>`;
 }
 async function claimMails(ids: number[]) {
@@ -2123,7 +2177,7 @@ async function claimMails(ids: number[]) {
   for (const id of ids) { const r = await Cloud.claimMail(id); if (r.item && S) { if (G.receiveMail(S, r.item).ok) n++; } else if (r.error) toast(r.error, true); }
   mailBusy = false;
   mailbox = await Cloud.loadMail();
-  if (n && S) { await saveGameNow(S); commit({ ok: true, msg: `장비 ${n}개를 받았어요 (가방)` }); } else render();
+  if (n && S) { await saveGameNow(S); commit({ ok: true, msg: `우편 ${n}개를 받았어요` }); } else render();
 }
 async function sendMailItem(equipUid: string) {
   const s = S!;
@@ -2139,7 +2193,7 @@ async function sendMailItem(equipUid: string) {
   whOpen = null;
   commit({ ok: true, msg: `${who}에게 ${EQUIP_BY_ID[e.baseId].name}을(를) 보냈어요` });
 }
-Cloud.setMailHandler((m) => { toast(`📮 ${m.sender_name}님이 장비를 보냈어요 (창고 → 우편함)`); loadMailbox(); });
+Cloud.setMailHandler((m) => { toast(m.item?.kind === 'gift' ? `🎁 ${m.sender_name}님이 ${m.item.text ?? '선물'}을 보냈어요 (창고 → 우편함)` : `📮 ${m.sender_name}님이 장비를 보냈어요 (창고 → 우편함)`); loadMailbox(); });
 
 function viewStorage() {
   const s = S!;
@@ -2426,6 +2480,7 @@ function viewResult() {
       ${r.cores ? `<div><span class="small mute">군단장의 핵</span><b>+${r.cores}</b></div>` : ''}
       ${r.runes ? `<div><span class="small mute">고대 룬석</span><b>+${r.runes}</b></div>` : ''}
       ${r.ess ? `<div><span class="small mute">신화의 정수</span><b style="color:#c8a8ff">+${r.ess}</b></div>` : ''}
+      ${r.goblins ? `<div><span class="small mute">보물 고블린</span><b style="color:var(--gold)">💰 ${r.goblins}마리</b></div>` : ''}
       ${(r as { cardPacks?: number }).cardPacks ? `<div><span class="small mute">신비 카드 팩</span><b style="color:var(--gold)">+${(r as { cardPacks?: number }).cardPacks}</b></div>` : ''}
     </div>
     ${r.levelUps.length ? `<div class="panel"><h3>레벨 업</h3><p>${r.levelUps.map((l) => `${esc(l.name)} Lv.${l.to}`).join(' · ')}</p></div>` : ''}
@@ -2843,6 +2898,11 @@ app.addEventListener('click', (ev) => {
     case 'mailClaim': claimMails([Number(d.v)]); break;
     case 'mailClaimAll': claimMails(mailbox.map((m) => m.id)); break;
     case 'attend': commit(G.attend(s!)); break;
+    case 'idleClaim': commit(G.claimIdle(s!)); break;
+    case 'guestToggle': commit(G.toggleGuest(s!)); break;
+    case 'guestFriend': guestLoad(d.v!); break;
+    case 'guestPick': guestTake(d.uid!); break;
+    case 'guestCancel': guestPick = null; render(); break;
     case 'chest': commit(G.claimChest(s!, Number(d.v))); break;
     case 'deckAuto': {
       if (d.v === 'close') { deckOpts = null; render(); break; }

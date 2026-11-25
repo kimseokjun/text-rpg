@@ -34,6 +34,10 @@ export interface GameState {
   refineStones: number;
   /** 줍자마자 자동 처리: 체크한 등급은 가방에 안 넣고 분해/판매 */
   autoLoot?: { on: boolean; rarities: Rarity[]; mode: 'dismantle' | 'sell' };
+  /** 방치 보상: 마지막으로 받은 시각(ms) */
+  idleAt?: number;
+  /** 친구 용병: 오늘(KST) 빌린 단원 (복사본) */
+  guest?: { date: string; owner: string; ownerName: string; char: Character; on: boolean };
   /** 출석: 마지막 출석 날짜(KST), 누적 일수 */
   att?: { last: string; n: number };
   /** 일일 미션: 날짜, 그날 시작 때 카운터, 받은 상자 */
@@ -228,7 +232,7 @@ export function startDaily(s: GameState, id: string, stage: number, potions: str
   for (const p of pots) s.potions[p]--;
   const f = d.stageFloor(stage);
   bump(s, 'daily');
-  return new Expedition(partyChars(s), { ...DEFAULT_SETTINGS, startFloor: f, targetFloor: f, mode: 'advance', auto: true, retreatHpPct: 0, potions: pots, petMods: petPartyMods(s), daily: { id, stage } }, rngOf(s));
+  return new Expedition(withGuest(s), { ...DEFAULT_SETTINGS, startFloor: f, targetFloor: f, mode: 'advance', auto: true, retreatHpPct: 0, potions: pots, petMods: petPartyMods(s), daily: { id, stage } }, rngOf(s));
 }
 /** 소탕: 클리어한 단계는 전투 없이 보상 */
 export function sweepDaily(s: GameState, id: string, stage: number): Result {
@@ -930,7 +934,7 @@ export function startExpedition(s: GameState, settings: ExpeditionSettings): Exp
   s.settings = { ...settings, potions: [] };
   if (settings.startFloor > maxStartFloor(s)) settings.startFloor = maxStartFloor(s);
   // 낮은 층 보상 감소는 같은 지역 기록 기준
-  return new Expedition(partyChars(s), { ...settings, potions, bestFloor: Math.min(s.maxFloor, regionEnd), petMods: petPartyMods(s) }, rngOf(s));
+  return new Expedition(withGuest(s), { ...settings, potions, bestFloor: Math.min(s.maxFloor, regionEnd), petMods: petPartyMods(s) }, rngOf(s));
 }
 
 export interface ExpeditionSummary {
@@ -939,7 +943,7 @@ export interface ExpeditionSummary {
   repeat: boolean;
   runs: number;
   insured: boolean;
-  gold: number; exp: number; stones: number; blessings: number; refineStones: number; shards: number; cores: number; runes?: number; ess?: number;
+  gold: number; exp: number; stones: number; blessings: number; refineStones: number; shards: number; cores: number; runes?: number; ess?: number; cardPacks?: number; goblins?: number;
   autoLine?: string;
   report?: Report;
   towerLines?: string[];
@@ -963,7 +967,7 @@ export function finishExpedition(s: GameState, ex: Expedition): ExpeditionSummar
   if (!ex.finished) ex.finish('manual');
   const before = Object.fromEntries(ex.chars.map((c) => [c.uid, c.level]));
   ex.applyExp();
-  const levelUps = ex.chars.filter((c) => c.level > before[c.uid]).map((c) => ({ name: c.name, to: c.level }));
+  const levelUps = ex.chars.filter((c) => !c.uid.startsWith('guest_') && c.level > before[c.uid]).map((c) => ({ name: c.name, to: c.level }));
   for (const c of ex.chars) syncSkillSlots(c);
   s.gold += ex.loot.gold;
   s.stones += ex.loot.stones;
@@ -971,6 +975,8 @@ export function finishExpedition(s: GameState, ex: Expedition): ExpeditionSummar
   s.refineStones += ex.loot.refineStones;
   s.runes = (s.runes ?? 0) + (ex.loot.runes ?? 0);
   s.mythEss = (s.mythEss ?? 0) + (ex.loot.ess ?? 0);
+  if (!ex.settings.multi) s.cardPacks = (s.cardPacks ?? 0) + (ex.loot.cardPacks ?? 0);
+  if (ex.goblins) bump(s, 'goblin', ex.goblins);
   s.shards += ex.loot.shards;
   s.cores += ex.loot.cores;
   if (!ex.settings.daily && !ex.settings.raid && !ex.settings.tower && !ex.settings.duel) bump(s, 'run');
@@ -1024,7 +1030,7 @@ export function finishExpedition(s: GameState, ex: Expedition): ExpeditionSummar
     raidLines,
     insured: !!ex.settings.insured,
     floor: ex.floor, repeat: ex.repeating, runs: ex.floorsCleared, gold: ex.loot.gold, exp: ex.loot.exp,
-    stones: ex.loot.stones, blessings: ex.loot.blessings, refineStones: ex.loot.refineStones, runes: ex.loot.runes ?? 0, ess: ex.loot.ess ?? 0, shards: ex.loot.shards, cores: ex.loot.cores, equips: ex.loot.equips, levelUps,
+    stones: ex.loot.stones, blessings: ex.loot.blessings, refineStones: ex.loot.refineStones, runes: ex.loot.runes ?? 0, ess: ex.loot.ess ?? 0, cardPacks: ex.settings.multi ? 0 : ex.loot.cardPacks ?? 0, goblins: ex.goblins, shards: ex.loot.shards, cores: ex.loot.cores, equips: ex.loot.equips, levelUps,
     bosses: ex.bossesKilled, newMaxFloor: newMax,
   };
 }
@@ -1038,6 +1044,7 @@ export function migrate(raw: any): GameState | null {
   s.potions ??= {}; delete (s as any).hp;
   s.stoneStock ??= STONE_STOCK;
   s.refineStones ??= 0;
+  s.idleAt ??= Date.now();
   s.pets ??= []; s.activePet ??= null; s.shards ??= 0; s.cores ??= 0; autoMergePets(s);
   s.codex ??= []; for (const c of s.roster) if (c.mercId && !s.codex.includes(c.mercId)) s.codex.push(c.mercId);
   // 재화 통합: 어둠의 파편 → 군단장의 핵 (옛 핵 1개 = 새 핵 10개, 파편 1개 = 핵 1개)
@@ -1242,6 +1249,11 @@ export function takeForMail(s: GameState, equipUid: string): Equip | string {
 }
 /** 받은 장비 넣기 (모르는 장비는 무시) */
 export function receiveMail(s: GameState, item: any): Result {
+  if (item?.kind === 'gift') {
+    const g = Math.max(0, Math.min(1000000, Math.floor(Number(item.gold) || 0)));
+    s.gold += g;
+    return { ok: true, msg: `${item.text ?? '선물'}: ${g.toLocaleString('ko-KR')}G` };
+  }
   if (!item || typeof item !== 'object' || !EQUIP_BY_ID[item.baseId]) return fail('알 수 없는 장비예요');
   const e: Equip = { ...item, uid: newUid('e'), enhance: Math.max(0, Math.min(15, Number(item.enhance) || 0)), failStack: 0, options: Array.isArray(item.options) ? item.options : [] };
   s.inventory.push(e);
@@ -1282,4 +1294,54 @@ export function claimChest(s: GameState, i: number): Result {
   if (!c.ready) return fail(`${c.pts}포인트가 필요해요`);
   s.dm!.chests.push(i);
   return { ok: true, msg: `${c.pts}포인트 상자: ${giveDReward(s, c.reward)}` };
+}
+
+// ───────── 친구 용병 (하루 1명, 던전·일일 던전에 동행) ─────────
+export const GUEST_GIFT = 30000;
+export const guestToday = (s: GameState) => (s.guest?.date === kstDate() ? s.guest : null);
+/** 파티가 4명 미만이면 오늘 빌린 친구 용병을 붙임 */
+export function withGuest(s: GameState): Character[] {
+  const p = partyChars(s), g = guestToday(s);
+  if (!g?.on || p.length >= PARTY_MAX) return p;
+  return [...p, JSON.parse(JSON.stringify(g.char)) as Character];
+}
+export function setGuest(s: GameState, owner: string, ownerName: string, c: Character): Result {
+  if (guestToday(s)) return fail('오늘은 이미 친구 용병을 빌렸어요 (자정에 초기화)');
+  const copy = JSON.parse(JSON.stringify(c)) as Character;
+  copy.uid = `guest_${c.uid}`; copy.name = `${c.name}(${ownerName})`; copy.isHero = false;
+  syncSkillSlots(copy);
+  s.guest = { date: kstDate(), owner, ownerName, char: copy, on: true };
+  return { ok: true, msg: `${ownerName}의 ${c.name}이(가) 오늘 하루 동행해요 (파티 빈자리에 자동 합류)` };
+}
+export function toggleGuest(s: GameState): Result {
+  const g = guestToday(s);
+  if (!g) return fail('오늘 빌린 친구 용병이 없어요');
+  g.on = !g.on;
+  return { ok: true, msg: g.on ? '친구 용병 동행' : '친구 용병 쉬는 중' };
+}
+
+// ───────── 방치 보상 (자리를 비운 동안 용병단이 파견 사냥) ─────────
+export const IDLE_CAP_H = 12;
+/** 시간당 보상: 마왕숲 최고 층(최대 50층) 기준 */
+export function idleRate(s: GameState) {
+  const f = Math.max(1, Math.min(50, s.maxFloor || 1));
+  const sc = rewardScale(f);
+  return { floor: f, gold: Math.round(800 * sc), exp: Math.round(900 * sc), stones: 2 + Math.floor(f / 8) };
+}
+export function idlePending(s: GameState, now = Date.now()) {
+  if (!s.idleAt) return { hours: 0, gold: 0, exp: 0, stones: 0 };
+  const h = Math.min(IDLE_CAP_H, Math.max(0, (now - s.idleAt) / 3600000));
+  const r = idleRate(s);
+  return { hours: h, gold: Math.floor(r.gold * h), exp: Math.floor(r.exp * h), stones: Math.floor(r.stones * h) };
+}
+export function claimIdle(s: GameState): Result {
+  const p = idlePending(s);
+  if (p.hours < 1 / 6) return fail('10분 이상 지나야 받을 수 있어요');
+  s.gold += p.gold; s.stones += p.stones;
+  const party = partyChars(s), each = p.exp / Math.max(1, party.length);
+  const ups: string[] = [];
+  for (const c of party) { const lv = c.level; gainExp(c, each); syncSkillSlots(c); if (c.level > lv) ups.push(`${c.name} Lv.${c.level}`); }
+  s.idleAt = Date.now();
+  const hh = Math.floor(p.hours), mm = Math.floor((p.hours - hh) * 60);
+  return { ok: true, msg: `파견 ${hh}시간 ${mm}분: ${p.gold.toLocaleString('ko-KR')}G · 경험치 ${p.exp.toLocaleString('ko-KR')} · 강화석 ${p.stones}${ups.length ? ` · ${ups.join(', ')}` : ''}` };
 }

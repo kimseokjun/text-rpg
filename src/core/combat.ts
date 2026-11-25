@@ -42,7 +42,7 @@ export interface Combatant {
   tags: Set<string>;
   alive: boolean;
   // 탐험 단위로 유지되는 1회성 효과
-  flags: { endureUsed?: boolean; immortalUsed?: boolean; reviveUsed?: boolean; miracleUsed?: boolean; bastionLeft?: number; phase2Done?: boolean; firstHitDone?: boolean };
+  flags: { endureUsed?: boolean; immortalUsed?: boolean; reviveUsed?: boolean; miracleUsed?: boolean; bastionLeft?: number; phase2Done?: boolean; firstHitDone?: boolean; fled?: boolean };
   mdef?: MonsterDef;
   char?: Character;
   row?: Row;
@@ -262,6 +262,11 @@ function endOfRound(ctx: BattleContext) {
     }
     if (e.passives.has('mender') && boss && boss !== e && boss.hp < boss.maxHp) heal(ctx, e, boss, boss.maxHp * 0.09);
   }
+  // 보물 고블린: 4라운드가 지나면 도망
+  for (const e of alive(ctx.enemies)) if (e.passives.has('flee') && ctx.round >= 4) {
+    e.alive = false; e.flags.fled = true;
+    ctx.log.push({ t: 'special', who: e.name, text: '보물 자루를 끌어안고 도망쳤다!' });
+  }
   for (const c of [...ctx.party, ...ctx.enemies]) {
     if (!c.alive) continue;
     for (const st of ['poison', 'burn'] as const) {
@@ -367,6 +372,9 @@ function pickFoe(ctx: BattleContext, c: Combatant, prefer?: 'lowest'): Combatant
   if (!list.length) return;
   const lowest = (l: Combatant[]) => l.reduce((a, b) => (pctOf(a) <= pctOf(b) ? a : b));
   if (c.side === 'party' && !ctx.pvp) {
+    // 보물 고블린이 있으면 먼저 노림 (도망가기 전에)
+    const gob = list.find((e) => e.passives.has('flee'));
+    if (gob) return gob;
     // 우선순위: 보스 우선 = 보스 → 엘리트, 잡몹 우선 = 보스 아닌 적, 자동 = HP 비율 낮은 적
     if (c.pref === 'boss') {
       const big = list.filter((e) => e.tags.has('boss'));

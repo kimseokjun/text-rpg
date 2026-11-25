@@ -209,6 +209,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
     story: '아자젤이 무릎을 꿇으며 웃는다. "나는… 문지기였을 뿐이다." 옥좌 뒤의 벽이 갈라지고, 그 너머에서 진짜 마왕의 심장 소리가 울린다. — 마왕방이 열렸다.',
   },
   // ═════ 레이드: 군단장 벨리알 (주마다 형태가 바뀜) ═════
+  treasureGoblin: { id: 'treasureGoblin', name: '보물 고블린', stats: s(1.0, 0.3, 0, 0.6, 0.6, 1.5), attackScale: 'atk', skills: [], skillChance: 0, evade: 12, tags: ['elite'], passives: ['flee'], exp: 60, gold: 60 },
   // ── 마왕방 (71~80층) ──
   voidWraith: { id: 'voidWraith', name: '공허의 망령', stats: s(0.8, 0.2, 1.2, 0.7, 1.5, 1.2), attackScale: 'mag', skills: [{ skillId: 'm_nightmare' }, { skillId: 'm_drain' }], skillChance: 40, evade: 10, tags: ['demon', 'undead'], exp: 26, gold: 22 },
   abyssKnight: { id: 'abyssKnight', name: '심연 기사', stats: s(2.6, 1.15, 0, 2.0, 1.4, 0.7), attackScale: 'atk', skills: [{ skillId: 'm_cleave' }], skillChance: 40, tags: ['demon'], exp: 27, gold: 23 },

@@ -93,7 +93,8 @@ export type Passive =
   // ── 몬스터 기믹 ──
   | 'bulwark'       // 다른 적이 살아있는 동안 받는 피해 -70%
   | 'rampage'       // 라운드마다 공격·마력 +12% 누적
-  | 'mender';       // 라운드 끝 보스 HP 9% 회복
+  | 'mender'        // 라운드 끝 보스 HP 9% 회복
+  | 'flee';         // 4라운드가 지나면 도망 (보물 고블린)
 
 export interface SkillDef {
   id: string;

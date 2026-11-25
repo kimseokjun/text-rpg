@@ -44,5 +44,5 @@ export function simulateMulti(members: MultiMember[], floor: number, seed: numbe
     gold: Math.round(loot.gold * COOP_BONUS), exp: Math.round(loot.exp * COOP_BONUS), stones: loot.stones, blessings: loot.blessings,
     refineStones: loot.refineStones, cores: loot.cores, equips: loot.equips,
   };
-  return { chars, owner, settings, seed, cleared, wiped: ex.stopReason === 'wipe', reward } as const;
+  return { chars, owner, settings, seed, cleared, wiped: ex.stopReason === 'wipe' || ex.stopReason === 'timeout', reward } as const;
 }

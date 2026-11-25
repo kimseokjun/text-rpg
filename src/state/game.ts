@@ -788,7 +788,7 @@ export interface ExpeditionSummary {
 }
 
 const REASON: Record<string, string> = {
-  wipe: '파티 전멸… 간신히 마을로 돌아왔다', lowHp: 'HP가 낮아 귀환했다', down: '쓰러진 동료가 있어 귀환했다',
+  wipe: '파티 전멸… 간신히 마을로 돌아왔다', timeout: '60라운드가 지나도 끝나지 않아 후퇴했다', lowHp: 'HP가 낮아 귀환했다', down: '쓰러진 동료가 있어 귀환했다',
   target: '목표 층에 도달해 귀환했다', bossAhead: '보스 앞에서 귀환했다', cleared: '던전 최하층을 정복했다!', regionEnd: '이 지역의 끝까지 정복했다!', manual: '귀환했다',
 };
 
@@ -807,7 +807,8 @@ export function finishExpedition(s: GameState, ex: Expedition): ExpeditionSummar
   s.inventory.push(...ex.loot.equips);
   const raidLines = ex.settings.raid ? applyRaid(s, ex) : undefined;
   const dly = ex.settings.daily;
-  const won = ex.stopReason !== 'wipe';
+  const failed = ex.stopReason === 'wipe' || ex.stopReason === 'timeout';
+  const won = !failed;
   if (dly && won) {
     const st = dailyState(s);
     st.used[dly.id] = (st.used[dly.id] ?? 0) + 1;
@@ -837,7 +838,7 @@ export function finishExpedition(s: GameState, ex: Expedition): ExpeditionSummar
     : `${s.day - 1}일차 탐험: ${floorName(ex.floor)}까지, 골드 ${ex.loot.gold} 획득.`);
   for (const l of levelUps) news(s, `${l.name} Lv.${l.to} 달성!`);
   return {
-    reason: ex.settings.tower ? (ex.stopReason === 'wipe' ? `무한 탑 ${ex.floor}층에서 막혔다${ex.towerCleared ? ` (${ex.towerCleared}층까지 돌파)` : ''}` : `무한 탑 ${ex.towerCleared}층까지 돌파하고 귀환`) : ex.settings.raid ? (ex.raidKilled ? '군단장 벨리알 처치!' : `벨리알에게 ${ex.raidDealt.toLocaleString('ko-KR')} 피해 (${((ex.raidDealt / ex.settings.raid.maxHp) * 100).toFixed(1)}%)`) : dly ? (won ? `${DAILY_BY_ID[dly.id].name} ${dly.stage}단계 클리어!` : '파티 전멸… 입장 횟수는 차감되지 않았다') : ex.repeating && ex.stopReason === 'target' ? '반복 파밍을 마치고 귀환했다' : REASON[ex.stopReason ?? 'manual'],
+    reason: ex.settings.tower ? (failed ? `무한 탑 ${ex.floor}층에서 막혔다${ex.towerCleared ? ` (${ex.towerCleared}층까지 돌파)` : ''}` : `무한 탑 ${ex.towerCleared}층까지 돌파하고 귀환`) : ex.settings.raid ? (ex.raidKilled ? '군단장 벨리알 처치!' : `벨리알에게 ${ex.raidDealt.toLocaleString('ko-KR')} 피해 (${((ex.raidDealt / ex.settings.raid.maxHp) * 100).toFixed(1)}%)`) : dly ? (won ? `${DAILY_BY_ID[dly.id].name} ${dly.stage}단계 클리어!` : ex.stopReason === 'timeout' ? '시간 초과… 입장 횟수는 차감되지 않았다' : '파티 전멸… 입장 횟수는 차감되지 않았다') : ex.repeating && ex.stopReason === 'target' ? '반복 파밍을 마치고 귀환했다' : REASON[ex.stopReason ?? 'manual'],
     towerLines,
     daily: ex.settings.tower ? `무한 탑 · 최고 기록 ${s.tower?.best ?? 0}층` : ex.settings.raid ? `레이드 · ${RAID_DIFF_NAME[ex.settings.raid.diff]}` : dly ? `${DAILY_BY_ID[dly.id].name} ${dly.stage}단계` : undefined,
     report: ex.report,

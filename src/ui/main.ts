@@ -1098,7 +1098,7 @@ async function finishMulti() {
     const res = G.applyMultiReward(s, r.reward, (r.myChars as string[]).map((u) => u.replace(prefix, '')), r.totalChars);
     ups = res.ups; equips = res.equips;
   }
-  const lost = ex.stopReason === 'wipe';
+  const lost = ex.stopReason === 'wipe' || ex.stopReason === 'timeout';
   summary = { reason: lost ? `멀티 던전 · ${localFloor(ex.floor)}층에서 전멸` : `멀티 던전 · ${room.result.cleared}층 돌파!`, daily: `${room.host_name}의 방 · 협동 보너스 +20%`, report: ex.report, lost, diag: [], insured: true, floor: ex.floor, repeat: false, runs: ex.floorsCleared,
     gold: r?.error ? 0 : rw.gold, exp: r?.error ? 0 : rw.exp, stones: r?.error ? 0 : rw.stones, blessings: r?.error ? 0 : rw.blessings, refineStones: r?.error ? 0 : rw.refineStones, shards: 0, cores: r?.error ? 0 : rw.cores, equips, levelUps: ups, bosses: [], newMaxFloor: false } as unknown as G.ExpeditionSummary;
   Cloud.logEvent('multi', `${(summary as G.ExpeditionSummary).reason} · ${room.host_name}의 방`);
@@ -1592,7 +1592,7 @@ async function playFloor() {
 
 function afterFloor(r: FloorResult) {
   const ex = EX!;
-  if (!r.win) { phase = 'done'; logLine('de', '파티가 전멸했다…'); renderDctl(); return; }
+  if (!r.win) { phase = 'done'; logLine('de', ex.stopReason === 'timeout' ? '60라운드가 지나도 끝나지 않아 후퇴했다… (화력 부족 · 회복하는 적을 먼저 잡아보세요)' : '파티가 전멸했다…'); renderDctl(); return; }
   logLine('hl', `${runLabel(r.floor)} 클리어${ex.repeating ? ` (${ex.floorsCleared}/${ex.settings.repeatCount})` : ''} · 파티 평균 HP ${Math.round(ex.avgHpPct)}%`);
   const reason = ex.autoStopReason();
   if (reason && reason !== 'bossAhead') { ex.finish(reason); phase = 'done'; renderDctl(); return; }

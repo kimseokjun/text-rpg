@@ -47,7 +47,7 @@ export const DEFAULT_SETTINGS: ExpeditionSettings = {
   startFloor: 1, mode: 'advance', repeatCount: 10, auto: true, retreatHpPct: 30, retreatOnDown: false, targetFloor: MAX_FLOOR, stopBeforeBoss: true, potions: [],
 };
 
-export type StopReason = 'wipe' | 'lowHp' | 'down' | 'target' | 'bossAhead' | 'cleared' | 'regionEnd' | 'manual';
+export type StopReason = 'wipe' | 'timeout' | 'lowHp' | 'down' | 'target' | 'bossAhead' | 'cleared' | 'regionEnd' | 'manual';
 
 export interface Loot { gold: number; exp: number; stones: number; blessings: number; refineStones: number; shards: number; cores: number; equips: Equip[] }
 
@@ -137,7 +137,7 @@ export class Expedition {
       const win = runBattle(ctx);
       if (!this.daily) this.collect(ctx.enemies.filter((e) => !e.alive), f);
       if (!win) {
-        this.finish('wipe');
+        this.finish(this.party.some((c) => c.alive) ? 'timeout' : 'wipe');
         return { floor: f, win: false, log };
       }
     }
@@ -187,7 +187,7 @@ export class Expedition {
     log.push({ t: 'special', who: `${t}층`, text: `${g.icon} ${g.name} — ${g.desc}` });
     const ctx = { rng: this.rng, log, party: this.party, enemies, round: 0, hasBoss: enemies.some((e) => e.tags.has('boss')), floor: F, rep: this.report };
     const win = runBattle(ctx);
-    if (!win) { this.finish('wipe'); return { floor: t, win: false, log }; }
+    if (!win) { this.finish(this.party.some((c) => c.alive) ? 'timeout' : 'wipe'); return { floor: t, win: false, log }; }
     this.towerCleared = t;
     this.floorsCleared++;
     for (const c of this.party) { c.alive = true; c.hp = c.maxHp; c.mp = c.maxMp; c.status = {}; }
@@ -267,7 +267,7 @@ export class Expedition {
   next() { if (!this.repeating) this.floor++; }
   /** 이번 탐험에서 끝까지 클리어한 가장 깊은 층 */
   reachedFloor() {
-    if (this.stopReason === 'wipe' && (!this.repeating || this.floorsCleared === 0)) return this.floor - 1;
+    if ((this.stopReason === 'wipe' || this.stopReason === 'timeout') && (!this.repeating || this.floorsCleared === 0)) return this.floor - 1;
     return this.floor;
   }
 

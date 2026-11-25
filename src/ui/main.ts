@@ -205,7 +205,7 @@ async function submitFriend() {
 /** 활동 로그로 남길 행동 (관리자 대시보드) */
 let curAction = '';
 let confirmDel = '';
-const LOG_ACTIONS = new Set(['cardOpen', 'cardAwaken', 'autoRefresh', 'autoEnh', 'hire', 'upgradeGuild', 'advance', 'enhance', 'buyEquip', 'buyDeal', 'train', 'reroll', 'refine', 'craft', 'buyEgg', 'petSellLow', 'claimQuest', 'dailySweep', 'buyStones']);
+const LOG_ACTIONS = new Set(['cardOpen', 'cardAwaken', 'autoRefresh', 'autoEnh', 'hire', 'upgradeGuild', 'advance', 'enhance', 'buyEquip', 'buyDeal', 'train', 'reroll', 'refine', 'craft', 'buyEgg', 'petSellLow', 'claimQuest', 'dailySweep', 'buyStones', 'buyPack']);
 function commit(r?: G.Result) {
   if (CLOUD && r?.ok && LOG_ACTIONS.has(curAction)) Cloud.logEvent(curAction, r.msg ?? '');
   if (r && !r.ok) toast(r.msg, true);
@@ -714,11 +714,14 @@ function viewShop() {
   G.ensureShopDay(s);
   const deals = s.deals.map((d, i) => `<div class="icard r${d.equip.rarity}b ${d.sold ? 'sold' : ''}"><div class="who"><span class="small mute">${d.equip.rarity === 5 ? '★ 전설 입고' : '오늘의 상품'}</span></div><div>${equipLine(d.equip)}</div><div class="row" style="margin-top:auto">${d.sold ? '<span class="small mute">판매 완료</span>' : `<button class="btn sm" data-a="buyDeal" data-i="${i}" ${s.gold < d.price ? 'disabled' : ''}>${fmt(d.price)}G 구매</button>`}</div></div>`).join('');
   const sp = G.stonePrice(s);
+  const pp = G.packPrice(s), pk = G.PACK_DAILY - (s.packBought ?? 0);
   return `<div class="wrap">${backBtn()}
     <h2>잡화점</h2>
     <section class="grid" style="margin-top:12px">
       <div class="row" style="justify-content:space-between"><h3>오늘의 상점 <span class="small mute">매일 자정(한국 시간)에 10칸이 새로 들어와요 · 전설 2~3개 포함</span></h3></div>
       <div class="igrid" style="margin-top:0">${deals}</div>
+      <div class="item"><div><span class="iname">🃏 신비 카드 팩</span> <span class="small mute">보유 ${s.cardPacks ?? 0} · 오늘 남은 재고 ${pk}개</span><div class="istat">개당 ${fmt(pp)}G · 카드 보관함에서 개봉</div></div>
+        <div class="row">${[1, 3].map((n) => `<button class="btn sm" data-a="buyPack" data-n="${n}" ${pk && s.gold >= pp * Math.min(n, pk) ? '' : 'disabled'}>${n}개 ${fmt(pp * Math.min(n, Math.max(1, pk)))}G</button>`).join('')}</div></div>
       <div class="item"><div><span class="iname">강화석</span> <span class="small mute">보유 ${s.stones} · 오늘 남은 재고 ${s.stoneStock}개</span><div class="istat">개당 ${fmt(sp)}G</div></div>
         <div class="row">${[1, 5, 10].map((n) => `<button class="btn sm" data-a="buyStones" data-n="${n}" ${s.stoneStock ? '' : 'disabled'}>${n}개 ${fmt(sp * Math.min(n, Math.max(1, s.stoneStock)))}G</button>`).join('')}</div></div>
     </section>
@@ -1187,7 +1190,7 @@ function viewCodex() {
 }
 
 // ───────── 관리자 대시보드 ─────────
-const KIND_NAME: Record<string, string> = { cardOpen: '카드 팩', cardAwaken: '카드 각성', autoRefresh: '자동 교체', autoEnh: '자동 강화', login: '접속', signup: '회원가입', run: '던전', tower: '무한 탑', raid: '레이드', daily: '일일 던전', worldboss: '월드보스', multi: '멀티 던전', hire: '용병 고용', upgradeGuild: '길드 강화', advance: '전직', enhance: '강화', buyEquip: '장비 구매', buyDeal: '상점 구매', train: '훈련', reroll: '특성 재설정', refine: '제련', craft: '세트 제작', buyEgg: '펫 알', petSellLow: '펫 정리', claimQuest: '목표 보상', dailySweep: '소탕', buyStones: '강화석 구매', admin_gift: '관리자 지급' };
+const KIND_NAME: Record<string, string> = { cardOpen: '카드 팩', cardAwaken: '카드 각성', autoRefresh: '자동 교체', autoEnh: '자동 강화', login: '접속', signup: '회원가입', run: '던전', tower: '무한 탑', raid: '레이드', daily: '일일 던전', worldboss: '월드보스', multi: '멀티 던전', hire: '용병 고용', upgradeGuild: '길드 강화', advance: '전직', enhance: '강화', buyEquip: '장비 구매', buyDeal: '상점 구매', train: '훈련', reroll: '특성 재설정', refine: '제련', craft: '세트 제작', buyEgg: '펫 알', petSellLow: '펫 정리', claimQuest: '목표 보상', dailySweep: '소탕', buyStones: '강화석 구매', buyPack: '카드 팩 구매', admin_gift: '관리자 지급' };
 let adTab: 'over' | 'users' | 'log' | 'chat' = 'over';
 let adStats: any = null, adUsers: Cloud.AdminUser[] = [], adEvents: Cloud.EventRow[] = [], adChats: (Cloud.ChatMsg & { channel: string })[] = [];
 let adSel: string | null = null, adSave: any = null, adSelEvents: Cloud.EventRow[] = [];
@@ -2112,6 +2115,7 @@ app.addEventListener('click', (ev) => {
     case 'unequipParty': commit(G.unequipParty(s!)); break;
     case 'autoEquip': commit(G.autoEquip(s!, d.uid!)); break;
     case 'autoEquipParty': commit(G.autoEquipParty(s!)); break;
+    case 'buyPack': commit(G.buyPack(s!, Number(d.n))); break;
     case 'buyDeal': commit(G.buyDeal(s!, Number(d.i))); break;
     case 'buyStones': commit(G.buyStones(s!, Number(d.n))); break;
     case 'train': commit(G.train(s!, d.uid!)); break;

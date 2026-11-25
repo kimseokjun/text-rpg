@@ -64,6 +64,7 @@ export interface GameState {
   day: number;
   deals: { equip: Equip; price: number; sold?: boolean }[];  // 잡화점 오늘의 상점 (10칸)
   shopDay?: string;  // 오늘의 상점 날짜(KST)
+  packBought?: number;  // 오늘 상점에서 산 카드 팩 수
   stoneStock: number;                        // 오늘 남은 강화석 판매량
 }
 
@@ -660,6 +661,7 @@ export function ensureShopDay(s: GameState) {
     return { equip: shopEquip(r, tier, rar, used), price: shopPrice(tier, rar), sold: false };
   });
   s.shopDay = today;
+  s.packBought = 0;
 }
 
 export function buyDeal(s: GameState, i: number): Result {
@@ -671,6 +673,21 @@ export function buyDeal(s: GameState, i: number): Result {
   s.inventory.push({ ...d.equip, uid: `e_${s.seed++}` });
   d.sold = true;
   return { ok: true, msg: `${EQUIP_BY_ID[d.equip.baseId].name} 구매` };
+}
+
+/** 신비 카드 팩: 하루 3개, 티어에 따라 가격 상승 */
+export const PACK_DAILY = 3;
+export const packPrice = (s: GameState) => 1500 * shopTier(s);
+export function buyPack(s: GameState, n: number): Result {
+  ensureShopDay(s);
+  const k = Math.min(n, PACK_DAILY - (s.packBought ?? 0));
+  if (k <= 0) return fail('오늘 카드 팩은 다 팔렸어요. 내일 자정에 다시 들어와요');
+  const cost = packPrice(s) * k;
+  if (s.gold < cost) return fail('골드가 부족합니다');
+  s.gold -= cost;
+  s.packBought = (s.packBought ?? 0) + k;
+  s.cardPacks = (s.cardPacks ?? 0) + k;
+  return { ok: true, msg: `신비 카드 팩 ${k}개 구매 (카드 보관함에서 개봉)` };
 }
 
 export const stonePrice = (s: GameState) => 80 + 40 * shopTier(s) * shopTier(s);

@@ -146,7 +146,7 @@ export const POT_POOLS: Record<Slot, [Modifier[], Modifier[], Modifier[]]> = {
   ],
   accessory: [
     [M('agi', 'flat', 5), M('crit', 'flat', 3), M('hp', 'pct', 5), M('healPower', 'pct', 8), M('goldGain', 'pct', 6), M('expGain', 'pct', 6)],
-    [M('mpCost', 'pct', -5)],
+    [M('mpCost', 'pct', -5), M('critDmg', 'flat', 0.05)],
     [M('itemGain', 'pct', 5)],
   ],
 };

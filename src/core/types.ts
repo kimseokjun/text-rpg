@@ -118,14 +118,20 @@ export interface SkillSlot {
 }
 
 // ───────── 장비 ─────────
-export type EquipSlot = 'weapon' | 'armor' | 'accessory';
+/** 장비 종류 (아이템 기준): 무기 · 모자 · 상의(armor) · 하의 · 목걸이(accessory) · 반지 */
+export type BaseSlot = 'weapon' | 'hat' | 'armor' | 'bottom' | 'accessory' | 'ring';
+/** 착용 칸 (캐릭터 기준): 반지는 2칸 */
+export type EquipSlot = 'weapon' | 'hat' | 'armor' | 'bottom' | 'accessory' | 'ring1' | 'ring2';
+export const EQUIP_SLOTS: EquipSlot[] = ['weapon', 'hat', 'armor', 'bottom', 'accessory', 'ring1', 'ring2'];
+/** 이 종류의 아이템을 낄 수 있는 칸 */
+export const wornSlots = (b: BaseSlot): EquipSlot[] => (b === 'ring' ? ['ring1', 'ring2'] : [b]);
 export type Rarity = 1 | 2 | 3 | 4 | 5;
 export const RARITY_NAME: Record<Rarity, string> = { 1: '일반', 2: '고급', 3: '희귀', 4: '영웅', 5: '전설' };
 
 export interface EquipBase {
   id: string;
   name: string;
-  slot: EquipSlot;
+  slot: BaseSlot;
   jobs?: BaseJob[];   // 없으면 공용
   tier: number;       // 1~7 드롭 층 기준, 8 = 마왕성 세트
   stats: Partial<Stats>;

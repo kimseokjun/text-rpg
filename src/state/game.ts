@@ -4,7 +4,7 @@ import { COMMON_TRAITS } from '../data/traits';
 import { DEFAULT_SETTINGS, Expedition, type ExpeditionSettings, rollEquip, rollSetEquip } from '../core/dungeon';
 import { Rng } from '../core/rng';
 import { enhance as doEnhance, enhanceCost, hire as doHire, refreshSlotCost, rollBoard, rollCandidate, rosterLimit, type Candidate } from '../core/town';
-import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Character, type Equip, type Modifier, type EquipSlot, type JobId, type Rarity, type Row, type TargetPref } from '../core/types';
+import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Character, type Equip, type Modifier, type EquipSlot, EQUIP_SLOTS, wornSlots, type JobId, type Rarity, type Row, type TargetPref } from '../core/types';
 import { EQUIP_BASES, EQUIP_BY_ID, OPTION_POOL, OPTION_SLOTS, POTIONS, MAX_POTIONS, RARITY_MULT, TIER_INFO, refineGoldCost, refineStoneCost, rollOption, rollLine, rollLines, POT_NAME, POT_UP, POT_PITY, addRuneCost } from '../data/items';
 import { MAX_FLOOR, MONSTERS, floorName, regionOf } from '../data/monsters';
 import { CRAFT_COST, RAID_CRAFT_COST, RAID_SET } from '../data/sets';
@@ -305,7 +305,7 @@ export function craftSet(s: GameState, baseId: string): Result {
   const b = EQUIP_BY_ID[baseId];
   if (!b?.set) return fail('제작할 수 없는 장비예요');
   if (b.set === RAID_SET) {
-    const rc = RAID_CRAFT_COST[b.slot];
+    const rc = RAID_CRAFT_COST[b.slot as 'weapon'];
     if (s.scales < rc.scales) return fail(`벨리알의 파편이 부족해요 (${rc.scales}개 필요)`);
     if (s.gold < rc.gold) return fail('골드가 부족합니다');
     s.scales -= rc.scales; s.gold -= rc.gold;
@@ -314,7 +314,7 @@ export function craftSet(s: GameState, baseId: string): Result {
     bump(s, 'craft');
   return { ok: true, msg: `${RARITY_NAME[e.rarity]} ${b.name} 완성! (가방에 들어갔어요)` };
   }
-  const c = CRAFT_COST[b.slot];
+  const c = CRAFT_COST[b.slot as 'weapon'];
   if (s.cores < c.cores) return fail(`군단장의 핵이 부족해요 (${c.cores}개 필요)`);
   if (s.gold < c.gold) return fail('골드가 부족합니다');
   s.cores -= c.cores; s.gold -= c.gold;
@@ -452,13 +452,22 @@ export function canWear(c: Character, e: Equip) {
   return !b.jobs || b.jobs.includes(JOBS[c.jobId].base);
 }
 
-export function equip(s: GameState, uid: string, equipUid: string): Result {
+/** 아이템이 들어갈 칸: 반지는 빈 칸 먼저, 둘 다 차 있으면 지정 칸(없으면 1번) */
+export function targetSlot(c: Character, e: Equip, want?: EquipSlot): EquipSlot {
+  const opts = wornSlots(EQUIP_BY_ID[e.baseId].slot);
+  if (want && opts.includes(want)) return want;
+  return opts.find((x) => !c.equipment[x]) ?? opts[0];
+}
+/** 캐릭터가 이 장비를 끼고 있는 칸 */
+export const slotOfWorn = (c: Character, e: Equip) => EQUIP_SLOTS.find((x) => c.equipment[x]?.uid === e.uid);
+
+export function equip(s: GameState, uid: string, equipUid: string, want?: EquipSlot): Result {
   const c = byUid(s, uid);
   const idx = s.inventory.findIndex((e) => e.uid === equipUid);
   if (!c || idx < 0) return fail('장비를 찾을 수 없습니다');
   const e = s.inventory[idx];
   if (!canWear(c, e)) return fail('이 직업은 착용할 수 없습니다');
-  const slot = EQUIP_BY_ID[e.baseId].slot;
+  const slot = targetSlot(c, e, want);
   s.inventory.splice(idx, 1);
   const old = c.equipment[slot];
   if (old) s.inventory.push(old);
@@ -476,20 +485,20 @@ export function unequip(s: GameState, uid: string, slot: EquipSlot): Result {
 }
 
 /** 창고에서 바로 장착: 다른 사람이 끼고 있으면 벗겨서 옮김 */
-export function equipTo(s: GameState, equipUid: string, uid: string): Result {
+export function equipTo(s: GameState, equipUid: string, uid: string, want?: EquipSlot): Result {
   const f = findEquip(s, equipUid);
   const c = byUid(s, uid);
   if (!f || !c) return fail('장비를 찾을 수 없습니다');
   if (!canWear(c, f.e)) return fail(`${c.name}은(는) 착용할 수 없습니다`);
-  if (f.owner === c) return { ok: true };
-  if (f.owner) unequip(s, f.owner.uid, EQUIP_BY_ID[f.e.baseId].slot);
-  const r = equip(s, uid, equipUid);
+  if (f.owner === c && (!want || c.equipment[want] === f.e)) return { ok: true };
+  if (f.owner) unequip(s, f.owner.uid, slotOfWorn(f.owner, f.e)!);
+  const r = equip(s, uid, equipUid, want);
   return r.ok ? { ok: true, msg: `${c.name}에게 장착` } : r;
 }
 
 // ───────── 자동 장착 (가방 장비만 사용, 다른 단원 장비는 건드리지 않음) ─────────
-const EQ_SLOTS: EquipSlot[] = ['weapon', 'armor', 'accessory'];
-const SLOT_KO: Record<EquipSlot, string> = { weapon: '무기', armor: '방어구', accessory: '장신구' };
+const EQ_SLOTS: EquipSlot[] = EQUIP_SLOTS;
+export const SLOT_KO: Record<EquipSlot, string> = { weapon: '무기', hat: '모자', armor: '상의', bottom: '하의', accessory: '목걸이', ring1: '반지1', ring2: '반지2' };
 
 /** 한 칸에 가방 장비 중 전투력이 가장 오르는 것 (없으면 null) */
 function bestBagItem(s: GameState, c: Character, slot: EquipSlot): { item: Equip; gain: number } | null {
@@ -497,7 +506,7 @@ function bestBagItem(s: GameState, c: Character, slot: EquipSlot): { item: Equip
   const base = charPower(c);
   let best: { item: Equip; gain: number } | null = null;
   for (const e of s.inventory) {
-    if (EQUIP_BY_ID[e.baseId].slot !== slot || !canWear(c, e)) continue;
+    if (!wornSlots(EQUIP_BY_ID[e.baseId].slot).includes(slot) || !canWear(c, e)) continue;
     c.equipment[slot] = e;
     const gain = charPower(c) - base;
     if (gain > 0 && (!best || gain > best.gain)) best = { item: e, gain };
@@ -514,7 +523,7 @@ export function autoEquip(s: GameState, uid: string): Result {
   for (const slot of EQ_SLOTS) {
     const b = bestBagItem(s, c, slot);
     if (!b) continue;
-    equip(s, uid, b.item.uid);
+    equip(s, uid, b.item.uid, slot);
     changed.push(SLOT_KO[slot]);
   }
   if (!changed.length) return { ok: true, msg: '이미 가방 장비 중 최적이에요' };
@@ -527,13 +536,13 @@ export function autoEquipParty(s: GameState): Result {
   const before = partyPower(party);
   let swaps = 0;
   for (let guard = 0; guard < 50; guard++) {
-    let pick: { c: Character; item: Equip; gain: number } | null = null;
+    let pick: { c: Character; item: Equip; gain: number; slot: EquipSlot } | null = null;
     for (const c of party) for (const slot of EQ_SLOTS) {
       const b = bestBagItem(s, c, slot);
-      if (b && (!pick || b.gain > pick.gain)) pick = { c, item: b.item, gain: b.gain };
+      if (b && (!pick || b.gain > pick.gain)) pick = { c, item: b.item, gain: b.gain, slot };
     }
     if (!pick) break;
-    equip(s, pick.c.uid, pick.item.uid);
+    equip(s, pick.c.uid, pick.item.uid, pick.slot);
     swaps++;
   }
   if (!swaps) return { ok: true, msg: '이미 가방 장비 중 최적이에요' };

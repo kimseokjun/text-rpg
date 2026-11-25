@@ -1,4 +1,4 @@
-import type { EquipBase, Modifier, Rarity } from '../core/types';
+import type { BaseSlot, EquipBase, Modifier, Rarity } from '../core/types';
 
 export const EQUIP_BASES: EquipBase[] = [
   // 무기 (tier 1~3)
@@ -19,7 +19,7 @@ export const EQUIP_BASES: EquipBase[] = [
   { id: 'a_leather2', name: '가죽 갑옷', slot: 'armor', tier: 2, stats: { hp: 45, def: 7, res: 4 } },
   { id: 'a_plate3', name: '판금 갑옷', slot: 'armor', tier: 3, stats: { hp: 90, def: 14, res: 8 } },
   // 장신구
-  { id: 'c_ring1', name: '구리 반지', slot: 'accessory', tier: 1, stats: { crit: 2 } },
+  { id: 'c_ring1', name: '구리 목걸이', slot: 'accessory', tier: 1, stats: { crit: 2 } },
   { id: 'c_amulet2', name: '수호 부적', slot: 'accessory', tier: 2, stats: { hp: 30, res: 6 } },
   { id: 'c_charm3', name: '바람의 장식', slot: 'accessory', tier: 3, stats: { agi: 6, crit: 4 } },
   // T4~T6
@@ -40,15 +40,32 @@ export const EQUIP_BASES: EquipBase[] = [
   { id: 'a_sanctum6', name: '성역의 판금', slot: 'armor', tier: 6, stats: { hp: 330, def: 44, res: 26 } },
   { id: 'c_neck4', name: '마력석 목걸이', slot: 'accessory', tier: 4, stats: { hp: 80, res: 14, mp: 20 } },
   { id: 'c_fang5', name: '맹수의 이빨', slot: 'accessory', tier: 5, stats: { atk: 10, mag: 10, crit: 5 } },
-  { id: 'c_seal6', name: '봉인의 인장', slot: 'accessory', tier: 6, stats: { hp: 150, agi: 10, crit: 6 } },
+  { id: 'c_seal6', name: '봉인의 펜던트', slot: 'accessory', tier: 6, stats: { hp: 150, agi: 10, crit: 6 } },
   // T7 마왕성
   { id: 'w_gram7', name: '마검 그람', slot: 'weapon', jobs: ['warrior'], tier: 7, stats: { atk: 120, def: 14, crit: 8 } },
   { id: 'w_abyss7', name: '심연의 홀', slot: 'weapon', jobs: ['mage'], tier: 7, stats: { mag: 124, mp: 80, res: 16 } },
   { id: 'w_dragonbow7', name: '흑룡의 활', slot: 'weapon', jobs: ['archer'], tier: 7, stats: { atk: 116, crit: 14, agi: 10 } },
   { id: 'w_grail7', name: '대천사의 성배', slot: 'weapon', jobs: ['priest'], tier: 7, stats: { mag: 104, mp: 95, hp: 120 } },
   { id: 'a_slayer7', name: '마왕 사냥꾼의 갑주', slot: 'armor', tier: 7, stats: { hp: 460, def: 60, res: 36 } },
-  { id: 'c_crown7', name: '타락한 왕관', slot: 'accessory', tier: 7, stats: { hp: 200, atk: 14, mag: 14, crit: 8 } },
+  { id: 'c_crown7', name: '타락한 왕의 목걸이', slot: 'accessory', tier: 7, stats: { hp: 200, atk: 14, mag: 14, crit: 8 } },
 ];
+
+// 모자 · 하의 · 반지 (T1~T7): 모자 ≈ 상의의 45%, 하의 ≈ 50% + 민첩, 반지 = 공격·마력·치명
+const ARMOR_REF: Record<number, { hp: number; def: number; res: number }> = {
+  1: { hp: 20, def: 3, res: 1 }, 2: { hp: 45, def: 7, res: 4 }, 3: { hp: 90, def: 14, res: 8 }, 4: { hp: 150, def: 22, res: 13 },
+  5: { hp: 230, def: 32, res: 19 }, 6: { hp: 330, def: 44, res: 26 }, 7: { hp: 460, def: 60, res: 36 },
+};
+const HAT_NAMES = ['가죽 모자', '철제 투구', '기사의 투구', '미스릴 투구', '용린 투구', '성역의 관', '마왕 사냥꾼의 투구'];
+const BOTTOM_NAMES = ['누빈 바지', '가죽 각반', '판금 각반', '미스릴 각반', '용린 각반', '성역의 각반', '마왕 사냥꾼의 각반'];
+const RING_NAMES = ['은 반지', '루비 반지', '사파이어 반지', '미스릴 반지', '용의 눈 반지', '성광의 반지', '마왕의 인장 반지'];
+for (let t = 1; t <= 7; t++) {
+  const a = ARMOR_REF[t];
+  EQUIP_BASES.push(
+    { id: `h_hat${t}`, name: HAT_NAMES[t - 1], slot: 'hat', tier: t, stats: { hp: Math.round(a.hp * 0.4), def: Math.round(a.def * 0.4), res: Math.round(a.res * 0.4) } },
+    { id: `b_bottom${t}`, name: BOTTOM_NAMES[t - 1], slot: 'bottom', tier: t, stats: { hp: Math.round(a.hp * 0.45), def: Math.round(a.def * 0.35), agi: Math.round(1 + t) } },
+    { id: `r_ring${t}`, name: RING_NAMES[t - 1], slot: 'ring', tier: t, stats: { atk: Math.round(1.2 * t), mag: Math.round(1.2 * t), crit: Math.round(1 + t * 0.4) } },
+  );
+}
 
 /** 티어별 드롭 층·상점 판매 조건 (판매 조건 = 처치해야 하는 보스 id) */
 export const TIER_INFO: { tier: number; floors: [number, number]; shopAfter: string | null }[] = [
@@ -70,9 +87,11 @@ export const EQUIP_BY_ID: Record<string, EquipBase> = Object.fromEntries(EQUIP_B
 export const RARITY_MULT: Record<Rarity, number> = { 1: 1.0, 2: 1.2, 3: 1.45, 4: 1.75, 5: 2.1 };
 /** 강화 1단계당: 장비 기본 스탯 +8% + 티어 비례 고정 보너스 */
 export const ENHANCE_STEP = 0.08;
-export function enhanceFlat(slot: 'weapon' | 'armor' | 'accessory', tier: number, mainKey: string): Record<string, number> {
+export function enhanceFlat(slot: BaseSlot, tier: number, mainKey: string): Record<string, number> {
   if (slot === 'weapon') return { [mainKey]: 1.5 * tier };
   if (slot === 'armor') return { hp: 8 * tier, def: 0.6 * tier, res: 0.4 * tier };
+  if (slot === 'hat' || slot === 'bottom') return { hp: 4 * tier, def: 0.3 * tier, res: 0.2 * tier };
+  if (slot === 'ring') return { atk: 0.4 * tier, mag: 0.4 * tier };
   return { hp: 5 * tier };
 }
 
@@ -130,17 +149,19 @@ export const POT_POOLS: Record<Slot, [Modifier[], Modifier[], Modifier[]]> = {
     [M('itemGain', 'pct', 5)],
   ],
 };
+/** 모자·하의는 방어구 옵션, 반지는 장신구 옵션 */
+const potSlot = (b: BaseSlot): Slot => (b === 'weapon' ? 'weapon' : b === 'accessory' || b === 'ring' ? 'accessory' : 'armor');
 const poolOf = (g: number, slot: Slot) => { const [a, u, l] = POT_POOLS[slot]; return g >= 4 ? [...a, ...u, ...l] : g >= 3 ? [...a, ...u] : a; };
 /** 잠재 한 줄: 첫 줄은 현재 등급, 나머지는 40% 확률로 같은 등급 · 아니면 한 등급 아래 */
-export function rollLine(rng: { pick<T>(a: T[]): T; chance(p: number): boolean }, slot: Slot, tier: number, grade: number, idx: number, exclude: string[], add = false): Modifier {
+export function rollLine(rng: { pick<T>(a: T[]): T; chance(p: number): boolean }, bslot: BaseSlot, tier: number, grade: number, idx: number, exclude: string[], add = false): Modifier {
   const g = idx === 0 || grade <= 1 || rng.chance(40) ? grade : grade - 1;
-  const pool = poolOf(g, slot);
+  const pool = poolOf(g, potSlot(bslot));
   let o = rng.pick(pool);
   for (let i = 0; i < 8 && exclude.includes(o.key); i++) o = rng.pick(pool);
   const v = o.value * optionScale(tier) * POT_MULT[g] * (add ? ADD_MULT : 1);
   return { ...o, value: Math.abs(v) < 1 ? Math.round(v * 100) / 100 : Math.round(v * 10) / 10, g };
 }
-export function rollLines(rng: { pick<T>(a: T[]): T; chance(p: number): boolean }, slot: Slot, tier: number, grade: number, n: number, add = false): Modifier[] {
+export function rollLines(rng: { pick<T>(a: T[]): T; chance(p: number): boolean }, slot: BaseSlot, tier: number, grade: number, n: number, add = false): Modifier[] {
   const out: Modifier[] = [];
   for (let i = 0; i < n; i++) out.push(rollLine(rng, slot, tier, grade, i, out.map((o) => o.key), add));
   return out;

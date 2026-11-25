@@ -6,7 +6,7 @@ import type { ExpeditionSettings, FloorResult } from '../core/dungeon';
 import { finalStats, expToNext, STAT_KEYS } from '../core/stats';
 import { gradeWeights, BOARD_SIZE, enhanceCost, enhanceRate, refreshSlotCost, rosterLimit } from '../core/town';
 import { equipStats } from '../core/stats';
-import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Row, type TargetPref, type UnitSnap, type BaseJob, type BattleEvent, type JobId, type Character, type Equip, type EquipSlot, type Rarity, type StatKey, type Modifier } from '../core/types';
+import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Row, type TargetPref, type UnitSnap, type BaseJob, type BattleEvent, type JobId, type Character, type Equip, type EquipSlot, type BaseSlot, type Rarity, type StatKey, type Modifier, EQUIP_SLOTS, wornSlots } from '../core/types';
 import { raidWeek, MILESTONE_SCALES, RAID_DIFF, RAID_DIFFS, RAID_DIFF_NAME, RAID_LIMIT, RAID_ROUNDS, nextResetText, raidForm, raidMaxHp, type RaidDiff } from '../data/raid';
 import { DAILIES, DAILY_BY_ID, DAILY_LIMIT, DAILY_STAGES, dailyReward } from '../data/daily';
 import { CRAFT_COST, RAID_CRAFT_COST, RAID_SET, SETS, SET_BASES, SET_BY_ID, SET_DROP_CHANCE, SET_RARITY, SHARD_CHANCE } from '../data/sets';
@@ -296,7 +296,9 @@ function potSummary(e: Equip) {
   if (e.add?.length) parts.push(`<span class="nw">${potBadge(e.addG ?? 1, true)} ${potLine(e.add[0], e.addG ?? 1)}</span>${e.add.slice(1).map((o) => `, ${potLine(o, e.addG ?? 1)}`).join('')}`);
   return parts.join(' · ');
 }
-const SLOT_NAME: Record<EquipSlot, string> = { weapon: '무기', armor: '방어구', accessory: '장신구' };
+const SLOT_NAME: Record<EquipSlot, string> = { weapon: '무기', hat: '모자', armor: '상의', bottom: '하의', accessory: '목걸이', ring1: '반지', ring2: '반지' };
+const KIND_NAME_EQ: Record<BaseSlot, string> = { weapon: '무기', hat: '모자', armor: '상의', bottom: '하의', accessory: '목걸이', ring: '반지' };
+const BASE_ORDER: Record<BaseSlot, number> = { weapon: 0, hat: 1, armor: 2, bottom: 3, accessory: 4, ring: 5 };
 
 // ───────── 화면들 ─────────
 let authMode: 'login' | 'signup' = 'login';
@@ -536,7 +538,7 @@ function allEquips() {
 type GroupView = 'party' | 'all' | 'bag';
 let smithView: GroupView = 'party';
 
-const SLOTS: EquipSlot[] = ['weapon', 'armor', 'accessory'];
+const SLOTS: EquipSlot[] = EQUIP_SLOTS;
 
 /** 제련 칸: 잠재 3줄(제련석) + 에디셔널 3줄(고대 룬석), 고정 토글 */
 function potBlock(e: Equip, add: boolean) {
@@ -577,9 +579,9 @@ function equipGroup(c: Character, mode: 'smith' | 'storage' | 'refine') {
   const s = S!;
   const cells = SLOTS.map((sl) => {
     const e = c.equipment[sl];
-    const bag = s.inventory.filter((x) => EQUIP_BY_ID[x.baseId].slot === sl && G.canWear(c, x));
+    const bag = s.inventory.filter((x) => wornSlots(EQUIP_BY_ID[x.baseId].slot).includes(sl) && G.canWear(c, x));
     const pick = mode === 'storage' && bag.length
-      ? `<select data-a="equipSel" data-uid="${esc(c.uid)}" aria-label="${esc(c.name)} ${SLOT_NAME[sl]}"><option value="">${e ? '교체…' : '장착…'}</option>${bag.map((x) => `<option value="${esc(x.uid)}">${esc(EQUIP_BY_ID[x.baseId].name)}${x.enhance ? ` +${x.enhance}` : ''} (${RARITY_NAME[x.rarity]})</option>`).join('')}</select>` : '';
+      ? `<select data-a="equipSel" data-uid="${esc(c.uid)}" data-slot="${sl}" aria-label="${esc(c.name)} ${SLOT_NAME[sl]}"><option value="">${e ? '교체…' : '장착…'}</option>${bag.map((x) => `<option value="${esc(x.uid)}">${esc(EQUIP_BY_ID[x.baseId].name)}${x.enhance ? ` +${x.enhance}` : ''} (${RARITY_NAME[x.rarity]})</option>`).join('')}</select>` : '';
     const body = e ? equipLine(e, { pot: mode !== 'refine' }) : '<span class="mute">비어 있음</span>';
     const ctl = mode === 'smith' ? (e ? enhanceCtl(e) : '')
       : mode === 'refine' ? (e ? refineCtl(e) : '')
@@ -614,8 +616,7 @@ const orderedRoster = (s: G.GameState) => [...sortRoster(G.partyChars(s)), ...so
 
 function bagList(mode: 'smith' | 'storage' | 'refine') {
   const s = S!;
-  const slotOrder: Record<EquipSlot, number> = { weapon: 0, armor: 1, accessory: 2 };
-  const list = [...s.inventory].sort((a, b) => slotOrder[EQUIP_BY_ID[a.baseId].slot] - slotOrder[EQUIP_BY_ID[b.baseId].slot] || b.rarity - a.rarity || b.enhance - a.enhance);
+  const list = [...s.inventory].sort((a, b) => BASE_ORDER[EQUIP_BY_ID[a.baseId].slot] - BASE_ORDER[EQUIP_BY_ID[b.baseId].slot] || b.rarity - a.rarity || b.enhance - a.enhance);
   if (!list.length) return '<p class="mute">가방이 비었습니다.</p>';
   return `<div class="items">${list.map((e) => {
     if (mode === 'smith') return `<div class="item"><div>${equipLine(e)}</div><div>${enhanceCtl(e)}</div></div>`;
@@ -657,11 +658,11 @@ function viewForge() {
   const bases = SET_BASES.filter((b) => b.set === forgeSet && (b.slot !== 'weapon' || b.jobs?.[0] === forgeJob));
   const raidSet = forgeSet === RAID_SET;
   const card = (b: typeof bases[number]) => {
-    const c = CRAFT_COST[b.slot], rc = RAID_CRAFT_COST[b.slot];
+    const c = CRAFT_COST[b.slot as 'weapon'], rc = RAID_CRAFT_COST[b.slot as 'weapon'];
     const can = raidSet ? s.scales >= rc.scales && s.gold >= rc.gold : s.cores >= c.cores && s.gold >= c.gold;
     const st = Object.entries(b.stats).map(([k, v]) => `${STAT_LABEL[k as StatKey]} +${v}`).join(', ');
     return `<div class="icard r5b forgecard"><div class="row" style="gap:10px;align-items:center"><span class="eico r5e setico" style="width:64px;height:64px">${equipSprite(equipKind(b.slot, b.jobs?.[0]), 8, { size: 60, set: b.set })}</span>
-      <div><b class="r5">${esc(b.name)}</b><div class="small mute">${({ weapon: '무기', armor: '갑옷', accessory: '장신구' } as Record<string, string>)[b.slot]}${b.jobs ? ` · ${JOBS[b.jobs[0]].name}` : ''} · 기본 ${st}</div></div></div>
+      <div><b class="r5">${esc(b.name)}</b><div class="small mute">${KIND_NAME_EQ[b.slot]}${b.jobs ? ` · ${JOBS[b.jobs[0]].name}` : ''} · 기본 ${st}</div></div></div>
       <div class="small">재료: ${raidSet ? `벨리알의 파편 ${rc.scales} · ${fmt(rc.gold)}G` : `군단장의 핵 ${c.cores} · ${fmt(c.gold)}G`}</div>
       <button class="btn" data-a="craft" data-id="${b.id}" ${can ? '' : 'disabled'}>제작</button></div>`;
   };
@@ -737,7 +738,7 @@ function viewRefinery() {
     : (refineView === 'party' ? G.partyChars(s) : orderedRoster(s)).map((c) => equipGroup(c, 'refine')).join('');
   return `<div class="wrap">${backBtn()}
     <h2>제련소</h2>
-    <p class="small mute"><b>잠재능력</b>은 제련석으로, <b>에디셔널 잠재</b>는 고대 룬석으로 3줄을 새로 새겨요. 새길 때마다 확률로 등급이 올라가고(${potBadge(1)}→${potBadge(2)}→${potBadge(3)}→${potBadge(4)}), 천장에 닿으면 확정이에요. 등급이 높을수록 수치가 크고, 유니크부터 전용 옵션이 붙어요. 무기·방어구·장신구마다 나오는 옵션이 달라요. 첫 줄은 현재 등급, 2·3번째 줄은 가끔 한 등급 아래로 나와요. 에디셔널 수치는 잠재의 절반이에요.<br>
+    <p class="small mute"><b>잠재능력</b>은 제련석으로, <b>에디셔널 잠재</b>는 고대 룬석으로 3줄을 새로 새겨요. 새길 때마다 확률로 등급이 올라가고(${potBadge(1)}→${potBadge(2)}→${potBadge(3)}→${potBadge(4)}), 천장에 닿으면 확정이에요. 등급이 높을수록 수치가 크고, 유니크부터 전용 옵션이 붙어요. 무기 · 방어구(모자·상의·하의) · 장신구(목걸이·반지)마다 나오는 옵션이 달라요. 첫 줄은 현재 등급, 2·3번째 줄은 가끔 한 등급 아래로 나와요. 에디셔널 수치는 잠재의 절반이에요.<br>
     제련석: 던전 (일반 ${REFINE_CHANCE.normal}% · 엘리트 ${REFINE_CHANCE.elite}% · 보스 ${REFINE_CHANCE.boss}%) · 보유 <b>${s.refineStones}</b>개<br>
     고대 룬석: 일일 던전 · 무한 탑 첫 돌파 · 월드보스 · 보유 <b>${s.runes ?? 0}</b>개</p>
     <div class="tabs" role="group" aria-label="보기">${tabs.map(([v, n]) => `<button class="${refineView === v ? 'on' : ''}" data-a="refineView" data-v="${v}">${n}</button>`).join('')}</div>
@@ -1421,7 +1422,7 @@ function adProfile(sel: Cloud.AdminUser) {
     body = `<div class="adchars">${order.map((c) => {
       const merc = c.mercId ? MERC_BY_ID[c.mercId] : null;
       const traits = [...c.traitIds, ...(c.uniqueTraitId ? [c.uniqueTraitId] : [])].map((t) => traitTag(t, false)).join('');
-      const eq = (['weapon', 'armor', 'accessory'] as EquipSlot[]).map((sl) => { const e = c.equipment[sl]; return `<div class="adeq"><span class="small mute">${SLOT_NAME[sl]}</span>${e ? `<div>${equipLine(e)}</div>` : '<span class="small mute">비어 있음</span>'}</div>`; }).join('');
+      const eq = EQUIP_SLOTS.map((sl) => { const e = c.equipment[sl]; return `<div class="adeq"><span class="small mute">${SLOT_NAME[sl]}</span>${e ? `<div>${equipLine(e)}</div>` : '<span class="small mute">비어 있음</span>'}</div>`; }).join('');
       const skills = c.skillSlots.map((sl) => SKILLS[sl.skillId]?.name ?? sl.skillId).join(' → ');
       return `<div class="adchar ${gs!.party.includes(c.uid) ? 'inparty' : ''}"><div class="row" style="gap:10px;align-items:center"><div class="ico">${avatar(c, 48)}</div>
         <div style="flex:1;min-width:0"><b>${esc(c.name)}</b> ${stars(c.grade)}${c.awakening ? ` <span class="small g5">각성 ${c.awakening}</span>` : ''}${gs!.party.includes(c.uid) ? ' <span class="tag">출전</span>' : ''}
@@ -1757,7 +1758,7 @@ function bulkPanel() {
   </details>`;
 }
 
-type WhFilter = 'all' | EquipSlot | 'worn' | 'bag';
+type WhFilter = 'all' | BaseSlot | 'worn' | 'bag';
 let whFilter: WhFilter = 'all';
 let whOpen: string | null = null;
 
@@ -1797,11 +1798,10 @@ function autoLootPanel() {
 function viewStorage() {
   const s = S!;
   const all = allEquips();
-  const slotOrder: Record<EquipSlot, number> = { weapon: 0, armor: 1, accessory: 2 };
   const list = all
     .filter(({ e, owner }) => whFilter === 'all' || (whFilter === 'worn' ? !!owner : whFilter === 'bag' ? !owner : EQUIP_BY_ID[e.baseId].slot === whFilter))
-    .sort((a, b) => slotOrder[EQUIP_BY_ID[a.e.baseId].slot] - slotOrder[EQUIP_BY_ID[b.e.baseId].slot] || b.e.rarity - a.e.rarity || b.e.enhance - a.e.enhance);
-  const filters: [WhFilter, string][] = [['all', `전체 ${all.length}`], ['weapon', '무기'], ['armor', '방어구'], ['accessory', '장신구'], ['worn', `장착 중 ${all.filter((x) => x.owner).length}`], ['bag', `가방 ${s.inventory.length}`]];
+    .sort((a, b) => BASE_ORDER[EQUIP_BY_ID[a.e.baseId].slot] - BASE_ORDER[EQUIP_BY_ID[b.e.baseId].slot] || b.e.rarity - a.e.rarity || b.e.enhance - a.e.enhance);
+  const filters: [WhFilter, string][] = [['all', `전체 ${all.length}`], ...(Object.keys(KIND_NAME_EQ) as BaseSlot[]).map((k) => [k, KIND_NAME_EQ[k]] as [WhFilter, string]), ['worn', `장착 중 ${all.filter((x) => x.owner).length}`], ['bag', `가방 ${s.inventory.length}`]];
   const cards = list.map(({ e, owner }) => {
     const bs = EQUIP_BY_ID[e.baseId];
     const on = whOpen === e.uid;
@@ -1811,7 +1811,7 @@ function viewStorage() {
     return `<div class="wrow r${e.rarity}b ${owner ? 'worn' : ''} ${on ? 'on' : ''}">
       <button class="whead" data-a="whOpen" data-e="${esc(e.uid)}" aria-expanded="${on}">
         <span class="eico r${e.rarity}e ${bs.set ? 'setico' : ''}">${equipIcon(e)}</span>
-        <span class="wname"><span class="iname r${e.rarity}">${esc(bs.name)}${e.enhance ? ` +${e.enhance}` : ''}</span><span class="small mute">${RARITY_NAME[e.rarity]} · ${SLOT_NAME[bs.slot]}${set ? ` · <span class="settag">${esc(set.name)}</span>` : ''}</span></span>
+        <span class="wname"><span class="iname r${e.rarity}">${esc(bs.name)}${e.enhance ? ` +${e.enhance}` : ''}</span><span class="small mute">${RARITY_NAME[e.rarity]} · ${KIND_NAME_EQ[bs.slot]}${set ? ` · <span class="settag">${esc(set.name)}</span>` : ''}</span></span>
         <span class="wown">${owner ? `<span class="ico">${avatar(owner, 22)}</span><span class="small">${esc(owner.name)}</span>` : '<span class="small mute">가방</span>'}</span>
         <span class="chev">${on ? '▴' : '▾'}</span>
       </button>
@@ -1820,7 +1820,7 @@ function viewStorage() {
         ${opts ? `<p class="small" style="margin:0"><b>잠재</b> ${opts}</p>` : ''}
         ${bs.jobs ? `<p class="small mute" style="margin:0">전용: ${bs.jobs.map((j) => JOBS[j].name).join('/')}</p>` : ''}
         ${set ? `<p class="small mute" style="margin:0">${esc(set.name)} 세트 효과는 캐릭터 정보에서 확인</p>` : ''}
-        <div class="row" style="gap:6px">${owner ? `<button class="btn ghost sm" data-a="unequip" data-uid="${esc(owner.uid)}" data-slot="${bs.slot}">${esc(owner.name)}에게서 해제</button>`
+        <div class="row" style="gap:6px">${owner ? `<button class="btn ghost sm" data-a="unequip" data-uid="${esc(owner.uid)}" data-slot="${G.slotOfWorn(owner, e) ?? ''}">${esc(owner.name)}에게서 해제</button>`
           : `<button class="btn ghost sm" data-a="sell" data-e="${esc(e.uid)}">판매 ${fmt(G.sellPrice(e))}G</button><button class="btn ghost sm" data-a="dismantle" data-e="${esc(e.uid)}">분해 · 강화석 +${G.dismantleValue(e)}</button>`}</div>
       </div>` : ''}
     </div>`;
@@ -2133,6 +2133,9 @@ function dailyResultPanel(ref: { id: string; stage: number; won: boolean }) {
 }
 
 // ───────── 모달 ─────────
+let charTab: 'equip' | 'skill' | 'trait' = 'equip';
+let charSlot: EquipSlot | null = null;
+const JOB_EMBLEM = (c: Character) => ({ warrior: '⚔️', mage: '🔮', archer: '🏹', priest: '✨' } as Record<string, string>)[JOBS[c.jobId].base] ?? '';
 function viewCharModal(uid: string) {
   const s = S!;
   const c = G.byUid(s, uid);
@@ -2144,13 +2147,20 @@ function viewCharModal(uid: string) {
     <button class="btn ghost sm" data-a="skillUp" data-uid="${esc(uid)}" data-i="${i}" aria-label="위로" ${i === 0 ? 'disabled' : ''}>↑</button><button class="btn ghost sm" data-a="skillDown" data-uid="${esc(uid)}" data-i="${i}" aria-label="아래로" ${i === c.skillSlots.length - 1 ? 'disabled' : ''}>↓</button></div>`).join('');
   const passives = JOBS[c.jobId].passives.map((p) => `<div class="sitem"><span class="t"><b>${esc(p.name)}</b> <span class="small mute">${esc(p.desc)}</span></span><span class="small ${p.level <= c.level ? '' : 'mute'}">${p.level <= c.level ? '습득' : `Lv.${p.level}`}</span></div>`).join('');
   const nextSkills = JOBS[c.jobId].skills.filter((x) => x.level > c.level).map((x) => `${skillTip(x.skillId)}(Lv.${x.level})`).join(', ');
-  const slots = (['weapon', 'armor', 'accessory'] as EquipSlot[]).map((sl) => {
+  const sel = charSlot && c.equipment ? charSlot : null;
+  const slotBtn = (sl: EquipSlot) => {
     const e = c.equipment[sl];
-    const cands = s.inventory.filter((x) => EQUIP_BY_ID[x.baseId].slot === sl && G.canWear(c, x));
-    return `<div class="item"><div><span class="small mute">${SLOT_NAME[sl]}</span><br>${e ? equipLine(e) + enhanceCtl(e) : '<span class="mute">비어 있음</span>'}</div>
-      <div class="grid" style="gap:6px">${e ? `<button class="btn ghost sm" data-a="unequip" data-uid="${esc(uid)}" data-slot="${sl}">해제</button>` : ''}
-      ${cands.length ? `<select data-a="equipSel" data-uid="${esc(uid)}" aria-label="${SLOT_NAME[sl]} 장착"><option value="">장착할 장비…</option>${cands.map((x) => `<option value="${esc(x.uid)}">${esc(EQUIP_BY_ID[x.baseId].name)}${x.enhance ? ` +${x.enhance}` : ''} (${RARITY_NAME[x.rarity]})</option>`).join('')}</select>` : ''}</div></div>`;
-  }).join('');
+    return `<button class="cslotb ${e ? `r${e.rarity}b` : 'vac'} ${sel === sl ? 'on' : ''}" data-a="charSlot" data-v="${sl}" aria-pressed="${sel === sl}" aria-label="${SLOT_NAME[sl]}${e ? ` ${esc(EQUIP_BY_ID[e.baseId].name)}` : ' 비어 있음'}">
+      ${e ? equipIcon(e, 40) : `<span class="emp">${SLOT_NAME[sl]}</span>`}${e?.enhance ? `<span class="enh">+${e.enhance}</span>` : ''}${e && (e.pot ?? 0) >= 2 ? `<span class="pdot p${e.pot}"></span>` : ''}</button>`;
+  };
+  const slotDetail = (() => {
+    if (!sel) return '<p class="small mute cdhint">장비 칸을 누르면 자세히 보고 바꿀 수 있어요.</p>';
+    const e = c.equipment[sel];
+    const cands = s.inventory.filter((x) => wornSlots(EQUIP_BY_ID[x.baseId].slot).includes(sel) && G.canWear(c, x));
+    return `<div class="cdetail2"><div class="small mute">${SLOT_NAME[sel]}</div>${e ? `<div>${equipLine(e)}</div>${enhanceCtl(e)}` : '<span class="mute">비어 있음</span>'}
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">${e ? `<button class="btn ghost sm" data-a="unequip" data-uid="${esc(uid)}" data-slot="${sel}">해제</button>` : ''}
+      ${cands.length ? `<select data-a="equipSel" data-uid="${esc(uid)}" data-slot="${sel}" aria-label="${SLOT_NAME[sel]} 장착"><option value="">${e ? '교체할' : '장착할'} 장비… (${cands.length})</option>${cands.map((x) => `<option value="${esc(x.uid)}">${esc(EQUIP_BY_ID[x.baseId].name)}${x.enhance ? ` +${x.enhance}` : ''} (${RARITY_NAME[x.rarity]})</option>`).join('')}</select>` : '<span class="small mute">가방에 낄 수 있는 장비가 없어요</span>'}</div></div>`;
+  })();
   const traits = [...c.traitIds, ...(c.uniqueTraitId ? [c.uniqueTraitId] : [])].map((t) => `<div class="sitem"><span class="t"><b>${esc(t)}</b> <span class="small mute">${esc(TRAITS[t]?.desc ?? '')}${c.awakening >= 5 ? ' (×1.5)' : ''}</span></span></div>`).join('') || '<p class="small mute">특성 없음 · 각성 3단계에서 하나 생깁니다</p>';
   const advCard = (j: JobId, can: boolean) => {
     const jd = JOBS[j];
@@ -2173,15 +2183,25 @@ function viewCharModal(uid: string) {
     <div class="mhead"><div class="ico">${avatar(c)}</div><div style="flex:1"><h2>${esc(c.name)} ${stars(c.grade)}</h2>
       <div class="mute small"><b class="cp">전투력 ${fmt(charPower(c))}</b> · ${GRADE_NAME[c.grade]} · ${esc(JOBS[c.jobId].name)} · Lv.${c.level}${c.awakening ? ` · 각성 ${c.awakening}/5` : ''}${merc ? ` · ${esc(merc.desc)}` : ''}</div></div>
       <button class="btn ghost sm" data-a="closeModal" aria-label="닫기">닫기</button></div>
+    <div class="tabs" role="group" aria-label="캐릭터 정보" style="margin:4px 0 12px">${([['equip', '장비'], ['skill', '스킬'], ['trait', '특성·전직']] as const).map(([k, n]) => `<button class="${charTab === k ? 'on' : ''}" data-a="charTab" data-v="${k}">${n}${k === 'trait' && canAdvance(c) && advOpts.length ? ' ⚡' : ''}</button>`).join('')}</div>
+    ${charTab === 'equip' ? `<div class="cmain">
+      <div class="ccol">${(['hat', 'armor', 'bottom', 'weapon'] as EquipSlot[]).map(slotBtn).join('')}</div>
+      <div class="cstage"><div class="cfig">${avatar(c, 132)}</div><b>${esc(c.name)}</b><span class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level}</span>
+        <div class="bar xp" style="width:100%" title="경험치 ${fmt(c.exp)} / ${fmt(expToNext(c.level))}"><i style="width:${pctW(c.exp, expToNext(c.level))}"></i></div>
+        <span class="small mute">${c.level >= levelCap(c) ? (JOBS[c.jobId].tier < 5 ? '전직 후 성장 가능' : '최고 레벨') : `경험치 ${pctW(c.exp, expToNext(c.level))}`}</span></div>
+      <div class="ccol">${(['accessory', 'ring1', 'ring2'] as EquipSlot[]).map(slotBtn).join('')}<div class="cslotb deco" aria-hidden="true">${JOB_EMBLEM(c)}</div></div>
+      <div class="cstats"><div class="cpow"><span class="small">전투력</span><b>${fmt(charPower(c))}</b></div>
+        ${STAT_KEYS.map((k) => `<div class="srow"><span>${STAT_LABEL[k]}</span><b>${fmt(Math.round(stats[k]))}${k === 'crit' ? '%' : ''}</b></div>`).join('')}
+        ${ex ? `<div class="small mute" style="margin-top:4px">${ex}</div>` : ''}</div>
+    </div>
+    ${slotDetail}
+    <div class="row" style="justify-content:space-between;margin-top:10px;flex-wrap:wrap;gap:6px"><span class="small mute">자동 장착: 가방 장비 중 전투력이 가장 높아지는 걸로 7칸을 채워요.</span><span class="row" style="gap:6px"><button class="btn ghost sm" data-a="unequipAll" data-uid="${esc(uid)}">전체 해제</button><button class="btn sm" data-a="autoEquip" data-uid="${esc(uid)}">자동 장착</button></span></div>
+    ${setStatus(c)}` : charTab === 'skill' ? `
+    <div class="sec" style="margin-top:0"><h3>스킬 우선순위</h3><p class="small mute">위에서부터 조건이 맞고 MP가 되는 스킬을 씁니다.${nextSkills ? ` 다음 해금: ${nextSkills}` : ''}</p><div class="slist">${skills}</div></div>
+    <div class="sec"><h3>패시브</h3><div class="slist">${passives}</div></div>` : `
     <p class="small" style="margin:0 0 10px">${esc(JOBS[c.jobId].desc)}</p>
-    <div class="grid" style="gap:6px"><div class="small mute">경험치 ${fmt(c.exp)} / ${fmt(expToNext(c.level))}${c.level >= levelCap(c) ? (JOBS[c.jobId].tier < 5 ? ' · 전직 후 성장 가능' : ' · 최고 레벨') : ''}</div><div class="bar xp"><i style="width:${pctW(c.exp, expToNext(c.level))}"></i></div>
-</div>
-    <div class="sec"><div class="stats">${STAT_KEYS.map((k) => `<div><span>${STAT_LABEL[k]}</span><b>${Math.round(stats[k])}${k === 'crit' ? '%' : ''}</b></div>`).join('')}</div>${ex ? `<div class="small mute">${ex}</div>` : ''}</div>
     ${adv}
-    <div class="sec"><h3>특성</h3>${traits}</div>
-    <div class="sec"><div class="row" style="justify-content:space-between"><h3>장비</h3><span class="row" style="gap:6px"><button class="btn ghost sm" data-a="unequipAll" data-uid="${esc(uid)}">전체 해제</button><button class="btn sm" data-a="autoEquip" data-uid="${esc(uid)}">자동 장착</button></span></div><p class="small mute" style="margin:0">자동 장착: 가방 장비 중 전투력이 가장 높아지는 걸로 바꿔요. 전체 해제: 끼고 있는 장비를 모두 가방에 넣어요.</p><div class="items">${slots}</div>${setStatus(c)}</div>
-    <div class="sec"><h3>스킬 우선순위</h3><p class="small mute">위에서부터 조건이 맞고 MP가 되는 스킬을 씁니다.${nextSkills ? ` 다음 해금: ${nextSkills}` : ''}</p><div class="slist">${skills}</div></div>
-    <div class="sec"><h3>패시브</h3><div class="slist">${passives}</div></div>
+    <div class="sec"><h3>특성</h3>${traits}</div>`}
     <div class="row" style="margin-top:16px">
       <button class="btn ${inParty ? 'ghost' : ''}" data-a="toggleParty" data-uid="${esc(uid)}">${inParty ? '파티에서 빼기' : '파티에 넣기'}</button>
       ${confirmDismiss === uid
@@ -2307,7 +2327,9 @@ app.addEventListener('click', (ev) => {
     case 'continue': S = lastSave; screen = 'town'; commit(); break;
     case 'go': if (d.to === 'forge' && screen === 'raid') forgeSet = RAID_SET;
       screen = d.to as Screen; modal = null; boardConfirm = null; if (screen === 'gate') gateRegion = null; if (screen === 'duel') { duelLast = null; loadDuelLog(); } render(); window.scrollTo(0, 0); break;
-    case 'openChar': confirmDismiss = null; modal = { kind: 'char', uid: d.uid! }; renderModal(); break;
+    case 'openChar': confirmDismiss = null; charSlot = null; charTab = 'equip'; modal = { kind: 'char', uid: d.uid! }; renderModal(); break;
+    case 'charTab': charTab = d.v as typeof charTab; renderModal(); break;
+    case 'charSlot': charSlot = charSlot === d.v ? null : d.v as EquipSlot; renderModal(); break;
     case 'openSave': modal = { kind: 'save' }; renderModal(); break;
     case 'closeModal': modal = null; render(); break;
     case 'refresh': case 'refreshAll': {
@@ -2564,7 +2586,7 @@ app.addEventListener('change', (ev) => {
   }
   if (el.dataset.a === 'equipSel' && S) {
     const v = (el as HTMLSelectElement).value;
-    if (v) commit(G.equip(S, el.dataset.uid!, v));
+    if (v) commit(G.equip(S, el.dataset.uid!, v, el.dataset.slot as EquipSlot | undefined));
   }
 });
 

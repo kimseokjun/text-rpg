@@ -24,6 +24,8 @@ import { WB_LIMIT, wbInfo } from '../server/worldboss';
 import { slotsFor } from '../server/multi';
 import { Expedition } from '../core/dungeon';
 import { Rng } from '../core/rng';
+import { CARDS, CARD_BY_ID, CARD_SETS, DECK_SIZE, MAX_AWAKEN, PACK_ODDS, SET_BY_ID as CARD_SET_BY_ID, cardEffectText, cardMods } from '../data/cards';
+import { cardHtml } from './cardart';
 import { TOWER_UNLOCK, isTowerBoss, towerBoss, towerGimmick, towerReward } from '../data/tower';
 import * as G from '../state/game';
 import { exportSave, importSave, initRemote, loadGame, remoteReady, saveGame, saveGameNow, wipeSave } from '../state/save';
@@ -33,7 +35,7 @@ import { townScene } from './art';
 import { charSprite } from './pixel';
 import { equipKind, equipSprite, itemSprite, monsterSprite, petSprite } from './sprites';
 
-type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex' | 'admin' | 'notice';
+type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex' | 'admin' | 'notice' | 'cards';
 
 let S: G.GameState | null = null;
 let screen: Screen = 'title';
@@ -203,7 +205,7 @@ async function submitFriend() {
 /** 활동 로그로 남길 행동 (관리자 대시보드) */
 let curAction = '';
 let confirmDel = '';
-const LOG_ACTIONS = new Set(['autoRefresh', 'autoEnh', 'hire', 'upgradeGuild', 'advance', 'enhance', 'buyEquip', 'buyDeal', 'train', 'reroll', 'refine', 'craft', 'buyEgg', 'petSellLow', 'claimQuest', 'dailySweep', 'buyStones']);
+const LOG_ACTIONS = new Set(['cardOpen', 'cardAwaken', 'autoRefresh', 'autoEnh', 'hire', 'upgradeGuild', 'advance', 'enhance', 'buyEquip', 'buyDeal', 'train', 'reroll', 'refine', 'craft', 'buyEgg', 'petSellLow', 'claimQuest', 'dailySweep', 'buyStones']);
 function commit(r?: G.Result) {
   if (CLOUD && r?.ok && LOG_ACTIONS.has(curAction)) Cloud.logEvent(curAction, r.msg ?? '');
   if (r && !r.ok) toast(r.msg, true);
@@ -339,6 +341,7 @@ function viewTitle() {
 const SIGN_ICON: Record<string, () => string> = {
   guild: () => charSprite('warrior', '길드', 2, { size: 34 }),
   rank: () => equipSprite('accessory', 7, { size: 34 }),
+  cards: () => cardHtml('c01', { size: 26, awaken: 0 }),
   admin: () => itemSprite('refine', { size: 34 }),
   smith: () => equipSprite('sword', 3, { size: 34 }),
   refinery: () => itemSprite('refine', { size: 34 }),
@@ -372,6 +375,7 @@ function viewTown() {
     ['gate', '모험', `${s.maxFloor ? `최고 ${esc(floorName(s.maxFloor))}` : '마왕숲 1층부터'} · 일일 ${dailyLeft}회${raidTxt ? ` · ${raidTxt}` : ''}`, 'gate'],
     ['guild', '모험가 길드', `모집·훈련소·신전 · 단원 ${s.roster.length}/${rosterLimit(s.guildLevel)}`],
     ['smith', '대장간', `강화·제련·제작 · 강화석 ${s.stones} · 제련석 ${s.refineStones}`],
+    ['cards', '카드 보관함', `신비 카드 ${Object.keys(s.cards ?? {}).length}/${CARDS.length}${s.cardPacks ? ` · 팩 ${s.cardPacks}개` : ''}`],
     ['pets', '펫 우리', G.activePet(s) ? `${PET_BY_ID[G.activePet(s)!.kind].name} 동행 · ${s.pets.length}마리` : `펫 알 ${fmt(EGG_PRICE)}G`],
     ['shop', '잡화점', `물약 ${Object.values(s.potions).reduce((a, b) => a + b, 0)}개 보유`],
     ['storage', '창고', `장비 ${allEquips().length}개 · 재료 보기`],
@@ -1150,7 +1154,7 @@ async function finishMulti() {
   const lost = ex.stopReason === 'wipe' || ex.stopReason === 'timeout';
   const myRw = r?.error ? null : r.reward;
   summary = { reason: lost ? `균열 ${ex.floor}층에서 ${ex.stopReason === 'timeout' ? '시간 초과로 후퇴' : '전멸'}` : `균열 ${room.result.cleared}층 완주!`, daily: `${room.host_name}의 방 · 협동 보너스 +20%${myRw?.level && myRw.level < room.floor ? ` · 보상은 내 최고층(${floorName(myRw.level)}) 기준` : ''}`, report: ex.report, lost, diag: [], insured: true, floor: ex.floor, repeat: false, runs: ex.floorsCleared,
-    gold: myRw?.gold ?? 0, exp: myRw?.exp ?? 0, stones: myRw?.stones ?? 0, blessings: myRw?.blessings ?? 0, refineStones: myRw?.refineStones ?? 0, shards: 0, cores: myRw?.cores ?? 0, equips, levelUps: ups, bosses: [], newMaxFloor: false } as unknown as G.ExpeditionSummary;
+    gold: myRw?.gold ?? 0, exp: myRw?.exp ?? 0, stones: myRw?.stones ?? 0, blessings: myRw?.blessings ?? 0, refineStones: myRw?.refineStones ?? 0, shards: 0, cores: myRw?.cores ?? 0, cardPacks: myRw?.cardPacks ?? 0, equips, levelUps: ups, bosses: [], newMaxFloor: false } as unknown as G.ExpeditionSummary;
   Cloud.logEvent('multi', `${(summary as G.ExpeditionSummary).reason} · ${room.host_name}의 방`);
   myRoom = null; roomSt = null; multiRoom = null; Cloud.watchRoom(null, () => {});
   speed = mySpeed;
@@ -1188,7 +1192,7 @@ function viewCodex() {
 }
 
 // ───────── 관리자 대시보드 ─────────
-const KIND_NAME: Record<string, string> = { autoRefresh: '자동 교체', autoEnh: '자동 강화', login: '접속', signup: '회원가입', run: '던전', tower: '무한 탑', raid: '레이드', daily: '일일 던전', worldboss: '월드보스', multi: '멀티 던전', hire: '용병 고용', upgradeGuild: '길드 강화', advance: '전직', enhance: '강화', buyEquip: '장비 구매', buyDeal: '특가 구매', train: '훈련', reroll: '특성 재설정', refine: '제련', craft: '세트 제작', buyEgg: '펫 알', petSellLow: '펫 정리', claimQuest: '목표 보상', dailySweep: '소탕', buyStones: '강화석 구매', admin_gift: '관리자 지급' };
+const KIND_NAME: Record<string, string> = { cardOpen: '카드 팩', cardAwaken: '카드 각성', autoRefresh: '자동 교체', autoEnh: '자동 강화', login: '접속', signup: '회원가입', run: '던전', tower: '무한 탑', raid: '레이드', daily: '일일 던전', worldboss: '월드보스', multi: '멀티 던전', hire: '용병 고용', upgradeGuild: '길드 강화', advance: '전직', enhance: '강화', buyEquip: '장비 구매', buyDeal: '특가 구매', train: '훈련', reroll: '특성 재설정', refine: '제련', craft: '세트 제작', buyEgg: '펫 알', petSellLow: '펫 정리', claimQuest: '목표 보상', dailySweep: '소탕', buyStones: '강화석 구매', admin_gift: '관리자 지급' };
 let adTab: 'over' | 'users' | 'log' | 'chat' = 'over';
 let adStats: any = null, adUsers: Cloud.AdminUser[] = [], adEvents: Cloud.EventRow[] = [], adChats: (Cloud.ChatMsg & { channel: string })[] = [];
 let adSel: string | null = null, adSave: any = null, adSelEvents: Cloud.EventRow[] = [];
@@ -1316,6 +1320,54 @@ function viewAdmin() {
   </div>`;
 }
 const evRow = (e: Cloud.EventRow) => `<div class="evr"><span class="ct">${ymd(e.created_at).slice(5)}</span><b>${esc(e.username)}</b><span class="tag">${esc(KIND_NAME[e.kind] ?? e.kind)}</span><span class="ed">${esc(e.detail)}</span></div>`;
+
+let cardTab: 'deck' | 'all' | 'open' = 'deck';
+let cardSet = 'all';
+let cardSel: string | null = null;
+function viewCards() {
+  const s = S!;
+  const owned = s.cards ?? {};
+  const deck = s.deck ?? [];
+  const eff = cardMods(owned, deck);
+  const tabs: [typeof cardTab, string][] = [['deck', `덱 ${deck.length}/${DECK_SIZE}`], ['all', `컬렉션 ${Object.keys(owned).length}/${CARDS.length}`], ['open', `팩 열기${s.cardPacks ? ` (${s.cardPacks})` : ''}`]];
+  const sel = cardSel ? CARD_BY_ID[cardSel] : null;
+  const so = sel ? owned[sel.id] : null;
+  const detail = sel ? `<div class="cdetail g${sel.grade}">${cardHtml(sel.id, { awaken: so?.awaken ?? 0, locked: !so, size: 120 })}
+      <div style="flex:1;min-width:0"><b class="g${sel.grade}">${['', '일반', '고급', '희귀', '영웅', '전설'][sel.grade]} · ${esc(sel.name)}</b><div class="small mute">${esc(sel.title)} · ${esc(CARD_SET_BY_ID[sel.set].name)}</div>
+        ${so ? `<p class="small" style="margin:6px 0">효과: <b>${esc(cardEffectText(sel, so.awaken))}</b>${so.awaken < MAX_AWAKEN ? ` <span class="mute">→ 각성 시 ${esc(cardEffectText(sel, so.awaken + 1))}</span>` : ''}</p>
+          <p class="small mute" style="margin:0 0 8px">각성 ${so.awaken}/${MAX_AWAKEN} · 여분 ${so.count - 1}장${so.awaken < MAX_AWAKEN ? ` · 다음 각성에 ${G.awakenNeed(so)}장 필요` : ''}</p>
+          <div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sm" data-a="cardDeck" data-v="${sel.id}">${deck.includes(sel.id) ? '덱에서 빼기' : '덱에 넣기'}</button><button class="btn ghost sm" data-a="cardAwaken" data-v="${sel.id}" ${so.awaken < MAX_AWAKEN && so.count - 1 >= G.awakenNeed(so) ? '' : 'disabled'}>각성</button></div>`
+        : '<p class="small mute">아직 없는 카드예요. 균열에서 카드 팩을 모아 열어보세요.</p>'}</div>
+      <button class="btn ghost sm" data-a="cardSel" data-v="${sel.id}" aria-label="닫기">✕</button></div>` : '';
+  let body = '';
+  if (cardTab === 'deck') {
+    const slots = Array.from({ length: DECK_SIZE }, (_, i) => deck[i]).map((id) => id ? `<button class="cslot" data-a="cardSel" data-v="${id}">${cardHtml(id, { awaken: owned[id]?.awaken ?? 0, size: 104 })}</button>` : `<button class="cslot empty" data-a="cardTab" data-v="all"><span>+</span><span class="small mute">카드 넣기</span></button>`).join('');
+    const setLines = eff.lines.filter((l) => l.kind !== 'codex');
+    body = `<div class="cdeck">${slots}</div>
+      <div class="panel"><h3 style="margin-top:0">적용 중인 효과 <span class="small mute">출전 파티 전원</span></h3>
+        <div class="small">${deck.map((id) => CARD_BY_ID[id]).filter(Boolean).map((c) => `<span class="tag">${esc(c.name)} · ${esc(cardEffectText(c, owned[c.id]?.awaken ?? 0))}</span>`).join(' ') || '<span class="mute">장착한 카드가 없어요</span>'}</div>
+        <ul class="csets">${setLines.map((l) => `<li class="${l.on ? 'on' : ''}"><span>${l.on ? '✔' : '·'}</span>${esc(l.text)}</li>`).join('')}</ul>
+        ${eff.lines.filter((l) => l.kind === 'codex').map((l) => `<p class="small" style="margin:6px 0 0"><b>📖 ${esc(l.text)}</b> <span class="mute">(장착 안 해도 적용)</span></p>`).join('') || '<p class="small mute" style="margin:6px 0 0">📖 도감: 카드를 모을 때마다 HP·공격·마력이 영구로 올라요</p>'}</div>
+      <div class="panel"><h3 style="margin-top:0">세트 안내</h3>${CARD_SETS.map((st) => `<div class="cset"><b style="color:${st.color}">${esc(st.name)}</b> <span class="small mute">${esc(st.desc)}</span><div class="small">${st.bonus.map((b) => `${b.n}장: ${esc(b.text)}`).join(' · ')}</div><div class="small mute">각성 합계 ${st.awaken.map((a) => `${a.sum}: ${esc(a.text)}`).join(' · ')}</div></div>`).join('')}</div>`;
+  } else if (cardTab === 'all') {
+    const list = CARDS.filter((c) => cardSet === 'all' || c.set === cardSet);
+    body = `<div class="tabs" role="group" aria-label="세트">${[['all', '전체'], ...CARD_SETS.map((x) => [x.id, x.name])].map(([k, n]) => `<button class="${cardSet === k ? 'on' : ''}" data-a="cardSetF" data-v="${k}">${esc(n)}</button>`).join('')}</div>
+      <div class="cgrid">${list.map((c) => { const o = owned[c.id]; const canAw = o && o.awaken < MAX_AWAKEN && o.count - 1 >= G.awakenNeed(o); return `<button class="cgi ${deck.includes(c.id) ? 'indeck' : ''}" data-a="cardSel" data-v="${c.id}">${cardHtml(c.id, { awaken: o?.awaken ?? 0, locked: !o, size: 104 })}${deck.includes(c.id) ? '<span class="cbadge">장착</span>' : canAw ? '<span class="cbadge up">각성 가능</span>' : o && o.count > 1 ? `<span class="cbadge dim">+${o.count - 1}</span>` : ''}</button>`; }).join('')}</div>`;
+  } else {
+    const last = G.lastCards;
+    body = `<div class="panel" style="text-align:center"><div class="row" style="justify-content:center;gap:10px;align-items:center;flex-wrap:wrap"><b>신비 카드 팩 ${s.cardPacks ?? 0}개</b>
+      <button class="btn" data-a="cardOpen" data-v="1" ${(s.cardPacks ?? 0) >= 1 ? '' : 'disabled'}>1개 열기</button><button class="btn ghost" data-a="cardOpen" data-v="10" ${(s.cardPacks ?? 0) >= 1 ? '' : 'disabled'}>${Math.min(10, s.cardPacks ?? 0) || 10}개 열기</button></div>
+      <p class="small mute">확률: 일반 ${PACK_ODDS[1]}% · 고급 ${PACK_ODDS[2]}% · 희귀 ${PACK_ODDS[3]}% · 영웅 ${PACK_ODDS[4]}% · 전설 ${PACK_ODDS[5]}%<br>카드 팩은 <b>균열(멀티)</b>에서 나와요: 층마다 20%, 5층 정예·10층 보스 확정, 완주 보너스 +1</p>
+      ${last.length ? `<div class="copen">${last.map((g, i) => `<div class="cflip" style="animation-delay:${i * 0.08}s">${cardHtml(g.id, { awaken: owned[g.id]?.awaken ?? 0, size: 96 })}${g.isNew ? '<span class="cbadge new">NEW</span>' : ''}</div>`).join('')}</div>` : ''}</div>`;
+  }
+  return `<div class="wrap">${backBtn()}
+    <h2>카드 보관함</h2>
+    <p class="small mute" style="margin-top:-4px">신비 카드를 덱에 장착하면 출전 파티 전원이 강해져요. 같은 세트를 모아 끼면 세트 효과, 같은 카드를 겹치면 각성해요.</p>
+    <div class="tabs" role="group" aria-label="카드">${tabs.map(([k, n]) => `<button class="${cardTab === k ? 'on' : ''}" data-a="cardTab" data-v="${k}">${n}</button>`).join('')}</div>
+    ${detail}
+    ${body}
+  </div>`;
+}
 
 function viewTower() {
   const s = S!;
@@ -1791,6 +1843,7 @@ function viewResult() {
       <div><span class="small mute">축복 주문서</span><b>+${r.blessings}</b></div>
       <div><span class="small mute">제련석</span><b>+${r.refineStones ?? 0}</b></div>
       ${r.cores ? `<div><span class="small mute">군단장의 핵</span><b>+${r.cores}</b></div>` : ''}
+      ${(r as { cardPacks?: number }).cardPacks ? `<div><span class="small mute">신비 카드 팩</span><b style="color:var(--gold)">+${(r as { cardPacks?: number }).cardPacks}</b></div>` : ''}
     </div>
     ${r.levelUps.length ? `<div class="panel"><h3>레벨 업</h3><p>${r.levelUps.map((l) => `${esc(l.name)} Lv.${l.to}`).join(' · ')}</p></div>` : ''}
     ${r.equips.length ? `<div class="sec"><h3>획득 장비</h3><div class="items">${r.equips.map((e) => `<div class="item"><div>${equipLine(e)}</div></div>`).join('')}</div></div>` : ''}
@@ -1954,7 +2007,7 @@ function renderNow() {
   }
   const body = !S || screen === 'title' ? viewTitle()
     : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
-    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'admin' ? viewAdmin() : screen === 'notice' ? viewNotice() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : viewResult();
+    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'admin' ? viewAdmin() : screen === 'notice' ? viewNotice() : screen === 'cards' ? viewCards() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : viewResult();
   app.innerHTML = (screen === 'title' ? '' : topbar()) + body;
   document.querySelector('.hubtabs .on')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
   renderModal();
@@ -2146,6 +2199,12 @@ app.addEventListener('click', (ev) => {
     case 'autoTries': autoTries = Number(d.v); render(); break;
     case 'autoRefresh': boardConfirm = null; curAction = 'autoRefresh'; commit(G.autoRefresh(s!, autoGrade, autoTries)); break;
     case 'autoEnh': curAction = 'autoEnh'; commit(G.autoEnhance(s!, d.e!, Number(d.v), useBlessing)); if (s && s.blessings === 0) useBlessing = false; break;
+    case 'cardTab': cardTab = d.v as typeof cardTab; cardSel = null; render(); break;
+    case 'cardSetF': cardSet = d.v!; render(); break;
+    case 'cardSel': cardSel = cardSel === d.v ? null : d.v!; render(); if (cardSel) document.querySelector('.cdetail')?.scrollIntoView({ block: 'nearest' }); break;
+    case 'cardDeck': curAction = 'cardDeck'; commit(G.toggleDeck(s!, d.v!)); break;
+    case 'cardAwaken': curAction = 'cardAwaken'; commit(G.awakenCard(s!, d.v!)); break;
+    case 'cardOpen': curAction = 'cardOpen'; commit(G.openCardPacks(s!, Number(d.v))); break;
     case 'claimQuest': commit(G.claimQuest(s!)); break;
     case 'whFilter': whFilter = d.v as WhFilter; render(); break;
     case 'whOpen': whOpen = whOpen === d.e ? null : d.e!; render(); break;

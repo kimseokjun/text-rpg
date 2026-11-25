@@ -45,7 +45,7 @@ export function simulateMulti(members: MultiMember[], floor: number, seed: numbe
   const loot = ex.loot;
   const reward = {
     gold: Math.round(loot.gold * COOP_BONUS), exp: Math.round(loot.exp * COOP_BONUS), stones: loot.stones, blessings: loot.blessings,
-    refineStones: loot.refineStones, cores: loot.cores, equips: loot.equips,
+    refineStones: loot.refineStones, cores: loot.cores, cardPacks: loot.cardPacks ?? 0, equips: loot.equips,
   };
   // 각자 보상: 자기가 깬 층 기준 (못 깬 층 균열이면 내 최고층 수준으로 낮춤)
   const rng = new Rng(seed + 1);
@@ -58,7 +58,7 @@ export function simulateMulti(members: MultiMember[], floor: number, seed: numbe
       gold: Math.round(reward.gold * k), exp: Math.round(reward.exp * k),
       stones: Math.round(reward.stones * Math.min(1, k * 1.5)), blessings: lv >= floor ? reward.blessings : Math.floor(reward.blessings * k),
       refineStones: lv >= floor ? reward.refineStones : Math.floor(reward.refineStones * Math.min(1, k * 1.5)),
-      cores: lv > 50 ? reward.cores : 0,
+      cores: lv > 50 ? reward.cores : 0, cardPacks: reward.cardPacks,
       equips: lv >= floor ? reward.equips : reward.equips.map((e) => rollEquip(rng, lv, Math.min(e.rarity, 3) as 1 | 2 | 3)),
     };
   }

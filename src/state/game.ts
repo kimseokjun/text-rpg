@@ -14,6 +14,7 @@ import { MILESTONES, MILESTONE_SCALES, RAID_DIFF, RAID_DIFF_NAME, RAID_LIMIT, at
 import { EGG_PRICE, PET_BY_ID, PET_GRADE_NAME, PET_MAX_STARS, hatch, petMods, petSellPrice, type Pet } from '../data/pets';
 import { charPower, partyPower } from '../core/power';
 import { JOBS } from '../data/jobs';
+import { AWAKEN_COST, CARD_BY_ID, DECK_SIZE, MAX_AWAKEN, cardMods, openPack, type OwnedCard } from '../data/cards';
 import { MERC_BY_ID } from '../data/mercenaries';
 import { QUESTS, rewardText, type QuestView } from '../data/quests';
 import { TOWER_UNLOCK, towerGimmick, towerReward } from '../data/tower';
@@ -38,6 +39,9 @@ export interface GameState {
   shards: number;
   coreMerged?: boolean;
   codex?: string[];
+  cards?: Record<string, OwnedCard>;
+  deck?: string[];
+  cardPacks?: number;
   cnt?: Record<string, number>;
   questIdx?: number;
   tower?: { best: number; claimed: number };
@@ -316,7 +320,7 @@ export function craftSet(s: GameState, baseId: string): Result {
 
 // ───────── 펫 우리 ─────────
 export const activePet = (s: GameState) => s.pets.find((p) => p.uid === s.activePet);
-export const petPartyMods = (s: GameState) => petMods(activePet(s));
+export const petPartyMods = (s: GameState) => [...petMods(activePet(s)), ...cardMods(s.cards ?? {}, s.deck ?? []).mods];
 /** 펫 효과까지 넣은 파티 전투력 */
 export const statePower = (s: GameState) => partyPower(partyChars(s), petPartyMods(s));
 function addPet(s: GameState, p: Omit<Pet, 'uid'>): Pet {
@@ -952,8 +956,9 @@ function applyTower(s: GameState, ex: Expedition): string[] {
 }
 
 /** 멀티 던전 보상: 재화·장비는 전원 동일, 경험치는 내가 데려간 단원 비율만큼 내 단원에게 */
-export function applyMultiReward(s: GameState, r: { gold: number; exp: number; stones: number; blessings: number; refineStones: number; cores: number; equips: Equip[] }, myUids: string[], totalChars: number) {
+export function applyMultiReward(s: GameState, r: { gold: number; exp: number; stones: number; blessings: number; refineStones: number; cores: number; cardPacks?: number; equips: Equip[] }, myUids: string[], totalChars: number) {
   s.gold += r.gold; s.stones += r.stones; s.blessings += r.blessings; s.refineStones += r.refineStones; s.cores += r.cores;
+  s.cardPacks = (s.cardPacks ?? 0) + (r.cardPacks ?? 0);
   const equips = r.equips.map((e) => ({ ...e, uid: newUid('e') }));
   s.inventory.push(...equips);
   const mine = myUids.map((u) => byUid(s, u)).filter(Boolean) as Character[];
@@ -1000,3 +1005,43 @@ export function claimQuest(s: GameState): Result {
 
 /** 전직할 수 있는 단원 */
 export const advanceable = (s: GameState) => s.roster.filter((c) => canAdvance(c));
+
+// ───────── 신비 카드 ─────────
+export function openCardPacks(s: GameState, n: number): Result & { got?: { id: string; isNew: boolean }[] } {
+  const have = s.cardPacks ?? 0;
+  n = Math.min(n, have);
+  if (n <= 0) return fail('카드 팩이 없어요. 균열(멀티)에서 얻을 수 있어요');
+  s.cards ??= {};
+  const r = rngOf(s);
+  const got: { id: string; isNew: boolean }[] = [];
+  for (let i = 0; i < n; i++) {
+    const c = openPack(r);
+    const isNew = !s.cards[c.id];
+    if (isNew) s.cards[c.id] = { count: 1, awaken: 0 }; else s.cards[c.id].count++;
+    got.push({ id: c.id, isNew });
+  }
+  s.cardPacks = have - n;
+  lastCards = got;
+  const best = got.map((g) => CARD_BY_ID[g.id]).reduce((a, b) => (b.grade > a.grade ? b : a));
+  return { ok: true, got, msg: `카드 ${n}장! 최고 ${['', '일반', '고급', '희귀', '영웅', '전설'][best.grade]} ${best.name}${got.some((g) => g.isNew) ? ` · 새 카드 ${got.filter((g) => g.isNew).length}장` : ''}` };
+}
+export let lastCards: { id: string; isNew: boolean }[] = [];
+export function toggleDeck(s: GameState, id: string): Result {
+  if (!s.cards?.[id]) return fail('없는 카드예요');
+  s.deck ??= [];
+  if (s.deck.includes(id)) { s.deck = s.deck.filter((x) => x !== id); return { ok: true, msg: `${CARD_BY_ID[id].name} 해제` }; }
+  if (s.deck.length >= DECK_SIZE) return fail(`덱은 ${DECK_SIZE}장까지예요`);
+  s.deck.push(id);
+  return { ok: true, msg: `${CARD_BY_ID[id].name} 장착` };
+}
+/** 각성: 같은 카드 여분을 소모 (count = 보유 장수, 1장은 본체) */
+export const awakenNeed = (o: OwnedCard) => (o.awaken >= MAX_AWAKEN ? Infinity : AWAKEN_COST[o.awaken]);
+export function awakenCard(s: GameState, id: string): Result {
+  const o = s.cards?.[id];
+  if (!o) return fail('없는 카드예요');
+  if (o.awaken >= MAX_AWAKEN) return fail('이미 최대 각성이에요');
+  const need = awakenNeed(o);
+  if (o.count - 1 < need) return fail(`같은 카드가 ${need}장 더 필요해요`);
+  o.count -= need; o.awaken++;
+  return { ok: true, msg: `${CARD_BY_ID[id].name} 각성 ${o.awaken}단계!` };
+}

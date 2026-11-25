@@ -343,6 +343,11 @@ export async function adminGift(user: string, g: { gold: number; stones: number;
   const { error } = await sb.rpc('admin_gift2', { p_user: user, p_gold: g.gold, p_stones: g.stones, p_bless: g.blessings, p_refine: g.refineStones, p_cores: g.cores, p_scales: g.scales, p_runes: g.runes ?? 0, p_myth: g.mythEss ?? 0, p_packs: g.cardPacks ?? 0 });
   return error ? (/no save/.test(error.message) ? '서버 세이브가 없는 계정이에요' : error.message) : null;
 }
+export async function adminResetTries(user: string, o: { daily: boolean; raid: boolean; r4: boolean; wb: boolean }): Promise<string | null> {
+  if (!sb) return '서버 없음';
+  const { error } = await sb.rpc('admin_reset_tries', { p_user: user, p_daily: o.daily, p_raid: o.raid, p_r4: o.r4, p_wb: o.wb });
+  return error ? (/no save/.test(error.message) ? '서버 세이브가 없는 계정이에요' : error.message) : null;
+}
 export async function adminSet(user: string, muted: boolean, admin: boolean): Promise<string | null> {
   if (!sb) return '서버 없음';
   const { error } = await sb.rpc('admin_set', { p_user: user, p_muted: muted, p_admin: admin });

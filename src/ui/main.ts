@@ -1873,6 +1873,8 @@ function adProfile(sel: Cloud.AdminUser) {
   } else {
     body = `<div class="row" style="gap:6px;flex-wrap:wrap;margin:4px 0 10px"><button class="btn ghost sm" data-a="adMute" data-v="${sel.id}">${sel.muted ? '채팅 금지 해제' : '채팅 금지'}</button>${sel.id !== Cloud.session?.user.id ? `<button class="btn ghost sm" data-a="adAdmin" data-v="${sel.id}">${sel.is_admin ? '관리자 해제' : '관리자 지정'}</button>` : ''}</div>
       <form class="adgift" data-form="adgift"><b class="small" style="flex-basis:100%">재료 지급</b>${[['gold', '골드'], ['stones', '강화석'], ['blessings', '축복'], ['refineStones', '제련석'], ['cores', '핵'], ['scales', '벨리알 파편'], ['runes', '고대 룬석'], ['mythEss', '신화의 정수'], ['cardPacks', '카드 팩']].map(([k, n]) => `<label class="small">${n}<input type="number" min="0" step="1" name="${k}" value="0" inputmode="numeric"></label>`).join('')}<button class="btn sm" type="submit">지급</button></form>
+      <form class="adgift" data-form="adreset"><b class="small" style="flex-basis:100%">도전 횟수 초기화 <span class="mute">(오늘 것만)</span></b>${[['daily', '일일 던전'], ['raid', '개인 레이드'], ['r4', '4인 레이드'], ['wb', '월드보스']].map(([k, n]) => `<label class="small"><input type="checkbox" name="${k}" checked> ${n}</label>`).join('')}<button class="btn sm" type="submit">초기화</button>
+        <span class="small mute" style="flex-basis:100%">파티 던전·균열·무한의 탑은 횟수 제한이 없어요. 월드보스는 입힌 피해·순위를 그대로 두고 횟수만 되돌려요.</span></form>
       <p class="small mute" style="margin:6px 0 0">지급하면 그 계정 서버 세이브에 바로 더해져요. 접속 중이면 새로고침해야 보여요 (그 전에 저장되면 덮어써짐).</p>`;
   }
   return `<div class="panel addetail">${head}
@@ -3084,6 +3086,14 @@ app.addEventListener('submit', (ev) => {
     if (!Object.values(g).some((v) => v > 0)) { toast('지급할 수량을 넣어주세요', true); return; }
     const who = adUsers.find((u) => u.id === adSel)?.username ?? '';
     Cloud.adminGift(adSel, g).then((e) => { if (e) toast(e, true); else { toast(`${who}에게 지급 완료`); if (adSel === Cloud.session?.user.id) toast('내 계정에 지급했어요. 새로고침하면 반영돼요'); adOpenUser(adSel!); adLoad('users', true); } });
+  }
+  if (f.dataset.form === 'adreset' && adSel) {
+    ev.preventDefault();
+    const fd = new FormData(f as HTMLFormElement);
+    const o = { daily: fd.get('daily') === 'on', raid: fd.get('raid') === 'on', r4: fd.get('r4') === 'on', wb: fd.get('wb') === 'on' };
+    if (!Object.values(o).some(Boolean)) { toast('초기화할 항목을 골라주세요', true); return; }
+    const who = adUsers.find((u) => u.id === adSel)?.username ?? '';
+    Cloud.adminResetTries(adSel, o).then((e) => { if (e) toast(e, true); else { toast(`${who} 도전 횟수 초기화 완료 (접속 중이면 새로고침)`); adOpenUser(adSel!); } });
   }
   if (f.dataset.form === 'room') {
     ev.preventDefault();

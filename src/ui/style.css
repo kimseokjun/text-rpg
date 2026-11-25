@@ -435,3 +435,14 @@ svg.px{image-rendering:pixelated;flex:none}
 .addetail{border-color:var(--gold)}
 .updbar{position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:80;border:0;border-radius:0 0 12px 12px;padding:10px 18px;background:var(--gold);color:#1b1622;font-weight:800;cursor:pointer;box-shadow:0 4px 16px #0008}
 .chatbox .onl{color:var(--ok);white-space:nowrap;margin:0}.chatbox .onl.on{text-decoration:underline}
+.nstrip{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%;margin:12px 0 0;padding:10px 14px;border-radius:12px;background:var(--panel);border:1px solid var(--line)}
+.nstrip b{flex:1;min-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nstrip:focus-visible{outline:2px solid var(--lapis2)}
+.nbadge{font-size:12px;font-weight:800;color:#fff;background:var(--bad);border-radius:999px;padding:2px 8px}
+.tag.patch{border-color:#7fb3ff;color:#7fb3ff}.tag.plan{border-color:var(--gold);color:var(--gold)}.tag.notice{border-color:var(--ok);color:var(--ok)}
+.nlist{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.notice{padding:12px 14px;border-radius:12px;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:0 12px 12px 0}
+.notice.nk-patch{border-left-color:#7fb3ff}.notice.nk-plan{border-left-color:var(--gold)}.notice.nk-notice{border-left-color:var(--ok)}
+.nbody{white-space:pre-line;margin-top:8px;font-size:14.5px;line-height:1.7}
+.nform textarea,.nform input{width:100%;box-sizing:border-box}
+.nform input[name=title]{min-height:42px;padding:6px 10px}.nform .chk{white-space:nowrap}

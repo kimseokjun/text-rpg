@@ -33,7 +33,7 @@ import { townScene } from './art';
 import { charSprite } from './pixel';
 import { equipKind, equipSprite, itemSprite, monsterSprite, petSprite } from './sprites';
 
-type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex' | 'admin';
+type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex' | 'admin' | 'notice';
 
 let S: G.GameState | null = null;
 let screen: Screen = 'title';
@@ -78,11 +78,47 @@ let chatDraft = '';
 let friends: Cloud.Friend[] = [];
 let friendDraft = '';
 let socialOn = false;
+let notices: Cloud.Notice[] = [];
+let noticeTab: 'all' | 'patch' | 'plan' | 'notice' = 'all';
+let noticeEdit: Partial<Cloud.Notice> | null = null;
+const NOTICE_KIND: Record<string, string> = { patch: '패치', plan: '예정', notice: '공지' };
+const noticeRead = () => { try { return Number(localStorage.getItem('text-rpg-notice-read') ?? 0); } catch { return 0; } };
+async function loadNoticesNow() { notices = await Cloud.loadNotices(); if (screen === 'town' || screen === 'notice') render(); }
+function noticeStrip() {
+  if (!CLOUD || !notices.length) return '';
+  const read = noticeRead();
+  const unread = notices.filter((n) => n.id > read).length;
+  const top = notices.find((n) => n.id > read) ?? notices[0];
+  return `<button class="nstrip" data-a="go" data-to="notice"><span class="tag ${top.kind}">${NOTICE_KIND[top.kind]}</span><b>${esc(top.title)}</b>${unread ? `<span class="nbadge">새 소식 ${unread}</span>` : ''}<span class="small mute">공지사항 →</span></button>`;
+}
+function viewNotice() {
+  const maxId = Math.max(0, ...notices.map((n) => n.id));
+  if (maxId > noticeRead()) { try { localStorage.setItem('text-rpg-notice-read', String(maxId)); } catch { /* 무시 */ } }
+  if (!notices.length) setTimeout(loadNoticesNow, 0);
+  const list = notices.filter((n) => noticeTab === 'all' || n.kind === noticeTab);
+  const ed = noticeEdit;
+  const form = Cloud.isAdmin ? (ed ? `<form class="panel grid nform" data-form="notice">
+      <div class="row" style="gap:8px;flex-wrap:wrap"><select name="kind">${Object.entries(NOTICE_KIND).map(([k, n]) => `<option value="${k}" ${ed.kind === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+        <label class="chk" style="min-height:0"><input type="checkbox" name="pinned" ${ed.pinned ? 'checked' : ''}> 상단 고정</label></div>
+      <input name="title" maxlength="80" placeholder="제목" value="${esc(ed.title ?? '')}" required>
+      <textarea name="body" rows="6" maxlength="4000" placeholder="내용 (줄마다 · 로 시작하면 보기 좋아요)">${esc(ed.body ?? '')}</textarea>
+      <div class="row" style="gap:8px"><button class="btn sm" type="submit">${ed.id ? '수정' : '올리기'}</button><button class="btn ghost sm" type="button" data-a="noticeCancel">취소</button></div></form>`
+    : `<button class="btn sm" data-a="noticeNew" style="margin:8px 0">+ 공지 쓰기</button>`) : '';
+  return `<div class="wrap">${backBtn()}
+    <h2>공지사항</h2>
+    <div class="tabs" role="group" aria-label="공지 종류">${([['all', '전체'], ['patch', '패치 노트'], ['plan', '업데이트 예정'], ['notice', '공지']] as const).map(([k, n]) => `<button class="${noticeTab === k ? 'on' : ''}" data-a="noticeTab" data-v="${k}">${n}</button>`).join('')}</div>
+    ${form}
+    <div class="nlist">${list.map((n) => `<article class="notice nk-${n.kind}"><div class="row" style="gap:8px;align-items:center;flex-wrap:wrap"><span class="tag ${n.kind}">${NOTICE_KIND[n.kind]}</span>${n.pinned ? '<span class="small">📌</span>' : ''}<h3 style="margin:0;flex:1">${esc(n.title)}</h3><span class="small mute">${new Date(Date.parse(n.created_at) + 9 * 3600_000).toISOString().slice(5, 16).replace('T', ' ')}</span></div>
+      <div class="nbody">${esc(n.body)}</div>
+      ${Cloud.isAdmin ? `<div class="row" style="gap:6px;margin-top:6px"><button class="btn ghost sm" data-a="noticeEditBtn" data-v="${n.id}">수정</button><button class="btn ghost sm" data-a="noticeDel" data-v="${n.id}">삭제</button></div>` : ''}</article>`).join('') || '<p class="mute">공지가 없어요.</p>'}</div>
+  </div>`;
+}
 let touchTimer = 0;
 async function startSocial() {
   if (!CLOUD || !Cloud.session || socialOn) return;
   socialOn = true;
   Cloud.touch(true).then(() => { if (screen === 'town') render(); });
+  loadNoticesNow();
   Cloud.logEvent('login', navigator.userAgent.includes('Mobile') ? '모바일' : 'PC');
   clearInterval(touchTimer);
   touchTimer = window.setInterval(() => Cloud.touch(false), 180000);
@@ -166,6 +202,7 @@ async function submitFriend() {
 
 /** 활동 로그로 남길 행동 (관리자 대시보드) */
 let curAction = '';
+let confirmDel = '';
 const LOG_ACTIONS = new Set(['hire', 'upgradeGuild', 'advance', 'enhance', 'buyEquip', 'buyDeal', 'train', 'reroll', 'refine', 'craft', 'buyEgg', 'petSellLow', 'claimQuest', 'dailySweep', 'buyStones']);
 function commit(r?: G.Result) {
   if (CLOUD && r?.ok && LOG_ACTIONS.has(curAction)) Cloud.logEvent(curAction, r.msg ?? '');
@@ -343,6 +380,7 @@ function viewTown() {
   ];
   return `<div class="wrap">
     <div class="scene">${townScene()}</div>
+    ${noticeStrip()}
     ${questPanel()}
     ${(() => { const a = G.advanceable(s); return a.length ? `<button class="advnote" data-a="openChar" data-uid="${esc(a[0].uid)}"><b>⚡ 전직할 수 있어요!</b> <span>${a.slice(0, 4).map((c) => esc(c.name)).join(', ')}${a.length > 4 ? ` 외 ${a.length - 4}명` : ''}</span><span class="small mute">눌러서 전직하기 →</span></button>` : ''; })()}
     <nav class="signs">${signs.map(([to, n, d, c]) => `<button class="sign ${c ?? ''}" data-a="go" data-to="${to}"><span class="sico">${SIGN_ICON[to]?.() ?? ''}</span><b>${n}</b><span>${d}</span></button>`).join('')}</nav>
@@ -1852,7 +1890,7 @@ function renderNow() {
   }
   const body = !S || screen === 'title' ? viewTitle()
     : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
-    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'admin' ? viewAdmin() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : viewResult();
+    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'admin' ? viewAdmin() : screen === 'notice' ? viewNotice() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : viewResult();
   app.innerHTML = (screen === 'title' ? '' : topbar()) + body;
   document.querySelector('.hubtabs .on')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
   renderModal();
@@ -2032,6 +2070,11 @@ app.addEventListener('click', (ev) => {
     case 'adAdmin': { const u = adUsers.find((x) => x.id === d.v); if (u) Cloud.adminSet(u.id, u.muted, !u.is_admin).then((e) => { if (e) toast(e, true); else { u.is_admin = !u.is_admin; toast(u.is_admin ? '관리자 지정' : '관리자 해제'); render(); } }); break; }
     case 'adDelChat': Cloud.adminDeleteChat(Number(d.v)).then(() => { adChats = adChats.filter((m) => m.id !== Number(d.v)); chatMsgs = chatMsgs.filter((m) => m.id !== Number(d.v)); render(); toast('삭제했어요'); }); break;
     case 'reload': if (S) saveGameNow(S).finally(() => location.reload()); else location.reload(); break;
+    case 'noticeTab': noticeTab = d.v as typeof noticeTab; render(); break;
+    case 'noticeNew': noticeEdit = { kind: 'patch', title: '', body: '', pinned: false }; render(); break;
+    case 'noticeCancel': noticeEdit = null; render(); break;
+    case 'noticeEditBtn': noticeEdit = { ...notices.find((n) => n.id === Number(d.v)) }; render(); window.scrollTo(0, 0); break;
+    case 'noticeDel': if (confirmDel === d.v) { Cloud.deleteNotice(Number(d.v)).then(() => { confirmDel = ''; toast('삭제했어요'); loadNoticesNow(); }); } else { confirmDel = d.v!; toast('한 번 더 누르면 삭제돼요'); } break;
     case 'claimQuest': commit(G.claimQuest(s!)); break;
     case 'whFilter': whFilter = d.v as WhFilter; render(); break;
     case 'whOpen': whOpen = whOpen === d.e ? null : d.e!; render(); break;
@@ -2086,6 +2129,13 @@ app.addEventListener('submit', (ev) => {
   const f = ev.target as HTMLElement;
   if (f.dataset.form === 'auth') { ev.preventDefault(); if (!authBusy) submitAuth(); }
   if (f.dataset.form === 'chat') { ev.preventDefault(); submitChat(); }
+  if (f.dataset.form === 'notice') {
+    ev.preventDefault();
+    const fd = new FormData(f as HTMLFormElement);
+    const n = { id: noticeEdit?.id, kind: String(fd.get('kind')), title: String(fd.get('title') ?? '').trim(), body: String(fd.get('body') ?? ''), pinned: fd.get('pinned') === 'on' };
+    if (!n.title) { toast('제목을 넣어주세요', true); return; }
+    Cloud.saveNotice(n).then((e) => { if (e) toast(e, true); else { noticeEdit = null; toast(n.id ? '수정했어요' : '공지를 올렸어요'); loadNoticesNow(); } });
+  }
   if (f.dataset.form === 'adgift' && adSel) {
     ev.preventDefault();
     const fd = new FormData(f as HTMLFormElement);

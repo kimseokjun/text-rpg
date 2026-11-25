@@ -345,3 +345,18 @@ export async function adminSet(user: string, muted: boolean, admin: boolean): Pr
   const { error } = await sb.rpc('admin_set', { p_user: user, p_muted: muted, p_admin: admin });
   return error ? error.message : null;
 }
+
+// ───────── 공지사항 ─────────
+export interface Notice { id: number; kind: 'patch' | 'plan' | 'notice'; title: string; body: string; pinned: boolean; created_at: string }
+export async function loadNotices(): Promise<Notice[]> {
+  if (!sb) return [];
+  const { data } = await sb.from('notices').select('*').order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(50);
+  return (data ?? []) as Notice[];
+}
+export async function saveNotice(n: { id?: number; kind: string; title: string; body: string; pinned: boolean }): Promise<string | null> {
+  if (!sb) return '서버 없음';
+  const { id, ...rest } = n;
+  const { error } = id ? await sb.from('notices').update(rest).eq('id', id) : await sb.from('notices').insert(rest);
+  return error ? error.message : null;
+}
+export async function deleteNotice(id: number) { if (sb) await sb.from('notices').delete().eq('id', id); }

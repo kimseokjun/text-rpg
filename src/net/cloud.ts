@@ -103,18 +103,26 @@ export async function loadChat(): Promise<ChatMsg[]> {
   const { data } = await sb.from('chat_messages').select('id, user_id, username, body, created_at').eq('channel', 'global').order('id', { ascending: false }).limit(60);
   return ((data ?? []) as ChatMsg[]).reverse();
 }
+export async function loadRoomChat(room: string): Promise<ChatMsg[]> {
+  if (!sb || !session) return [];
+  const { data } = await sb.from('chat_messages').select('id, user_id, username, body, created_at').eq('channel', `room:${room}`).order('id', { ascending: true }).limit(100);
+  return (data ?? []) as ChatMsg[];
+}
+export interface ChatMsg2 extends ChatMsg { channel?: string }
+let roomMsgHandler: ((m: ChatMsg) => void) | null = null;
+export function setRoomChatHandler(h: typeof roomMsgHandler) { roomMsgHandler = h; }
 export function subscribeChat(onMsg: (m: ChatMsg) => void, onFriends: () => void) {
   if (!sb || !session || chatCh) return;
   chatCh = sb.channel('db-changes')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (p) => onMsg(p.new as ChatMsg))
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (p) => { const m = p.new as ChatMsg2; if (!m.channel || m.channel === 'global') onMsg(m); else roomMsgHandler?.(m); })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, () => onFriends())
     .subscribe();
 }
-export async function sendChat(body: string): Promise<string | null> {
+export async function sendChat(body: string, channel = 'global'): Promise<string | null> {
   if (!sb || !session) return '로그인이 필요해요';
   const t = body.trim().slice(0, 200);
   if (!t) return null;
-  const { error } = await sb.from('chat_messages').insert({ body: t, user_id: session.user.id });
+  const { error } = await sb.from('chat_messages').insert({ body: t, user_id: session.user.id, channel });
   if (error) return /too fast/.test(error.message) ? '너무 빨라요. 잠깐 쉬었다 보내주세요' : '전송 실패';
   return null;
 }
@@ -216,17 +224,19 @@ export function subscribeWB(onChange: (b: WBBoss) => void) {
 
 // ───────── 멀티 던전 ─────────
 export interface Room { id: string; host: string; host_name: string; floor: number; max_players: number; status: 'open' | 'running' | 'done'; result: any; created_at: string }
-export interface RoomMember { room_id: string; user_id: string; username: string; chars: string[]; ready: boolean; claimed: boolean; joined_at: string }
+export interface PickedChar { uid: string; name: string; jobId: string; level: number; power: number }
+export interface RoomMember { room_id: string; user_id: string; username: string; chars: (string | PickedChar)[]; ready: boolean; claimed: boolean; joined_at: string }
 export async function listRooms(): Promise<(Room & { n: number })[]> {
   if (!sb) return [];
   const since = new Date(Date.now() - 3 * 3600_000).toISOString();
   const { data } = await sb.from('rooms').select('id, host, host_name, floor, max_players, status, created_at').eq('status', 'open').gt('created_at', since).order('created_at', { ascending: false }).limit(30);
   const rooms = (data ?? []) as Room[];
   if (!rooms.length) return [];
-  const { data: m } = await sb.from('room_members').select('room_id').in('room_id', rooms.map((r) => r.id));
+  const { data: m } = await sb.from('room_members').select('room_id, user_id').in('room_id', rooms.map((r) => r.id));
   const cnt: Record<string, number> = {};
-  for (const x of (m ?? []) as { room_id: string }[]) cnt[x.room_id] = (cnt[x.room_id] ?? 0) + 1;
-  return rooms.map((r) => ({ ...r, n: cnt[r.id] ?? 0 }));
+  for (const x of (m ?? []) as { room_id: string; user_id: string }[]) cnt[x.room_id] = (cnt[x.room_id] ?? 0) + 1;
+  // 방장이 접속 중이 아닌 방은 숨김 (내 방은 지울 수 있게 보여줌)
+  return rooms.filter((r) => online[r.host] || r.host === session?.user.id).map((r) => ({ ...r, n: cnt[r.id] ?? 0 }));
 }
 export async function roomState(id: string): Promise<{ room: Room; members: RoomMember[] } | null> {
   if (!sb) return null;
@@ -248,12 +258,14 @@ export async function joinRoom(id: string): Promise<string | null> {
   if (error && !/duplicate/i.test(error.message)) return dbErr(error.message);
   return null;
 }
+export async function kickMember(id: string, user: string) { if (sb) await sb.from('room_members').delete().eq('room_id', id).eq('user_id', user); }
+export async function deleteRoom(id: string) { if (sb) await sb.from('rooms').delete().eq('id', id); }
 export async function leaveRoom(id: string, host: boolean) {
   if (!sb || !session) return;
   if (host) await sb.from('rooms').delete().eq('id', id).eq('status', 'open');
   else await sb.from('room_members').delete().eq('room_id', id).eq('user_id', session.user.id);
 }
-export async function setMember(id: string, chars: string[], ready: boolean): Promise<string | null> {
+export async function setMember(id: string, chars: PickedChar[], ready: boolean): Promise<string | null> {
   if (!sb || !session) return '로그인이 필요해요';
   const { error } = await sb.from('room_members').update({ chars, ready }).eq('room_id', id).eq('user_id', session.user.id);
   return error ? dbErr(error.message) : null;

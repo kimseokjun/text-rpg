@@ -382,3 +382,8 @@ svg.px{image-rendering:pixelated;flex:none}
 .mmem.ready{border-color:var(--ok)}
 .mmem.empty{border-style:dashed;align-items:center;justify-content:center;min-height:58px}
 .invite{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);z-index:70;background:#1b1622f5;border:1px solid var(--gold);border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px #000a;width:min(360px,calc(100vw - 24px))}
+.mpick{list-style:none;margin:2px 0;padding:0;display:flex;flex-direction:column;gap:2px}
+.roomlog{max-height:220px;min-height:90px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;font-size:14px;padding:8px;border-radius:8px;background:#0e080b}
+.roomlog .rl.sys{color:var(--mute);font-size:13px}
+.roomlog .rl b{color:var(--gold)}.roomlog .rl b.me{color:#7fb3ff}
+.roomlog .ct{font-size:11px;color:var(--mute)}

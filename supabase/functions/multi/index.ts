@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
     const { data: room } = await admin.from('rooms').select('*').eq('id', roomId).maybeSingle();
     if (!room) return json({ error: '방이 없어요' });
     const { data: mem } = await admin.from('room_members').select('*').eq('room_id', roomId).order('joined_at');
-    const members = (mem ?? []) as { user_id: string; username: string; chars: string[]; ready: boolean; claimed: boolean }[];
+    const members = (mem ?? []) as { user_id: string; username: string; chars: (string | { uid: string })[]; ready: boolean; claimed: boolean }[];
 
     if (body.action === 'start') {
       if (room.host !== uid) return json({ error: '방장만 시작할 수 있어요' });

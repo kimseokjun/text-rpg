@@ -12,7 +12,7 @@ export const COOP_BONUS = 1.2;
 /** 인원별 한 명이 데려갈 수 있는 단원 수 (방장 먼저) */
 export const slotsFor = (n: number, isHost: boolean) => (n <= 2 ? 2 : n === 3 ? (isHost ? 2 : 1) : 1);
 
-export interface MultiMember { user_id: string; username: string; chars: string[]; save: unknown; host: boolean }
+export interface MultiMember { user_id: string; username: string; chars: (string | { uid: string })[]; save: unknown; host: boolean }
 export function multiSettings(floor: number, petMods: ExpeditionSettings['petMods']): ExpeditionSettings {
   return { ...DEFAULT_SETTINGS, startFloor: floor, targetFloor: Math.min(70, floor + MULTI_FLOORS - 1), mode: 'advance', auto: true, retreatHpPct: 0, retreatOnDown: false, stopBeforeBoss: false, insured: true, potions: [], petMods, multi: true };
 }
@@ -25,7 +25,7 @@ export function simulateMulti(members: MultiMember[], floor: number, seed: numbe
     const s = migrate(m.save);
     if (!s) return { error: `${m.username}의 세이브를 읽을 수 없어요` } as const;
     if (m.host) petMods = petPartyMods(s);
-    const want = m.chars.slice(0, slotsFor(members.length, m.host));
+    const want = m.chars.map((c) => (typeof c === 'string' ? c : c.uid)).slice(0, slotsFor(members.length, m.host));
     for (const uid of want) {
       const c = s.roster.find((x) => x.uid === uid);
       if (!c) return { error: `${m.username}의 단원을 찾을 수 없어요` } as const;

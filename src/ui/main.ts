@@ -97,7 +97,7 @@ async function startSocial() {
     chatUnread++;
     renderChat();
   }, async () => { friends = await Cloud.loadFriends(); if (!(chatOpen && chatTab === 'chat')) renderChat(); });
-  Cloud.joinPresence(() => { const el = document.querySelector('.chatbox .onl'); if (el) el.textContent = `접속 ${Object.keys(Cloud.online).length}명`; else renderChat(); });
+  Cloud.joinPresence(() => { if (screen === 'multi' && myRoom) refreshRoom(); const el = document.querySelector('.chatbox .onl'); if (el) el.textContent = `접속 ${Object.keys(Cloud.online).length}명`; else renderChat(); });
   renderChat();
 }
 let invitePending: { from: string; room: string; floor: number } | null = null;
@@ -920,6 +920,39 @@ let mFloor = 0, mMax = 2;
 let mPick: string[] = [];
 let mBusy = false;
 let replayRoom: string | null = null;
+let roomLog: { sys?: boolean; name?: string; text: string; at: string; mine?: boolean }[] = [];
+let roomDraft = '';
+const pickUid = (c: string | Cloud.PickedChar) => (typeof c === 'string' ? c : c.uid);
+function roomDiff(prev: Cloud.RoomMember[] | undefined, next: Cloud.RoomMember[]) {
+  if (!prev) return;
+  const now = new Date().toISOString();
+  const pm = Object.fromEntries(prev.map((m) => [m.user_id, m]));
+  const nm = Object.fromEntries(next.map((m) => [m.user_id, m]));
+  for (const m of next) {
+    const o = pm[m.user_id];
+    if (!o) roomLog.push({ sys: true, text: `${m.username || '누군가'}님이 들어왔어요`, at: now });
+    else {
+      if (!o.ready && m.ready) roomLog.push({ sys: true, text: `${m.username}님 준비 완료`, at: now });
+      if (o.ready && !m.ready) roomLog.push({ sys: true, text: `${m.username}님 준비 취소`, at: now });
+      const a = o.chars.map(pickUid).join(), b = m.chars.map(pickUid).join();
+      if (a !== b && m.chars.length) roomLog.push({ sys: true, text: `${m.username}님이 ${m.chars.map((c) => (typeof c === 'string' ? '?' : c.name)).join(', ')} 선택`, at: now });
+    }
+  }
+  for (const o of prev) if (!nm[o.user_id]) roomLog.push({ sys: true, text: `${o.username || '누군가'}님이 나갔어요`, at: now });
+}
+function renderRoomLog() {
+  const el = document.getElementById('roomlog');
+  if (!el) return;
+  el.innerHTML = roomLogHtml();
+  el.scrollTop = el.scrollHeight;
+}
+const roomLogHtml = () => roomLog.slice(-80).map((l) => l.sys ? `<div class="rl sys">· ${esc(l.text)} <span class="ct">${hhmm(l.at)}</span></div>` : `<div class="rl"><b class="${l.mine ? 'me' : ''}">${esc(l.name ?? '')}</b> ${esc(l.text)} <span class="ct">${hhmm(l.at)}</span></div>`).join('') || '<p class="small mute" style="margin:0">아직 조용해요. 인사해 보세요!</p>';
+Cloud.setRoomChatHandler((m) => {
+  if (!myRoom || (m as Cloud.ChatMsg2).channel !== `room:${myRoom}`) return;
+  roomLog.push({ name: m.username, text: m.body, at: m.created_at, mine: m.user_id === Cloud.session?.user.id });
+  renderRoomLog();
+});
+window.addEventListener('pagehide', () => { if (myRoom && roomSt?.room.status === 'open') Cloud.leaveRoom(myRoom, roomSt.room.host === Cloud.session?.user.id); });
 async function refreshRooms() { roomList = await Cloud.listRooms(); roomListAt = Date.now(); if (screen === 'multi') render(); }
 async function refreshRoom() {
   if (!myRoom) return;
@@ -929,15 +962,26 @@ async function refreshRoom() {
     else if (roomSt) toast('방에서 나왔어요');
     myRoom = null; roomSt = null; Cloud.watchRoom(null, () => {}); if (screen === 'multi') render(); return;
   }
+  roomDiff(roomSt?.members, st.members);
   roomSt = st;
   if (st.room.status === 'done' && st.room.result && replayRoom !== st.room.id && st.members.some((m) => m.user_id === Cloud.session?.user.id)) {
     replayRoom = st.room.id;
     startMultiReplay(st.room);
     return;
   }
-  if (screen === 'multi') render();
+  if (screen === 'multi') { const log = document.getElementById('roomlog'); const keep = (document.getElementById('roomIn') as HTMLInputElement | null) === document.activeElement; render(); renderRoomLog(); if (keep) (document.getElementById('roomIn') as HTMLInputElement | null)?.focus(); void log; }
 }
-async function enterRoom(id: string) { myRoom = id; mPick = []; Cloud.watchRoom(id, () => refreshRoom()); await refreshRoom(); }
+async function enterRoom(id: string) {
+  myRoom = id; mPick = []; roomSt = null;
+  roomLog = (await Cloud.loadRoomChat(id)).map((m) => ({ name: m.username, text: m.body, at: m.created_at, mine: m.user_id === Cloud.session?.user.id }));
+  roomLog.push({ sys: true, text: '방에 들어왔어요', at: new Date().toISOString() });
+  Cloud.watchRoom(id, () => refreshRoom());
+  clearInterval(roomPoll);
+  roomPoll = window.setInterval(() => { if (myRoom) refreshRoom(); else clearInterval(roomPoll); }, 8000);
+  await refreshRoom();
+  renderRoomLog();
+}
+let roomPoll = 0;
 function viewMulti() {
   const s = S!;
   const me = Cloud.session?.user.id;
@@ -954,7 +998,7 @@ function viewMulti() {
         <p class="small mute" style="margin:0">2인: 각자 2명 · 3인: 방장 2명, 나머지 1명 · 4인: 각자 1명</p>
         <button class="btn" data-a="mCreate" ${mBusy ? 'disabled' : ''}>방 만들기</button></div>
       <div class="panel"><div class="row" style="justify-content:space-between"><h3 style="margin:0">열린 방</h3><button class="btn ghost sm" data-a="mRooms">새로고침</button></div>
-        <div class="tlist">${roomList.map((r) => `<div class="trow"><b class="tf">${r.n}/${r.max_players}</b><div class="tg"><span><b>${esc(r.host_name)}</b>의 방 · ${esc(floorName(r.floor))}</span><span class="small mute">${hhmm(r.created_at)} 개설</span></div><button class="btn sm" data-a="mJoin" data-v="${r.id}" ${r.n >= r.max_players ? 'disabled' : ''} style="grid-column:2;justify-self:start">참가</button></div>`).join('') || '<p class="small mute">열린 방이 없어요. 방을 만들고 친구를 초대해 보세요.</p>'}</div></div>
+        <div class="tlist">${roomList.map((r) => `<div class="trow"><b class="tf">${r.n}/${r.max_players}</b><div class="tg"><span><b>${esc(r.host_name)}</b>의 방 · ${esc(floorName(r.floor))}</span><span class="small mute">${hhmm(r.created_at)} 개설</span></div><div class="row" style="grid-column:2;gap:6px">${r.host === Cloud.session?.user.id ? `<button class="btn sm" data-a="mJoin" data-v="${r.id}">들어가기</button><button class="btn ghost sm" data-a="mDelete" data-v="${r.id}">삭제</button>` : `<button class="btn sm" data-a="mJoin" data-v="${r.id}" ${r.n >= r.max_players ? 'disabled' : ''}>${r.n >= r.max_players ? '꽉 참' : '참가'}</button>`}</div></div>`).join('') || '<p class="small mute">열린 방이 없어요. 방을 만들고 친구를 초대해 보세요.</p>'}</div></div>
     </div>`;
   }
   const st = roomSt;
@@ -964,8 +1008,14 @@ function viewMulti() {
   const meM = members.find((m) => m.user_id === me);
   const n = members.length;
   const slots = slotsFor(Math.max(n, 2), isHost);
-  if (meM && !mPick.length && meM.chars.length) mPick = meM.chars.filter((u) => G.byUid(s, u));
-  const card = (m: Cloud.RoomMember) => `<div class="mmem ${m.ready || m.user_id === room.host ? 'ready' : ''}"><div class="row" style="justify-content:space-between"><b>${esc(m.username)}${m.user_id === room.host ? ' 👑' : ''}</b><span class="small ${m.ready || m.user_id === room.host ? '' : 'mute'}">${m.user_id === room.host ? '방장' : m.ready ? '✔ 준비' : '준비 중'}</span></div><span class="small mute">데려갈 단원 ${m.chars.length}/${slotsFor(Math.max(n, 2), m.user_id === room.host)}명</span></div>`;
+  if (meM && !mPick.length && meM.chars.length) mPick = meM.chars.map(pickUid).filter((u) => G.byUid(s, u));
+  const card = (m: Cloud.RoomMember) => {
+    const on = !!Cloud.online[m.user_id];
+    const picks = m.chars.map((c) => typeof c === 'string' ? '<li class="small mute">단원</li>' : `<li class="small"><b>${esc(c.name)}</b> <span class="mute">${esc(JOBS[c.jobId as JobId]?.name ?? '')} · Lv.${c.level} · ${fmt(c.power)}</span></li>`).join('');
+    return `<div class="mmem ${m.ready || m.user_id === room.host ? 'ready' : ''}"><div class="row" style="justify-content:space-between;gap:6px"><span class="row" style="gap:6px"><span class="dot ${on ? 'on' : ''}" title="${on ? '접속 중' : '자리 비움'}"></span><b>${esc(m.username || '(이름 없음)')}${m.user_id === room.host ? ' 👑' : ''}</b></span><span class="small ${m.ready || m.user_id === room.host ? '' : 'mute'}">${m.user_id === room.host ? '방장' : m.ready ? '✔ 준비' : '준비 중'}</span></div>
+      <ul class="mpick">${picks || '<li class="small mute">아직 단원을 안 골랐어요</li>'}</ul>
+      <div class="row" style="justify-content:space-between"><span class="small mute">${m.chars.length}/${slotsFor(Math.max(n, 2), m.user_id === room.host)}명${on ? '' : ' · 자리 비움'}</span>${isHost && m.user_id !== me ? `<button class="btn ghost sm" data-a="mKick" data-v="${m.user_id}">내보내기</button>` : ''}</div></div>`;
+  };
   const friendsOn = friends.filter((f) => f.status === 'accepted' && Cloud.online[f.other] && !members.some((m) => m.user_id === f.other));
   return `<div class="wrap">${backBtn()}
     <h2>멀티 던전 · ${esc(floorName(room.floor))}</h2>
@@ -975,14 +1025,17 @@ function viewMulti() {
       <div class="cards">${s.roster.map((c) => `<button class="card ${mPick.includes(c.uid) ? 'inparty' : ''}" data-a="mPick" data-uid="${esc(c.uid)}"><div class="ico">${avatar(c)}</div><div><b>${esc(c.name)}</b><div class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} · 전투력 ${fmt(charPower(c))}</div></div></button>`).join('')}</div>
       <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
         ${isHost ? `<button class="btn" data-a="mStart" ${mBusy || n < 2 ? 'disabled' : ''}>${mBusy ? '서버 계산 중…' : n < 2 ? '2명 이상 모이면 시작' : '출발!'}</button>` : `<button class="btn ${meM?.ready ? 'ghost' : ''}" data-a="mReady">${meM?.ready ? '준비 취소' : '준비 완료'}</button>`}
-        <button class="btn ghost" data-a="mLeave">${isHost ? '방 닫기' : '나가기'}</button></div></div>
+        <button class="btn ghost" data-a="mLeave">${isHost ? '방 삭제' : '나가기'}</button></div></div>
+    <div class="panel"><h3 style="margin-top:0">방 채팅 · 기록</h3><div id="roomlog" class="roomlog">${roomLogHtml()}</div>
+      <form class="cin" data-form="room" style="display:flex;gap:6px;margin-top:8px"><input id="roomIn" maxlength="200" placeholder="방 사람들에게 한마디" value="${esc(roomDraft)}" autocomplete="off" style="flex:1;min-width:0"><button class="btn sm" type="submit">보내기</button></form></div>
     ${friendsOn.length ? `<div class="panel"><h3 style="margin-top:0">접속 중인 친구 초대</h3>${friendsOn.map((f) => `<div class="frow"><span class="dot on"></span><b>${esc(f.username)}</b><span class="small mute">전투력 ${fmt(f.power)}</span><button class="btn sm" data-a="mInvite" data-v="${f.other}">초대</button></div>`).join('')}</div>` : '<p class="small mute">친구가 접속하면 여기서 초대할 수 있어요. 열린 방 목록에서 직접 참가할 수도 있어요.</p>'}
   </div>`;
 }
 async function mSync(ready?: boolean) {
   if (!myRoom || !roomSt) return;
   const meM = roomSt.members.find((m) => m.user_id === Cloud.session?.user.id);
-  const err = await Cloud.setMember(myRoom, mPick, ready ?? meM?.ready ?? false);
+  const picked = mPick.map((u) => G.byUid(S!, u)).filter(Boolean).map((c) => ({ uid: c!.uid, name: c!.name, jobId: c!.jobId, level: c!.level, power: charPower(c!) }));
+  const err = await Cloud.setMember(myRoom, picked, ready ?? meM?.ready ?? false);
   if (err) toast(err, true);
 }
 function startMultiReplay(room: Cloud.Room) {
@@ -1799,7 +1852,7 @@ app.addEventListener('click', (ev) => {
     case 'mRooms': refreshRooms(); break;
     case 'mCreate': (async () => { mBusy = true; render(); const r = await Cloud.createRoom(mFloor, mMax); mBusy = false; if (r.error) { toast(r.error, true); render(); return; } await enterRoom(r.id!); })(); break;
     case 'mJoin': (async () => { const e = await Cloud.joinRoom(d.v!); if (e) { toast(e, true); refreshRooms(); return; } await enterRoom(d.v!); })(); break;
-    case 'mLeave': (async () => { const host = roomSt?.room.host === Cloud.session?.user.id; await Cloud.leaveRoom(myRoom!, host); myRoom = null; roomSt = null; Cloud.watchRoom(null, () => {}); refreshRooms(); })(); break;
+    case 'mLeave': (async () => { const host = roomSt?.room.host === Cloud.session?.user.id; await Cloud.leaveRoom(myRoom!, host); myRoom = null; roomSt = null; roomLog = []; Cloud.watchRoom(null, () => {}); refreshRooms(); })(); break;
     case 'mPick': {
       const uid = d.uid!; const isHost = roomSt?.room.host === Cloud.session?.user.id;
       const max = slotsFor(Math.max(roomSt?.members.length ?? 2, 2), isHost);
@@ -1810,6 +1863,8 @@ app.addEventListener('click', (ev) => {
     }
     case 'mReady': { const meM = roomSt?.members.find((m) => m.user_id === Cloud.session?.user.id); if (!mPick.length) { toast('데려갈 단원을 골라주세요', true); break; } if (S) saveGameNow(S); mSync(!meM?.ready); break; }
     case 'mStart': (async () => { if (!mPick.length) { toast('데려갈 단원을 골라주세요', true); return; } mBusy = true; render(); await mSync(true); if (S) await saveGameNow(S); const r = await Cloud.multiCall({ action: 'start', room: myRoom }); mBusy = false; if (r?.error) { toast(r.error, true); render(); return; } refreshRoom(); })(); break;
+    case 'mKick': if (myRoom) Cloud.kickMember(myRoom, d.v!).then(() => refreshRoom()); break;
+    case 'mDelete': Cloud.deleteRoom(d.v!).then(() => { toast('방을 삭제했어요'); refreshRooms(); }); break;
     case 'mInvite': if (myRoom && roomSt) { Cloud.sendInvite(d.v!, myRoom, roomSt.room.floor); toast('초대를 보냈어요'); } break;
     case 'mInviteJoin': (async () => { invitePending = null; renderInvite(); const e = await Cloud.joinRoom(d.v!); if (e) { toast(e, true); return; } screen = 'multi'; await enterRoom(d.v!); render(); })(); break;
     case 'mInviteNo': invitePending = null; renderInvite(); break;
@@ -1860,11 +1915,18 @@ app.addEventListener('input', (ev) => {
   const t = ev.target as HTMLInputElement;
   if (t.id === 'chatIn') chatDraft = t.value;
   if (t.id === 'friendIn') friendDraft = t.value;
+  if (t.id === 'roomIn') roomDraft = t.value;
 });
 app.addEventListener('submit', (ev) => {
   const f = ev.target as HTMLElement;
   if (f.dataset.form === 'auth') { ev.preventDefault(); if (!authBusy) submitAuth(); }
   if (f.dataset.form === 'chat') { ev.preventDefault(); submitChat(); }
+  if (f.dataset.form === 'room') {
+    ev.preventDefault();
+    const inp = document.getElementById('roomIn') as HTMLInputElement; const v = inp.value; if (!v.trim() || !myRoom) return;
+    inp.value = ''; roomDraft = '';
+    Cloud.sendChat(v, `room:${myRoom}`).then((e) => { if (e) { toast(e, true); inp.value = v; roomDraft = v; } });
+  }
   if (f.dataset.form === 'friend') { ev.preventDefault(); submitFriend(); }
 });
 app.addEventListener('change', (ev) => {

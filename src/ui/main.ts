@@ -26,6 +26,7 @@ import { DEFAULT_SETTINGS, Expedition } from '../core/dungeon';
 import { Raid4Battle, type R4Member, type R4State } from '../core/raid4battle';
 import { mountStage, playEvents, setBanner, setPanel, speech, stageMounted, updateStage } from './r4stage';
 import * as Bgm from './bgm';
+import { mountPlaza, EMOTES, type PlazaRun } from './plaza';
 import { COSMETICS, COS_BY_ID, COS_KIND_KO, FREE_HEADS, MERC_KINDS, OUTFIT_COLORS, TRIM_COLORS, type AvatarState, type CosKind } from '../data/cosmetics';
 import { CHESTS, dRewardText } from '../data/missions';
 import { ACHS, ACH_CAT, ACH_MAX_PTS, ACH_MS, ACH_REWARD, TITLES, TITLE_BY_ID, achPoints, achReady, unlockedTitles, type AchCat } from '../data/achievements';
@@ -43,7 +44,7 @@ import { townScene } from './art';
 import { charSprite, avatarSprite, AVATAR_HAIRS, AVATAR_PARTS, AVATAR_SKINS, PART_KO } from './pixel';
 import { equipKind, equipSprite, itemSprite, monsterSprite, petSprite } from './sprites';
 
-type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex' | 'admin' | 'notice' | 'cards' | 'duel' | 'profile' | 'raid4' | 'ach' | 'avatar';
+type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex' | 'admin' | 'notice' | 'cards' | 'duel' | 'profile' | 'raid4' | 'ach' | 'avatar' | 'plaza';
 
 let S: G.GameState | null = null;
 let screen: Screen = 'title';
@@ -387,6 +388,7 @@ function viewTitle() {
 
 const SIGN_ICON: Record<string, () => string> = {
   avatar: () => avatarSprite(G.avatarOf(S!).look, { size: 34 }),
+  plaza: () => '<span class="trophy" aria-hidden="true">⛲</span>',
   ach: () => '<span class="trophy" aria-hidden="true">🏆</span>',
   guild: () => charSprite('warrior', '길드', 2, { size: 34 }),
   rank: () => equipSprite('accessory', 7, { size: 34 }),
@@ -447,6 +449,7 @@ function viewTown() {
     ['smith', '대장간', `강화·제련·제작 · 강화석 ${s.stones} · 제련석 ${s.refineStones} · 룬석 ${s.runes ?? 0}`],
     ['cards', '카드 보관함', `신비 카드 ${Object.keys(s.cards ?? {}).length}/${CARDS.length}${s.cardPacks ? ` · 팩 ${s.cardPacks}개` : ''}`],
     ['pets', '펫 우리', G.activePet(s) ? `${PET_BY_ID[G.activePet(s)!.kind].name} 동행 · ${s.pets.length}마리` : `펫 알 ${fmt(EGG_PRICE)}G`],
+    ['plaza', '마을 광장', CLOUD && Cloud.session ? (pz ? `${pzCount}명 광장에 있어요` : '용병단장으로 걸어 다니며 다른 사람들과 만나요') : '로그인하면 들어갈 수 있어요'],
     ['avatar', '용병단장', '내 모습 꾸미기 · 망토·오라·날개'],
     ['ach', '업적', (() => { const n = G.achReadyCount(s); return `점수 ${achPoints(s)}${n ? ` · 🎁 받을 보상 ${n}` : ''}${s.title ? ` · 「${esc(TITLE_BY_ID[s.title]?.name ?? '')}」` : ''}`; })()],
     ['shop', '잡화점', `물약 ${Object.values(s.potions).reduce((a, b) => a + b, 0)}개 보유`],
@@ -958,6 +961,62 @@ function mercCosPanel(c: Character) {
     <div class="panel avstage">${cosFigure(avatar(c, 120), { aura: c.cos?.aura, plate: c.cos?.plate, name: c.name, size: 'lg' })}</div>
     <div class="avedit">${kinds.map((k) => `<h4>${COS_KIND_KO[k]}</h4>${cosList(k, c.uid, c.cos?.[k as 'cape'], (id) => k === 'cape' ? charSprite(JOBS[c.jobId].base, c.name, JOBS[c.jobId].tier, { size: 56, cape: cosColor(id) }) : k === 'aura' ? cosFigure(avatar(c, 48), { aura: id }) : k === 'plate' ? `<div class="cosplate ${id ? `pl-${COS_BY_ID[id].value}` : ''}">${esc(c.name)}</div>` : `<span class="entprev ent-${id ? COS_BY_ID[id].value : 'none'}">${avatar(c, 48)}</span>`)}`).join('')}
       <p class="small mute">꾸미기는 용병단장 화면의 상점에서 사거나 레이드·업적으로 얻어요. 하나를 여러 용병이 같이 써도 돼요.</p></div>
+  </div>`;
+}
+
+// ───────── 마을 광장 ─────────
+let pz: { ch: Cloud.PlazaChannel; run: PlazaRun | null } | null = null;
+let pzCount = 0;
+let pzLog: string[] = [];
+let pzPick: { id: string; name: string } | null = null;
+let pzSayAt = 0;
+const pzMe = () => ({ id: myId(), name: Cloud.username || '용병단장', av: G.avatarOf(S!), title: S!.title ? TITLE_BY_ID[S!.title]?.name ?? null : null });
+function plazaJoin() {
+  if (pz || !CLOUD || !Cloud.session || !S) return;
+  const ch = Cloud.joinPlaza((m) => { pzCount = m.length; if (pz?.run) pz.run.sync(m); }, (ev, p) => pz?.run?.msg(ev, p));
+  if (!ch) return;
+  pz = { ch, run: null };
+  const me = pzMe();
+  ch.track({ id: me.id, name: me.name, av: me.av, title: me.title, x: 50, y: 52 });
+}
+function plazaLeave() {
+  if (!pz) return;
+  pz.run?.stop(); pz.ch.leave(); pz = null; pzPick = null;
+}
+function plazaMount() {
+  const box = document.getElementById('pzbox');
+  if (!box || !pz || pz.run) return;
+  const me = pzMe();
+  pz.run = mountPlaza({
+    host: box, me, h: { figure: (av, name, title) => `${title ? `<span class="ttl t4 pzttl">${esc(title)}</span>` : ''}${avatarFigure(av, name, 64)}`, esc },
+    send: (ev, p) => pz?.ch.send(ev, p),
+    onDoor: (to) => { if (to === 'raid4' && !Cloud.session) return; screen = to as Screen; render(); },
+    onPick: (id, name) => { pzPick = { id, name }; render(); },
+    onLog: (line) => { pzLog = [...pzLog, line].slice(-6); const side = document.getElementById('pzside'); if (side) side.innerHTML = plazaSide(); },
+  });
+  pz.run.sync(pz.ch.members());
+}
+function plazaSide() {
+  const fr = pzPick ? friends.find((f) => f.other === pzPick!.id) : null;
+  const friend = fr?.status === 'accepted';
+  return `${pzPick ? `<div class="panel pzmenu"><div class="row" style="justify-content:space-between"><b>${esc(pzPick.name)}</b><button class="btn ghost sm" data-a="pzClose" aria-label="닫기">✕</button></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">
+        ${friend ? `<button class="btn sm" data-a="profile" data-v="${esc(pzPick.id)}">프로필</button><button class="btn sm" data-a="go" data-to="duel">결투하러 가기</button>` : fr ? '<span class="small mute">친구 요청 대기 중</span>' : `<button class="btn sm" data-a="friendAdd" data-v="${esc(pzPick.name)}">친구 신청</button>`}
+        ${r4 ? `<button class="btn ghost sm" data-a="r4Invite" data-v="${esc(pzPick.id)}">레이드 초대</button>` : ''}
+      </div></div>` : ''}
+    <div class="pzlog">${pzLog.map((l) => `<div>${esc(l)}</div>`).join('') || '<div class="small mute">광장에서 한 말이 여기 남아요</div>'}</div>`;
+}
+function viewPlaza() {
+  if (!CLOUD || !Cloud.session) return `<div class="wrap">${backBtn()}<h2>마을 광장</h2><p class="mute">로그인해야 들어갈 수 있어요.</p></div>`;
+  plazaJoin();
+  return `<div class="wrap">
+    <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:6px">${backBtn()}<span class="small mute"><b>${pzCount}</b>명 접속 중 · <kbd>↑↓←→</kbd>/<kbd>WASD</kbd> 이동 · 바닥 누르면 걸어가기 · 건물 앞에서 <kbd>E</kbd> · <button class="linkb" data-a="go" data-to="avatar">내 모습 꾸미기</button></span></div>
+    <div class="pzbox" id="pzbox"></div>
+    <div class="pzbar">
+      <form class="row" data-form="pzsay" style="gap:6px;flex:1;min-width:220px"><input id="pzin" maxlength="60" placeholder="광장에 말하기 (Enter)" autocomplete="off" style="flex:1"><button class="btn sm" type="submit">말하기</button></form>
+      <div class="row pzemos" role="group" aria-label="감정 표현">${EMOTES.map((e) => `<button class="btn ghost sm" data-a="pzEmo" data-v="${e}" aria-label="감정 표현 ${e}">${e}</button>`).join('')}</div>
+    </div>
+    <div id="pzside">${plazaSide()}</div>
   </div>`;
 }
 
@@ -2979,6 +3038,13 @@ function renderBgmBtn() {
 }
 document.addEventListener('pointerdown', () => Bgm.unlock(), { capture: true });
 function renderNow() {
+  if (pz && screen !== 'plaza') plazaLeave();
+  if (screen === 'plaza' && pz && document.getElementById('pzbox')?.isConnected) {
+    const t = document.querySelector('.top'); if (t) t.outerHTML = topbar();
+    const side = document.getElementById('pzside'); if (side) side.innerHTML = plazaSide();
+    renderModal(); renderToast();
+    return;
+  }
   if (screen === 'raid4' && r4?.phase === 'battle' && r4.st && stageMounted()) {
     const t = document.querySelector('.top'); if (t) t.outerHTML = topbar();
     renderModal(); renderToast(); r4UpdateUI();
@@ -2991,10 +3057,11 @@ function renderNow() {
     return;
   }
   const body = !S || screen === 'title' ? viewTitle()
-    : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'ach' ? viewAch() : screen === 'avatar' ? viewAvatar() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
+    : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'ach' ? viewAch() : screen === 'avatar' ? viewAvatar() : screen === 'plaza' ? viewPlaza() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
     : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'admin' ? viewAdmin() : screen === 'notice' ? viewNotice() : screen === 'cards' ? viewCards() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : screen === 'duel' ? viewDuel() : screen === 'profile' ? viewProfile() : screen === 'raid4' ? viewRaid4() : viewResult();
   app.innerHTML = (screen === 'title' ? '' : topbar()) + body;
   if (screen === 'raid4' && r4?.phase === 'battle' && r4.st) r4Mount();
+  if (screen === 'plaza') plazaMount();
   document.querySelector('.hubtabs .on')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
   renderModal();
   renderToast();
@@ -3130,6 +3197,8 @@ app.addEventListener('click', (ev) => {
     case 'potTableClose': potTab.open = false; potTab.uid = ''; render(); break;
     case 'potSlot': potTab.slot = d.v as PotSlot; potTab.uid = ''; render(); break;
     case 'potAdd': potTab.add = d.v === '1'; render(); break;
+    case 'pzEmo': if (pz?.run && EMOTES.includes(d.v!)) { pz.ch.send('emo', { id: myId(), e: d.v }); pz.run.emote(d.v!); } break;
+    case 'pzClose': pzPick = null; render(); break;
     case 'avTab': avTab = d.v as typeof avTab; cosConfirm = null; render(); break;
     case 'avSet': commit(G.setAvatarLook(s!, d.k as never, d.v ?? '')); break;
     case 'cosAsk': cosConfirm = d.v ?? null; render(); break;
@@ -3342,6 +3411,17 @@ app.addEventListener('submit', (ev) => {
     if (!Object.values(o).some(Boolean)) { toast('초기화할 항목을 골라주세요', true); return; }
     const who = adUsers.find((u) => u.id === adSel)?.username ?? '';
     Cloud.adminResetTries(adSel, o).then((e) => { if (e) toast(e, true); else { toast(`${who} 도전 횟수 초기화 완료 (접속 중이면 새로고침)`); adOpenUser(adSel!); } });
+  }
+  if (f.dataset.form === 'pzsay') {
+    ev.preventDefault();
+    const inp = document.getElementById('pzin') as HTMLInputElement; const v = inp.value.trim().slice(0, 60);
+    if (!v || !pz?.run) return;
+    if (Date.now() - pzSayAt < 1200) { toast('조금 천천히 말해 주세요', true); return; }
+    pzSayAt = Date.now();
+    pz.ch.send('say', { id: myId(), text: v }); pz.run.say(v);
+    pzLog = [...pzLog, `${Cloud.username}: ${v}`].slice(-6);
+    inp.value = ''; inp.blur();
+    const side = document.getElementById('pzside'); if (side) side.innerHTML = plazaSide();
   }
   if (f.dataset.form === 'room') {
     ev.preventDefault();

@@ -415,6 +415,25 @@ export function joinR4(code: string, onSync: (m: R4Presence[]) => void, onMsg: (
   };
 }
 
+// ───────── 마을 광장 (실시간: 위치·말풍선·감정 표현) ─────────
+export interface PlazaPresence { id: string; name: string; av: unknown; title?: string | null; x: number; y: number }
+export interface PlazaChannel { send: (event: string, payload: unknown) => void; track: (p: PlazaPresence) => void; leave: () => void; members: () => PlazaPresence[] }
+export function joinPlaza(onSync: (m: PlazaPresence[]) => void, onMsg: (event: string, payload: any) => void): PlazaChannel | null {
+  if (!sb || !session) return null;
+  const ch = sb.channel('plaza', { config: { presence: { key: session.user.id }, broadcast: { self: false } } });
+  let me: PlazaPresence | null = null;
+  const members = () => Object.values(ch.presenceState() as Record<string, PlazaPresence[]>).map((v) => v[0]).filter(Boolean);
+  ch.on('presence', { event: 'sync' }, () => onSync(members()));
+  for (const ev of ['mv', 'say', 'emo']) ch.on('broadcast', { event: ev }, (m) => onMsg(ev, m.payload));
+  ch.subscribe(async (status) => { if (status === 'SUBSCRIBED' && me) await ch.track(me); });
+  return {
+    send: (event, payload) => { ch.send({ type: 'broadcast', event, payload }); },
+    track: (p) => { me = p; ch.track(p); },
+    leave: () => { ch.untrack(); sb!.removeChannel(ch); },
+    members,
+  };
+}
+
 // ───────── 친구 우편 (장비 보내기) ─────────
 export interface MailRow { id: number; sender: string; recipient: string; sender_name: string; item: any; note: string; created_at: string }
 let mailHandler: ((m: MailRow) => void) | null = null;

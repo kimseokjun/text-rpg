@@ -529,3 +529,4 @@ svg.px{image-rendering:pixelated;flex:none}
 @media (max-width:860px){.prof2{grid-template-columns:minmax(0,1fr)}}
 .sortbar{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap}.sortbar .small{margin-right:2px}
 .sortbar button{background:var(--bg2);border:1px solid var(--line);border-radius:99px;padding:4px 10px;font-size:13px;color:var(--ink);cursor:pointer}.sortbar button.on{background:var(--lapis);border-color:var(--lapis2);color:#fff}
+.uown{font-size:11px;padding:0 6px;border-radius:99px;border:1px solid var(--line);color:var(--mute);margin-left:4px;white-space:nowrap}.uown.me{border-color:var(--lapis2);color:#9cc0ff}

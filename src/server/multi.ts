@@ -34,6 +34,8 @@ export function simulateMulti(members: MultiMember[], floor: number, seed: numbe
       if (!c) return { error: `${m.username}의 단원을 찾을 수 없어요` } as const;
       const copy = JSON.parse(JSON.stringify(c)) as Character;
       copy.uid = `${m.user_id.slice(0, 8)}_${c.uid}`;
+      // 이름이 겹치면 주인 이름을 붙여 구분 (전투 기록·체력바가 이름 기준)
+      if (chars.some((x) => x.name === copy.name)) copy.name = `${copy.name}(${m.username})`;
       owner[copy.uid] = m.user_id;
       chars.push(copy);
     }

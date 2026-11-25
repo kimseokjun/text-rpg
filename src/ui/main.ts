@@ -1288,8 +1288,12 @@ async function mSync(ready?: boolean) {
   if (err) toast(err, true);
 }
 let mySpeed: 1 | 2 | 0 = 1;
+/** 멀티: 캐릭터 uid → 주인 아이디 */
+let mOwners: Record<string, string> = {};
 function startMultiReplay(room: Cloud.Room) {
   const res = room.result;
+  const nameOf = Object.fromEntries((roomSt?.members ?? []).map((m) => [m.user_id, m.username]));
+  mOwners = Object.fromEntries((res.chars as Character[]).map((c) => [c.uid, nameOf[res.owner?.[c.uid]] ?? '']));
   mySpeed = speed;
   speed = (room.speed ?? 1) as 1 | 2 | 0;
   EX = new Expedition(res.chars, res.settings, new Rng(res.seed));
@@ -1322,7 +1326,7 @@ async function finishMulti() {
   summary = { reason: lost ? `균열 ${ex.floor}층에서 ${ex.stopReason === 'timeout' ? '시간 초과로 후퇴' : '전멸'}` : `균열 ${room.result.cleared}층 완주!`, daily: `${room.host_name}의 방 · 협동 보너스 +20%${myRw?.level && myRw.level < room.floor ? ` · 보상은 내 최고층(${floorName(myRw.level)}) 기준` : ''}`, report: ex.report, lost, diag: [], insured: true, floor: ex.floor, repeat: false, runs: ex.floorsCleared,
     gold: myRw?.gold ?? 0, exp: myRw?.exp ?? 0, stones: myRw?.stones ?? 0, blessings: myRw?.blessings ?? 0, refineStones: myRw?.refineStones ?? 0, shards: 0, cores: myRw?.cores ?? 0, cardPacks: myRw?.cardPacks ?? 0, equips, autoLine, levelUps: ups, bosses: [], newMaxFloor: false } as unknown as G.ExpeditionSummary;
   Cloud.logEvent('multi', `${(summary as G.ExpeditionSummary).reason} · ${room.host_name}의 방`);
-  myRoom = null; roomSt = null; multiRoom = null; Cloud.watchRoom(null, () => {});
+  myRoom = null; roomSt = null; multiRoom = null; mOwners = {}; Cloud.watchRoom(null, () => {});
   speed = mySpeed;
   lootOpen = false; screen = 'result';
   commit();
@@ -1866,15 +1870,15 @@ function viewDungeon() {
 const floorTitle = (ex: Expedition) =>
   `${runLabel(ex.floor)}${ex.isBossFloor() ? ' · 보스' : ''}${ex.repeating ? ` · 반복 ${Math.min(ex.floorsCleared + 1, ex.settings.repeatCount)}/${ex.settings.repeatCount}` : ''}`;
 
-const unitHtml = (name: string, u: { id: string; hp: number; max: number; dead: boolean }, icon: string, cls = '') =>
-  `<div class="unit ${cls} ${u.dead ? 'dead' : ''}" id="${u.id}"><div class="un"><span class="row" style="gap:6px"><span class="uico">${icon}</span>${esc(name)}</span><small>${Math.round(u.hp)}/${u.max}</small></div><div class="bar ${u.id.startsWith('e') ? 'e' : ''}"><i style="width:${pctW(u.hp, u.max)}"></i></div></div>`;
+const unitHtml = (name: string, u: { id: string; hp: number; max: number; dead: boolean }, icon: string, cls = '', owner = '') =>
+  `<div class="unit ${cls} ${u.dead ? 'dead' : ''}" id="${u.id}"><div class="un"><span class="row" style="gap:6px"><span class="uico">${icon}</span>${esc(name)}${owner ? `<span class="uown ${owner === Cloud.username ? 'me' : ''}">${esc(owner)}</span>` : ''}</span><small>${Math.round(u.hp)}/${u.max}</small></div><div class="bar ${u.id.startsWith('e') ? 'e' : ''}"><i style="width:${pctW(u.hp, u.max)}"></i></div></div>`;
 
 function drawParty() {
   const el = document.getElementById('pside');
   if (!el || !EX) return;
   el.innerHTML = EX.party.map((p) => {
     const u = (units[p.name] ??= { id: `u${uidSeq++}`, hp: p.hp, max: p.maxHp, dead: !p.alive, side: 'p' });
-    return unitHtml(p.name, u, avatar(p.char!, 52));
+    return unitHtml(p.name, u, avatar(p.char!, 52), '', mOwners[p.id] ?? '');
   }).join('');
 }
 function syncPartyFromEx() {

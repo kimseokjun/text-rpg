@@ -281,7 +281,7 @@ function equipLine(e: Equip) {
   return `<span class="eico r${e.rarity}e ${b.set ? 'setico' : ''}">${equipIcon(e)}</span><span class="iname r${e.rarity}">${esc(b.name)}${e.enhance ? ` +${e.enhance}` : ''}</span>${b.set ? ` <span class="settag">${esc(SET_BY_ID[b.set].name)} 세트</span>` : ''} <span class="small mute">${RARITY_NAME[e.rarity]}${b.jobs ? ` · ${b.jobs.map((j) => JOBS[j].name).join('/')}` : ''}</span><div class="istat">${st}${opt ? ` · ${opt}` : ''}</div>`;
 }
 const STAT_LABEL: Record<StatKey, string> = { hp: 'HP', mp: 'MP', atk: '공격', mag: '마력', def: '방어', res: '마저', agi: '민첩', crit: '치명' };
-const MOD_LABEL: Record<string, string> = { ...STAT_LABEL, dmgTaken: '받는 피해', mpCost: 'MP 소모', evade: '회피', healPower: '회복량', skillDmg: '스킬 데미지', physDmg: '물리 피해', normalDmg: '일반 공격', bossDmg: '보스 피해', resPierce: '마저 무시', defPierce: '방어 무시', magTaken: '받는 마법 피해' };
+const MOD_LABEL: Record<string, string> = { ...STAT_LABEL, goldGain: '골드 획득', expGain: '경험치 획득', itemGain: '아이템 드롭', dmgTaken: '받는 피해', mpCost: 'MP 소모', evade: '회피', healPower: '회복량', skillDmg: '스킬 데미지', physDmg: '물리 피해', normalDmg: '일반 공격', bossDmg: '보스 피해', resPierce: '마저 무시', defPierce: '방어 무시', magTaken: '받는 마법 피해' };
 function optText(o: { key: string; kind: string; value: number }) {
   if (o.key === 'critDmg') return `치명 배율 +${Math.round(o.value * 100)}%p`;
   const unit = o.kind === 'pct' || o.key === 'resPierce' || o.key === 'defPierce' || o.key === 'dmgTaken' ? '%' : o.key === 'crit' || o.key === 'evade' ? '%p' : '';
@@ -544,7 +544,6 @@ function potBlock(e: Equip, add: boolean) {
   const lines = (add ? e.add : e.options) ?? [];
   const g = (add ? e.addG : e.pot) ?? 1;
   const opened = !add || !!e.addG;
-  const locked = new Set((add ? e.addLocked : e.locked) ?? []);
   const pity = (add ? e.addPity : e.potPity) ?? 0;
   const cost = add ? G.addCost(e) : G.refineCost(e);
   const have = add ? (s.runes ?? 0) : s.refineStones;
@@ -555,11 +554,10 @@ function potBlock(e: Equip, add: boolean) {
   const cells = opened ? Array.from({ length: OPTION_SLOTS }, (_, i) => {
     const o = lines[i];
     if (!o) return `<div class="optcell empty"><span class="small mute">빈 칸</span></div>`;
-    const on = locked.has(i);
-    return `<div class="optcell ${on ? 'locked' : ''}"><span class="small">${potLine(o, g)}</span><button class="lockbtn ${on ? 'on' : ''}" data-a="${add ? 'addLock' : 'optLock'}" data-e="${esc(e.uid)}" data-i="${i}" aria-pressed="${on}" aria-label="${on ? '고정 해제' : '고정'}" title="${on ? '고정 해제' : add ? '고정하면 룬석 +1' : '고정하면 제련석 +2'}">${LOCK_SVG(on)}</button></div>`;
+    return `<div class="optcell"><span class="small">${potLine(o, g)}</span></div>`;
   }).join('') : '';
   return `<div class="refine ${add ? 'addi' : ''}">${head}${cells ? `<div class="opts">${cells}</div>` : ''}
-    <div class="row" style="gap:6px;justify-content:space-between"><span class="small mute">${add ? '고대 룬석' : '제련석'} ${need} · ${fmt(cost.gold)}G${locked.size && opened ? ` · 고정 ${locked.size}칸` : ''}</span>
+    <div class="row" style="gap:6px;justify-content:space-between"><span class="small mute">${add ? '고대 룬석' : '제련석'} ${need} · ${fmt(cost.gold)}G</span>
     <button class="btn sm ${add ? 'ghost' : ''}" data-a="${add ? 'refineAdd' : 'refine'}" data-e="${esc(e.uid)}" ${can ? '' : 'disabled'}>${add ? (opened ? '에디셔널 재설정' : '에디셔널 개방') : '제련'}</button></div></div>`;
 }
 function refineCtl(e: Equip) {
@@ -721,7 +719,7 @@ function viewRefinery() {
     : (refineView === 'party' ? G.partyChars(s) : orderedRoster(s)).map((c) => equipGroup(c, 'refine')).join('');
   return `<div class="wrap">${backBtn()}
     <h2>제련소</h2>
-    <p class="small mute"><b>잠재능력</b>은 제련석으로, <b>에디셔널 잠재</b>는 고대 룬석으로 3줄을 새로 새겨요. 새길 때마다 확률로 등급이 올라가고(${potBadge(1)}→${potBadge(2)}→${potBadge(3)}→${potBadge(4)}), 천장에 닿으면 확정이에요. 등급이 높을수록 수치가 크고, 유니크부터 전용 옵션이 붙어요. 첫 줄은 현재 등급, 2·3번째 줄은 가끔 한 등급 아래로 나와요. 에디셔널 수치는 잠재의 절반이에요.<br>
+    <p class="small mute"><b>잠재능력</b>은 제련석으로, <b>에디셔널 잠재</b>는 고대 룬석으로 3줄을 새로 새겨요. 새길 때마다 확률로 등급이 올라가고(${potBadge(1)}→${potBadge(2)}→${potBadge(3)}→${potBadge(4)}), 천장에 닿으면 확정이에요. 등급이 높을수록 수치가 크고, 유니크부터 전용 옵션이 붙어요. 무기·방어구·장신구마다 나오는 옵션이 달라요. 첫 줄은 현재 등급, 2·3번째 줄은 가끔 한 등급 아래로 나와요. 에디셔널 수치는 잠재의 절반이에요.<br>
     제련석: 던전 (일반 ${REFINE_CHANCE.normal}% · 엘리트 ${REFINE_CHANCE.elite}% · 보스 ${REFINE_CHANCE.boss}%) · 보유 <b>${s.refineStones}</b>개<br>
     고대 룬석: 일일 던전 · 무한 탑 첫 돌파 · 월드보스 · 보유 <b>${s.runes ?? 0}</b>개</p>
     <div class="tabs" role="group" aria-label="보기">${tabs.map(([v, n]) => `<button class="${refineView === v ? 'on' : ''}" data-a="refineView" data-v="${v}">${n}</button>`).join('')}</div>
@@ -2173,8 +2171,6 @@ app.addEventListener('click', (ev) => {
     case 'petOdds': petOdds = !petOdds; render(); break;
     case 'petSellLow': commit(G.sellPetsUpTo(s!, 2)); break;
     case 'petSell': petSel = null; commit(G.sellPet(s!, d.id!)); break;
-    case 'optLock': commit(G.toggleOptionLock(s!, d.e!, Number(d.i))); break;
-    case 'addLock': commit(G.toggleAddLock(s!, d.e!, Number(d.i))); break;
     case 'refineAdd': commit(G.refineAdd(s!, d.e!)); break;
     case 'refineView': refineView = d.v as GroupView; render(); break;
     case 'partyIn': commit(G.togglePartyMember(s!, d.uid!)); break;

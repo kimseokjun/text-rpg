@@ -380,7 +380,7 @@ export function rollSetEquip(rng: Rng, setId?: string, baseId?: string): Equip {
   const base = baseId ? EQUIP_BASES.find((b) => b.id === baseId)! : rng.pick(SET_BASES.filter((b) => (setId ? b.set === setId : b.set !== RAID_SET)));
   const r = rng.weighted([4, 5] as Rarity[], (x) => SET_RARITY[x as 4 | 5]);
   const pot = r === 5 ? 2 : 1;
-  return { uid: newUid('e'), baseId: base.id, rarity: r, enhance: 0, failStack: 0, options: rollLines(rng, base.tier, pot, r - 2), pot };
+  return { uid: newUid('e'), baseId: base.id, rarity: r, enhance: 0, failStack: 0, options: rollLines(rng, base.slot, base.tier, pot, r - 2), pot };
 }
 export function rollEquip(rng: Rng, floor: number, minRarity: Rarity = 1): Equip {
   const tier = tierOfFloor(floor);
@@ -391,5 +391,5 @@ export function rollEquip(rng: Rng, floor: number, minRarity: Rarity = 1): Equip
   let r = (rng.weighted([1, 2, 3, 4, 5] as Rarity[], (x) => w[x - 1]));
   if (r < minRarity) r = minRarity;
   const pot = r === 5 ? 2 : 1;
-  return { uid: newUid('e'), baseId: base.id, rarity: r, enhance: 0, failStack: 0, options: r >= 3 ? rollLines(rng, tier, pot, r - 2) : [], ...(r >= 3 ? { pot } : {}) };
+  return { uid: newUid('e'), baseId: base.id, rarity: r, enhance: 0, failStack: 0, options: r >= 3 ? rollLines(rng, base.slot, tier, pot, r - 2) : [], ...(r >= 3 ? { pot } : {}) };
 }

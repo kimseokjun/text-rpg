@@ -110,35 +110,45 @@ export const POT_UP = [0, 15, 5, 1.5];
 export const POT_PITY = [0, 20, 50, 120];
 /** 에디셔널은 잠재의 절반 수치 */
 export const ADD_MULT = 0.5;
-/** 유니크부터 / 레전드리 전용 옵션 */
-export const UNIQUE_POOL: Modifier[] = [
-  { key: 'critDmg', kind: 'flat', value: 0.05 },
-  { key: 'dmgTaken', kind: 'flat', value: -2 },
-  { key: 'mpCost', kind: 'pct', value: -5 },
-];
-export const LEGEND_POOL: Modifier[] = [
-  { key: 'physDmg', kind: 'pct', value: 4 },
-  { key: 'evade', kind: 'flat', value: 2 },
-];
-const poolOf = (g: number) => (g >= 4 ? [...OPTION_POOL, ...UNIQUE_POOL, ...LEGEND_POOL] : g >= 3 ? [...OPTION_POOL, ...UNIQUE_POOL] : OPTION_POOL);
+/** 부위별 잠재 옵션 (메이플식): 레어 이상 공통 / 유니크부터 / 레전드리 전용 */
+type Slot = 'weapon' | 'armor' | 'accessory';
+const M = (key: Modifier['key'], kind: Modifier['kind'], value: number): Modifier => ({ key, kind, value });
+export const POT_POOLS: Record<Slot, [Modifier[], Modifier[], Modifier[]]> = {
+  weapon: [
+    [M('atk', 'pct', 4), M('mag', 'pct', 4), M('crit', 'flat', 3), M('bossDmg', 'pct', 6), M('defPierce', 'flat', 5), M('resPierce', 'flat', 5), M('skillDmg', 'pct', 5)],
+    [M('critDmg', 'flat', 0.05)],
+    [M('physDmg', 'pct', 4)],
+  ],
+  armor: [
+    [M('hp', 'pct', 5), M('def', 'pct', 6), M('res', 'pct', 6), M('magTaken', 'pct', -4)],
+    [M('dmgTaken', 'flat', -2)],
+    [M('evade', 'flat', 2)],
+  ],
+  accessory: [
+    [M('agi', 'flat', 5), M('crit', 'flat', 3), M('hp', 'pct', 5), M('healPower', 'pct', 8), M('goldGain', 'pct', 6), M('expGain', 'pct', 6)],
+    [M('mpCost', 'pct', -5)],
+    [M('itemGain', 'pct', 5)],
+  ],
+};
+const poolOf = (g: number, slot: Slot) => { const [a, u, l] = POT_POOLS[slot]; return g >= 4 ? [...a, ...u, ...l] : g >= 3 ? [...a, ...u] : a; };
 /** 잠재 한 줄: 첫 줄은 현재 등급, 나머지는 40% 확률로 같은 등급 · 아니면 한 등급 아래 */
-export function rollLine(rng: { pick<T>(a: T[]): T; chance(p: number): boolean }, tier: number, grade: number, idx: number, exclude: string[], add = false): Modifier {
+export function rollLine(rng: { pick<T>(a: T[]): T; chance(p: number): boolean }, slot: Slot, tier: number, grade: number, idx: number, exclude: string[], add = false): Modifier {
   const g = idx === 0 || grade <= 1 || rng.chance(40) ? grade : grade - 1;
-  const pool = poolOf(g);
+  const pool = poolOf(g, slot);
   let o = rng.pick(pool);
   for (let i = 0; i < 8 && exclude.includes(o.key); i++) o = rng.pick(pool);
   const v = o.value * optionScale(tier) * POT_MULT[g] * (add ? ADD_MULT : 1);
   return { ...o, value: Math.abs(v) < 1 ? Math.round(v * 100) / 100 : Math.round(v * 10) / 10, g };
 }
-export function rollLines(rng: { pick<T>(a: T[]): T; chance(p: number): boolean }, tier: number, grade: number, n: number, add = false): Modifier[] {
+export function rollLines(rng: { pick<T>(a: T[]): T; chance(p: number): boolean }, slot: Slot, tier: number, grade: number, n: number, add = false): Modifier[] {
   const out: Modifier[] = [];
-  for (let i = 0; i < n; i++) out.push(rollLine(rng, tier, grade, i, out.map((o) => o.key), add));
+  for (let i = 0; i < n; i++) out.push(rollLine(rng, slot, tier, grade, i, out.map((o) => o.key), add));
   return out;
 }
-/** 고대 룬석 비용: 1 + 고정한 칸당 1 */
+/** 고대 룬석 비용: 1회 1개 */
 export const addRuneCost = (locks: number) => 1 + locks;
 
-/** 제련 비용: 제련석 1 + 고정한 칸당 2, 골드는 티어 × 등급 비례 */
+/** 제련 비용: 제련석 1회 1개, 골드는 티어 × 등급 비례 */
 export const refineStoneCost = (locks: number) => 1 + 2 * locks;
 export const refineGoldCost = (tier: number, rarity: number) => 1500 * tier * rarity;
 /** 제련석 드롭 확률 % */

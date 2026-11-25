@@ -644,7 +644,7 @@ function shopEquip(rng: Rng, tier: number, r: Rarity, used: Set<string>): Equip 
   const base = rng.pick(cands.length ? cands : all);
   used.add(base.id);
   const pot = r === 5 ? 2 : 1;
-  return { uid: `shop_${Math.floor(rng.next() * 1e9).toString(36)}`, baseId: base.id, rarity: r, enhance: 0, failStack: 0, options: r >= 3 ? rollLines(rng, tier, pot, r - 2) : [], ...(r >= 3 ? { pot } : {}) };
+  return { uid: `shop_${Math.floor(rng.next() * 1e9).toString(36)}`, baseId: base.id, rarity: r, enhance: 0, failStack: 0, options: r >= 3 ? rollLines(rng, base.slot, tier, pot, r - 2) : [], ...(r >= 3 ? { pot } : {}) };
 }
 
 /** 오늘 날짜(KST)의 상점이 아니면 새로 채움: 전설 2~3 · 영웅 3 · 희귀 2~3 · 나머지 고급, 일부는 한 티어 아래 */
@@ -738,21 +738,9 @@ export function rerollTrait(s: GameState, uid: string, idx: number): Result {
 /** 재련: 희귀 이상 장비의 추가 옵션 다시 굴리기 */
 /** 제련소: 고정하지 않은 옵션 칸(최대 3칸)을 다시 새김 */
 export const refineCost = (e: Equip) => ({
-  stones: refineStoneCost((e.locked ?? []).filter((i) => e.options[i]).length),
+  stones: refineStoneCost(0),
   gold: refineGoldCost(EQUIP_BY_ID[e.baseId].tier, e.rarity),
 });
-export function toggleOptionLock(s: GameState, equipUid: string, idx: number): Result {
-  const f = findEquip(s, equipUid);
-  if (!f || !f.e.options[idx]) return fail('옵션을 찾을 수 없습니다');
-  const l = new Set(f.e.locked ?? []);
-  if (l.has(idx)) l.delete(idx);
-  else {
-    if (l.size >= OPTION_SLOTS - 1) return fail('최소 한 칸은 비워둬야 제련할 수 있어요');
-    l.add(idx);
-  }
-  f.e.locked = [...l].sort();
-  return { ok: true };
-}
 /** 잠재 등급업 판정: 확률 또는 천장 */
 function tryUp(r: Rng, g: number, pity: number): { g: number; pity: number; up: boolean } {
   if (g >= 4) return { g, pity: 0, up: false };
@@ -772,20 +760,15 @@ export function refine(s: GameState, equipUid: string): Result {
   const tier = EQUIP_BY_ID[f.e.baseId].tier;
   const t = tryUp(r, f.e.pot ?? 1, f.e.potPity ?? 0);
   f.e.pot = t.g; f.e.potPity = t.pity;
-  const locked = new Set((f.e.locked ?? []).filter((i) => f.e.options[i]));
-  const next: typeof f.e.options = [];
-  for (let i = 0; i < OPTION_SLOTS; i++) {
-    if (locked.has(i)) { next.push(f.e.options[i]); continue; }
-    next.push(rollLine(r, tier, t.g, i, [...next.map((o) => o.key), ...[...locked].map((j) => f.e.options[j].key)]));
-  }
-  f.e.options = next;
+  f.e.options = rollLines(r, EQUIP_BY_ID[f.e.baseId].slot, tier, t.g, OPTION_SLOTS);
+  delete f.e.locked;
   bump(s, 'refine');
   return { ok: true, msg: t.up ? `✨ 잠재 등급 상승! ${POT_NAME[t.g]}` : `제련 완료! 제련석 -${cost.stones}` };
 }
 
 /** 에디셔널 잠재: 고대 룬석으로 (처음엔 레어로 개방) */
 export const addCost = (e: Equip) => ({
-  runes: e.addG ? addRuneCost((e.addLocked ?? []).filter((i) => e.add?.[i]).length) : 1,
+  runes: addRuneCost(0),
   gold: refineGoldCost(EQUIP_BY_ID[e.baseId].tier, e.rarity),
 });
 export function refineAdd(s: GameState, equipUid: string): Result {
@@ -799,33 +782,14 @@ export function refineAdd(s: GameState, equipUid: string): Result {
   const r = rngOf(s);
   const tier = EQUIP_BY_ID[f.e.baseId].tier;
   if (!f.e.addG) {
-    f.e.addG = 1; f.e.addPity = 0; f.e.addLocked = [];
-    f.e.add = rollLines(r, tier, 1, OPTION_SLOTS, true);
+    f.e.addG = 1; f.e.addPity = 0;
+    f.e.add = rollLines(r, EQUIP_BY_ID[f.e.baseId].slot, tier, 1, OPTION_SLOTS, true);
     return { ok: true, msg: '에디셔널 잠재 개방! (레어)' };
   }
   const t = tryUp(r, f.e.addG, f.e.addPity ?? 0);
   f.e.addG = t.g; f.e.addPity = t.pity;
-  const cur = f.e.add ?? [];
-  const locked = new Set((f.e.addLocked ?? []).filter((i) => cur[i]));
-  const next: Modifier[] = [];
-  for (let i = 0; i < OPTION_SLOTS; i++) {
-    if (locked.has(i)) { next.push(cur[i]); continue; }
-    next.push(rollLine(r, tier, t.g, i, [...next.map((o) => o.key), ...[...locked].map((j) => cur[j].key)], true));
-  }
-  f.e.add = next;
+  f.e.add = rollLines(r, EQUIP_BY_ID[f.e.baseId].slot, tier, t.g, OPTION_SLOTS, true);
   return { ok: true, msg: t.up ? `✨ 에디셔널 등급 상승! ${POT_NAME[t.g]}` : `에디셔널 재설정! 고대 룬석 -${cost.runes}` };
-}
-export function toggleAddLock(s: GameState, equipUid: string, idx: number): Result {
-  const f = findEquip(s, equipUid);
-  if (!f || !f.e.add?.[idx]) return fail('옵션을 찾을 수 없습니다');
-  const l = new Set(f.e.addLocked ?? []);
-  if (l.has(idx)) l.delete(idx);
-  else {
-    if (l.size >= OPTION_SLOTS - 1) return fail('최소 한 칸은 비워둬야 해요');
-    l.add(idx);
-  }
-  f.e.addLocked = [...l].sort();
-  return { ok: true };
 }
 
 /** 탐험 보험료: 시작 층에 비례 */

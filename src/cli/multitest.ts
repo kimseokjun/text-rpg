@@ -3,7 +3,7 @@ import { simulateMulti } from '../server/multi';
 import { Expedition } from '../core/dungeon';
 import { Rng } from '../core/rng';
 const a = JSON.parse(readFileSync('/tmp/save5.json', 'utf8')), b = JSON.parse(readFileSync('/tmp/save4.json', 'utf8'));
-for (const floor of [20, 45, 58]) {
+for (const floor of [13, 43, 58]) {
   const r = simulateMulti([{ user_id: 'aaaaaaaa-1', username: 'A', chars: a.party.slice(0, 2), save: a, host: true }, { user_id: 'bbbbbbbb-2', username: 'B', chars: b.party.slice(0, 2), save: b, host: false }], floor, 12345 + floor);
   if ('error' in r) { console.log(r.error); continue; }
   // UI와 같은 방식으로 재생 (JSON 왕복 포함)

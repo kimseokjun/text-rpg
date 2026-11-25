@@ -2,10 +2,10 @@ import { EQUIP_BASES, OPTION_POOL, POTIONS, REFINE_CHANCE, rollOption, tierOfFlo
 import { DAILY_BY_ID, DAILY_TUNE, dailyReward } from '../data/daily';
 import { RAID_DIFF, RAID_ROUNDS, raidForm, type RaidDiff } from '../data/raid';
 import { CORE_CHANCE, RAID_SET, SET_BASES, SET_DROP_CHANCE, SET_RARITY, SHARD_CHANCE } from '../data/sets';
-import { MAX_FLOOR, MONSTERS, regionOf, rewardScale, zoneOf } from '../data/monsters';
+import { DIFF_TUNE, MAX_FLOOR, MONSTERS, regionOf, rewardScale, zoneOf } from '../data/monsters';
 import { gainExp, newUid } from './character';
 import { newReport, type Report } from './report';
-import { towerBossMult, TOWER_ELITES, TOWER_LEVEL_FLOOR, TOWER_POOL, isTowerBoss, towerBoss, towerGimmick, towerTune } from '../data/tower';
+import { GIMMICKS, towerBossMult, TOWER_ELITES, TOWER_LEVEL_FLOOR, TOWER_POOL, isTowerBoss, towerBoss, towerGimmick, towerTune } from '../data/tower';
 import { fromCharacter, fromMonster, nameUnique, runBattle, snap, type Combatant } from './combat';
 import { Rng } from './rng';
 import { partyMods } from './stats';
@@ -33,6 +33,8 @@ export interface ExpeditionSettings {
   tower?: boolean;
   /** 멀티 던전 (보상은 서버에서) */
   multi?: boolean;
+  /** 멀티 전용 던전 '균열': level = 기준 층 (1~70), 10층 진행 */
+  rift?: { level: number };
 }
 
 /** 최고 기록보다 낮은 층의 골드·경험치 배율: 5층 이상 아래 75%, 10층 이상 아래 50% */
@@ -49,6 +51,11 @@ export const DEFAULT_SETTINGS: ExpeditionSettings = {
 
 export type StopReason = 'wipe' | 'timeout' | 'lowHp' | 'down' | 'target' | 'bossAhead' | 'cleared' | 'regionEnd' | 'manual';
 
+export const RIFT_FLOORS = 10;
+/** 균열 난이도 배율 (src/cli/rifttest.ts): 기준 층 표준 파티가 완주 약 60% */
+export const RIFT_TUNE = { normal: 0.6, elite: 0.5, boss: 0.8 };
+/** 구역별 보정 (src/cli/rifttune.ts) */
+export const RIFT_ZONE_K: Record<string, number> = {catacomb:  1.74,  mine:  0.67,  frost:  0.68,  nest:  0.63,  rift:  0.55,  wall:  0.9,  library:  0.85,  temple:  0.43,  swamp:  0.67,  lava:  0.7,  sunken:  0.8,  core:  0.59,  blood:  0.62,  throne:  0.6};
 export interface Loot { gold: number; exp: number; stones: number; blessings: number; refineStones: number; shards: number; cores: number; equips: Equip[] }
 
 export interface FloorResult { floor: number; win: boolean; log: BattleEvent[]; story?: string }
@@ -94,7 +101,7 @@ export class Expedition {
   get avgHpPct() {
     return (this.party.reduce((s, c) => s + (c.alive ? c.hp / c.maxHp : 0), 0) / this.party.length) * 100;
   }
-  isBossFloor(f = this.floor) { if (this.settings.tower) return isTowerBoss(f); return !!this.settings.raid || (!this.settings.daily && zoneOf(f).boss.floor === f); }
+  isBossFloor(f = this.floor) { if (this.settings.tower) return isTowerBoss(f); if (this.settings.rift) return f === 5 || f === RIFT_FLOORS; return !!this.settings.raid || (!this.settings.daily && zoneOf(f).boss.floor === f); }
   /** 레이드 결과 */
   raidDealt = 0;
   raidKilled = false;
@@ -104,6 +111,7 @@ export class Expedition {
   runFloor(): FloorResult {
     if (this.settings.raid) return this.runRaid();
     if (this.settings.tower) return this.runTower();
+    if (this.settings.rift) return this.runRift();
     const log: BattleEvent[] = [];
     const f = this.floor;
     const zone = zoneOf(f);
@@ -194,6 +202,48 @@ export class Expedition {
     return { floor: t, win: true, log };
   }
 
+  /** 균열 (멀티 전용): 기준 층 몬스터로 10층, 5층 정예 · 10층 보스, 3층부터 무작위 기믹 */
+  private runRift(): FloorResult {
+    const log: BattleEvent[] = [];
+    const t = this.floor, F = this.settings.rift!.level;
+    const zone = zoneOf(F);
+    const norm = Array.from({ length: zone.floors[1] - zone.floors[0] }, (_, i) => DIFF_TUNE[zone.floors[0] + i] ?? 1);
+    const baseTune = norm.reduce((a, b) => a + b, 0) / Math.max(1, norm.length);
+    const K = RIFT_ZONE_K[zone.id] ?? 1;
+    const ramp = RIFT_TUNE.normal * K * (1 + 0.04 * (t - 1));
+    let enemies: Combatant[];
+    if (t === RIFT_FLOORS) {
+      const bt = (DIFF_TUNE[zone.boss.floor] ?? 1) * RIFT_TUNE.boss * K;
+      enemies = [fromMonster(MONSTERS[zone.boss.id], F, bt), ...zone.boss.adds.map((id) => fromMonster(MONSTERS[id], F, bt))];
+    } else if (t === 5) {
+      enemies = [fromMonster(MONSTERS[zone.elite], F, baseTune * RIFT_TUNE.elite * K), fromMonster(MONSTERS[zone.elite], F, baseTune * RIFT_TUNE.elite * K), fromMonster(MONSTERS[this.rng.weighted(zone.pool, (p) => p.weight).id], F, baseTune * ramp)];
+    } else {
+      const n = this.rng.int(2, t >= 6 ? 4 : 3);
+      enemies = Array.from({ length: n }, () => fromMonster(MONSTERS[this.rng.weighted(zone.pool, (p) => p.weight).id], F, baseTune * ramp));
+      if (this.rng.chance(15)) enemies[0] = fromMonster(MONSTERS[zone.elite], F, baseTune * RIFT_TUNE.elite * K);
+    }
+    const g = t >= 3 && t !== RIFT_FLOORS ? GIMMICKS[1 + this.rng.int(0, GIMMICKS.length - 2)] : null;
+    if (g) g.apply(enemies);
+    nameUnique(enemies);
+    log.push({ t: 'wave', floor: t, wave: 1, enemies: enemies.map(snap), elite: t === 5, boss: t === RIFT_FLOORS });
+    if (g) log.push({ t: 'special', who: `균열 ${t}층`, text: `${g.icon} ${g.name} — ${g.desc}` });
+    const ctx = { rng: this.rng, log, party: this.party, enemies, round: 0, hasBoss: enemies.some((e) => e.tags.has('boss')), floor: F, rep: this.report };
+    const win = runBattle(ctx);
+    this.collect(ctx.enemies.filter((e) => !e.alive), F);
+    if (!win) { this.finish(this.party.some((c) => c.alive) ? 'timeout' : 'wipe'); return { floor: t, win: false, log }; }
+    if (t === RIFT_FLOORS) {
+      this.loot.gold += Math.round(600 * rewardScale(F) * this.goldMult);
+      this.loot.refineStones += 3;
+      this.loot.stones += 2 + Math.floor(F / 10);
+      if (F > 50) this.loot.cores += 30;
+      log.push({ t: 'special', who: '균열', text: '균열을 끝까지 돌파했다! 완주 보상 획득' });
+    }
+    this.floorsCleared++;
+    if (t === 5) { for (const c of this.party) { if (!c.alive) { c.alive = true; c.hp = 0; } c.hp = c.maxHp; c.mp = c.maxMp; c.status = {}; } log.push({ t: 'special', who: '균열', text: '정예를 쓰러뜨리고 숨을 고른다 (전원 회복)' }); }
+    else this.floorRegen();
+    return { floor: t, win: true, log };
+  }
+
   /** 레이드: 보스 1 + 형태별 수하, 10라운드, 이어지는 HP */
   private runRaid(): FloorResult {
     const log: BattleEvent[] = [];
@@ -253,6 +303,7 @@ export class Expedition {
     }
     if (this.settings.daily) return 'target';
     if (this.settings.tower) return null;
+    if (this.settings.rift) return this.floor >= RIFT_FLOORS ? 'target' : null;
     if (this.floor >= MAX_FLOOR) return 'cleared';
     if (this.floor >= (regionOf(s.startFloor).floors?.[1] ?? MAX_FLOOR)) return 'regionEnd';
     if (this.floor >= s.targetFloor) return 'target';

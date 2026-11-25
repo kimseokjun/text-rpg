@@ -223,13 +223,13 @@ export function subscribeWB(onChange: (b: WBBoss) => void) {
 }
 
 // ───────── 멀티 던전 ─────────
-export interface Room { id: string; host: string; host_name: string; floor: number; max_players: number; status: 'open' | 'running' | 'done'; result: any; created_at: string }
+export interface Room { id: string; host: string; host_name: string; floor: number; max_players: number; speed?: number; status: 'open' | 'running' | 'done'; result: any; created_at: string }
 export interface PickedChar { uid: string; name: string; jobId: string; level: number; power: number }
 export interface RoomMember { room_id: string; user_id: string; username: string; chars: (string | PickedChar)[]; ready: boolean; claimed: boolean; joined_at: string }
 export async function listRooms(): Promise<(Room & { n: number })[]> {
   if (!sb) return [];
   const since = new Date(Date.now() - 3 * 3600_000).toISOString();
-  const { data } = await sb.from('rooms').select('id, host, host_name, floor, max_players, status, created_at').eq('status', 'open').gt('created_at', since).order('created_at', { ascending: false }).limit(30);
+  const { data } = await sb.from('rooms').select('id, host, host_name, floor, max_players, speed, status, created_at').eq('status', 'open').gt('created_at', since).order('created_at', { ascending: false }).limit(30);
   const rooms = (data ?? []) as Room[];
   if (!rooms.length) return [];
   const { data: m } = await sb.from('room_members').select('room_id, user_id').in('room_id', rooms.map((r) => r.id));
@@ -360,3 +360,4 @@ export async function saveNotice(n: { id?: number; kind: string; title: string; 
   return error ? error.message : null;
 }
 export async function deleteNotice(id: number) { if (sb) await sb.from('notices').delete().eq('id', id); }
+export async function setRoomSpeed(id: string, speed: number) { if (sb) await sb.from('rooms').update({ speed }).eq('id', id); }

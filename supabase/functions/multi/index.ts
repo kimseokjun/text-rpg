@@ -51,9 +51,9 @@ Deno.serve(async (req) => {
       if (me.claimed) return json({ error: '이미 보상을 받았어요' });
       const { data: upd } = await admin.from('room_members').update({ claimed: true }).eq('room_id', roomId).eq('user_id', uid).eq('claimed', false).select();
       if (!upd?.length) return json({ error: '이미 보상을 받았어요' });
-      const res = room.result as { reward: Record<string, unknown>; owner: Record<string, string>; chars: { uid: string }[] };
+      const res = room.result as { reward: Record<string, unknown>; rewards?: Record<string, Record<string, unknown>>; owner: Record<string, string>; chars: { uid: string }[] };
       const mine = Object.entries(res.owner).filter(([, o]) => o === uid).map(([k]) => k);
-      return json({ ok: true, reward: res.reward, myChars: mine, totalChars: res.chars.length });
+      return json({ ok: true, reward: res.rewards?.[uid] ?? res.reward, myChars: mine, totalChars: res.chars.length });
     }
     return json({ error: '알 수 없는 요청' });
   } catch (e) {

@@ -145,7 +145,7 @@ let invitePending: { from: string; room: string; floor: number } | null = null;
 function renderInvite() {
   document.querySelector('.invite')?.remove();
   if (!invitePending) return;
-  app.insertAdjacentHTML('beforeend', `<div class="invite" role="alertdialog"><b>${esc(invitePending.from)}</b>님이 멀티 던전(${esc(floorName(invitePending.floor))})에 초대했어요<div class="row" style="gap:6px;margin-top:8px"><button class="btn sm" data-a="mInviteJoin" data-v="${esc(invitePending.room)}">참가</button><button class="btn ghost sm" data-a="mInviteNo">거절</button></div></div>`);
+  app.insertAdjacentHTML('beforeend', `<div class="invite" role="alertdialog"><b>${esc(invitePending.from)}</b>님이 ${esc(zoneOf(invitePending.floor).name)} 균열에 초대했어요<div class="row" style="gap:6px;margin-top:8px"><button class="btn sm" data-a="mInviteJoin" data-v="${esc(invitePending.room)}">참가</button><button class="btn ghost sm" data-a="mInviteNo">거절</button></div></div>`);
 }
 Cloud.setInviteHandler((p) => { invitePending = p; renderInvite(); });
 function stopSocial() { clearInterval(touchTimer); Cloud.leaveRealtime(); socialOn = false; chatOpen = false; chatMsgs = []; friends = []; renderChat(); }
@@ -821,6 +821,7 @@ function viewRegions() {
 /** 실행 중 층 표시: 일일 던전이면 "황금 금고 3단계" */
 function runLabel(f: number) {
   if (EX?.settings.tower) return `무한 탑 ${f}층`;
+  if (EX?.settings.rift) return `균열 ${f}층`;
   const rd = EX?.settings.raid;
   if (rd) return `레이드 · ${RAID_DIFF_NAME[rd.diff]}`;
   const d = EX?.settings.daily;
@@ -1059,18 +1060,18 @@ function viewMulti() {
   const me = Cloud.session?.user.id;
   if (!myRoom) {
     if (Date.now() - roomListAt > 10000) setTimeout(refreshRooms, 0);
-    if (!mFloor) mFloor = Math.max(1, Math.min(70, s.maxFloor || 1));
-    const maxF = Math.max(1, Math.min(70, s.maxFloor || 1));
+    const riftOpts = ZONES.map((z) => ({ z, f: z.floors[0] + 2 })).filter((o) => (s.maxFloor || 0) >= o.f || o.z.floors[0] === 1);
+    if (!riftOpts.some((o) => o.f === mFloor)) mFloor = riftOpts[riftOpts.length - 1].f;
     return `<div class="wrap">${backBtn()}
       <h2>멀티 던전</h2>
-      <p class="mute">친구와 단원을 모아 <b>4인 파티</b>로 ${3}층을 함께 돌아요. 전투는 서버가 계산하고, 모두의 화면에서 똑같이 재생돼요. 끝나면 <b>모두가 같은 보상</b>(협동 보너스 +20%)을 받고, 경험치는 각자 데려간 단원이 받아요.</p>
+      <p class="mute">멀티 전용 던전 <b>균열</b>을 친구와 함께 돌아요. 각자 단원을 모아 <b>4인 파티</b>로 <b>10층</b>(5층 정예 · 10층 보스, 3층부터 기믹)을 진행하고, 5층을 넘으면 전원 회복해요. 전투는 서버가 계산하고 모두의 화면에서 같은 속도로 재생돼요.<br>보상은 협동 보너스 +20%. 단, <b>내가 아직 못 깬 구역</b>의 균열이면 보상은 내 최고층 수준으로 받아요.</p>
       <div class="panel grid"><h3 style="margin:0">방 만들기</h3>
-        <div class="field"><label for="mFloor">시작 층 (내가 깬 층까지)</label><select id="mFloor" data-m="floor">${Array.from({ length: maxF }, (_, i) => i + 1).reverse().map((f) => `<option value="${f}" ${f === mFloor ? 'selected' : ''}>${esc(floorName(f))} · 권장 ${fmt(floorPower(f))}</option>`).join('')}</select></div>
+        <div class="field"><label for="mFloor">균열 구역 (내가 지나온 구역까지)</label><select id="mFloor" data-m="floor">${[...riftOpts].reverse().map((o) => `<option value="${o.f}" ${o.f === mFloor ? 'selected' : ''}>${esc(o.z.name)} 균열 · 권장 ${fmt(floorPower(o.f))}</option>`).join('')}</select></div>
         <div class="seg mini" role="group" aria-label="인원">${[2, 3, 4].map((n) => `<button class="${mMax === n ? 'on' : ''}" data-a="mMax" data-v="${n}">${n}인</button>`).join('')}</div>
         <p class="small mute" style="margin:0">2인: 각자 2명 · 3인: 방장 2명, 나머지 1명 · 4인: 각자 1명</p>
         <button class="btn" data-a="mCreate" ${mBusy ? 'disabled' : ''}>방 만들기</button></div>
       <div class="panel"><div class="row" style="justify-content:space-between"><h3 style="margin:0">열린 방</h3><button class="btn ghost sm" data-a="mRooms">새로고침</button></div>
-        <div class="tlist">${roomList.map((r) => `<div class="trow"><b class="tf">${r.n}/${r.max_players}</b><div class="tg"><span><b>${esc(r.host_name)}</b>의 방 · ${esc(floorName(r.floor))}</span><span class="small mute">${hhmm(r.created_at)} 개설</span></div><div class="row" style="grid-column:2;gap:6px">${r.host === Cloud.session?.user.id ? `<button class="btn sm" data-a="mJoin" data-v="${r.id}">들어가기</button><button class="btn ghost sm" data-a="mDelete" data-v="${r.id}">삭제</button>` : `<button class="btn sm" data-a="mJoin" data-v="${r.id}" ${r.n >= r.max_players ? 'disabled' : ''}>${r.n >= r.max_players ? '꽉 참' : '참가'}</button>`}</div></div>`).join('') || '<p class="small mute">열린 방이 없어요. 방을 만들고 친구를 초대해 보세요.</p>'}</div></div>
+        <div class="tlist">${roomList.map((r) => `<div class="trow"><b class="tf">${r.n}/${r.max_players}</b><div class="tg"><span><b>${esc(r.host_name)}</b>의 방 · ${esc(zoneOf(r.floor).name)} 균열</span><span class="small mute">${hhmm(r.created_at)} 개설</span></div><div class="row" style="grid-column:2;gap:6px">${r.host === Cloud.session?.user.id ? `<button class="btn sm" data-a="mJoin" data-v="${r.id}">들어가기</button><button class="btn ghost sm" data-a="mDelete" data-v="${r.id}">삭제</button>` : `<button class="btn sm" data-a="mJoin" data-v="${r.id}" ${r.n >= r.max_players ? 'disabled' : ''}>${r.n >= r.max_players ? '꽉 참' : '참가'}</button>`}</div></div>`).join('') || '<p class="small mute">열린 방이 없어요. 방을 만들고 친구를 초대해 보세요.</p>'}</div></div>
     </div>`;
   }
   const st = roomSt;
@@ -1090,8 +1091,9 @@ function viewMulti() {
   };
   const friendsOn = friends.filter((f) => f.status === 'accepted' && Cloud.online[f.other] && !members.some((m) => m.user_id === f.other));
   return `<div class="wrap">${backBtn()}
-    <h2>멀티 던전 · ${esc(floorName(room.floor))}</h2>
-    <p class="small mute">${esc(room.host_name)}의 방 · ${n}/${room.max_players}명 · ${3}층 진행 · 권장 전투력 ${fmt(floorPower(room.floor))}</p>
+    <h2>균열 · ${esc(zoneOf(room.floor).name)}</h2>
+    <p class="small mute">${esc(room.host_name)}의 방 · ${n}/${room.max_players}명 · 10층 진행 · 권장 전투력 ${fmt(floorPower(room.floor))}${(s.maxFloor || 0) < room.floor ? ` · <span style="color:var(--gold)">아직 못 깬 구역이라 보상은 내 최고층 수준</span>` : ''}</p>
+    <div class="row" style="gap:8px;align-items:center;margin:6px 0"><span class="small">전투 배속</span>${isHost ? `<div class="seg mini" role="group" aria-label="배속">${([1, 2, 0] as const).map((v) => `<button class="${(room.speed ?? 1) === v ? 'on' : ''}" data-a="mSpeed" data-v="${v}">${v ? `${v}배` : '스킵'}</button>`).join('')}</div>` : `<b>${(room.speed ?? 1) ? `${room.speed ?? 1}배` : '스킵'}</b> <span class="small mute">(방장이 정함)</span>`}</div>
     <div class="mgrid">${members.map(card).join('')}${Array.from({ length: room.max_players - n }, () => '<div class="mmem empty"><span class="small mute">빈 자리</span></div>').join('')}</div>
     <div class="panel"><h3 style="margin-top:0">내가 데려갈 단원 <span class="small mute">${mPick.length}/${slots}명 선택</span></h3>
       <div class="cards">${s.roster.map((c) => `<button class="card ${mPick.includes(c.uid) ? 'inparty' : ''}" data-a="mPick" data-uid="${esc(c.uid)}"><div class="ico">${avatar(c)}</div><div><b>${esc(c.name)}</b><div class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} · 전투력 ${fmt(charPower(c))}</div></div></button>`).join('')}</div>
@@ -1110,8 +1112,11 @@ async function mSync(ready?: boolean) {
   const err = await Cloud.setMember(myRoom, picked, ready ?? meM?.ready ?? false);
   if (err) toast(err, true);
 }
+let mySpeed: 1 | 2 | 0 = 1;
 function startMultiReplay(room: Cloud.Room) {
   const res = room.result;
+  mySpeed = speed;
+  speed = (room.speed ?? 1) as 1 | 2 | 0;
   EX = new Expedition(res.chars, res.settings, new Rng(res.seed));
   multiRoom = room;
   units = {};
@@ -1137,10 +1142,12 @@ async function finishMulti() {
     ups = res.ups; equips = res.equips;
   }
   const lost = ex.stopReason === 'wipe' || ex.stopReason === 'timeout';
-  summary = { reason: lost ? `멀티 던전 · ${localFloor(ex.floor)}층에서 전멸` : `멀티 던전 · ${room.result.cleared}층 돌파!`, daily: `${room.host_name}의 방 · 협동 보너스 +20%`, report: ex.report, lost, diag: [], insured: true, floor: ex.floor, repeat: false, runs: ex.floorsCleared,
-    gold: r?.error ? 0 : rw.gold, exp: r?.error ? 0 : rw.exp, stones: r?.error ? 0 : rw.stones, blessings: r?.error ? 0 : rw.blessings, refineStones: r?.error ? 0 : rw.refineStones, shards: 0, cores: r?.error ? 0 : rw.cores, equips, levelUps: ups, bosses: [], newMaxFloor: false } as unknown as G.ExpeditionSummary;
+  const myRw = r?.error ? null : r.reward;
+  summary = { reason: lost ? `균열 ${ex.floor}층에서 ${ex.stopReason === 'timeout' ? '시간 초과로 후퇴' : '전멸'}` : `균열 ${room.result.cleared}층 완주!`, daily: `${room.host_name}의 방 · 협동 보너스 +20%${myRw?.level && myRw.level < room.floor ? ` · 보상은 내 최고층(${floorName(myRw.level)}) 기준` : ''}`, report: ex.report, lost, diag: [], insured: true, floor: ex.floor, repeat: false, runs: ex.floorsCleared,
+    gold: myRw?.gold ?? 0, exp: myRw?.exp ?? 0, stones: myRw?.stones ?? 0, blessings: myRw?.blessings ?? 0, refineStones: myRw?.refineStones ?? 0, shards: 0, cores: myRw?.cores ?? 0, equips, levelUps: ups, bosses: [], newMaxFloor: false } as unknown as G.ExpeditionSummary;
   Cloud.logEvent('multi', `${(summary as G.ExpeditionSummary).reason} · ${room.host_name}의 방`);
   myRoom = null; roomSt = null; multiRoom = null; Cloud.watchRoom(null, () => {});
+  speed = mySpeed;
   screen = 'result';
   commit();
 }
@@ -1516,8 +1523,8 @@ function viewDungeon() {
   const ex = EX!;
   const zone = zoneOf(ex.floor);
   return `<div class="wrap">
-    <div class="dhead"><div><div class="small mute">${ex.settings.tower ? `무한 탑 · ${esc(towerGimmick(ex.floor).icon)} ${esc(towerGimmick(ex.floor).name)}` : ex.settings.raid ? `개인 레이드 · ${esc(raidForm(ex.settings.raid.week).name)}` : ex.daily ? '일일 던전' : `${esc(regionOf(ex.floor).name)} · ${esc(zone.name)}`}</div><h2 id="floorTitle">${floorTitle(ex)}</h2></div>
-      <div class="speed" role="group" aria-label="전투 속도">${([1, 2, 0] as const).map((v) => `<button data-a="speed" data-v="${v}" class="${speed === v ? 'on' : ''}">${v === 0 ? '스킵' : `${v}x`}</button>`).join('')}</div></div>
+    <div class="dhead"><div><div class="small mute">${ex.settings.rift ? `균열 · ${esc(zoneOf(ex.settings.rift.level).name)}` : ex.settings.tower ? `무한 탑 · ${esc(towerGimmick(ex.floor).icon)} ${esc(towerGimmick(ex.floor).name)}` : ex.settings.raid ? `개인 레이드 · ${esc(raidForm(ex.settings.raid.week).name)}` : ex.daily ? '일일 던전' : `${esc(regionOf(ex.floor).name)} · ${esc(zone.name)}`}</div><h2 id="floorTitle">${floorTitle(ex)}</h2></div>
+      <div class="speed" role="group" aria-label="전투 속도">${([1, 2, 0] as const).map((v) => `<button data-a="speed" data-v="${v}" class="${speed === v ? 'on' : ''}" ${EX?.settings.multi ? 'disabled title="멀티에서는 방장이 정한 배속으로 고정돼요"' : ''}>${v === 0 ? '스킵' : `${v}x`}</button>`).join('')}</div></div>
     <div class="stage"><div class="side" id="pside"></div><div class="vs">VS</div><div class="side" id="eside"></div></div>
     <div class="log" id="log" aria-live="polite"></div>
     <div class="dctl" id="dctl"></div>
@@ -1648,6 +1655,10 @@ function renderDctl() {
   const el = document.getElementById('dctl');
   if (!el || !EX) return;
   const ex = EX;
+  if (ex.settings.multi) {
+    el.innerHTML = phase === 'done' ? `<button class="btn" data-a="endRun">결과 보기</button>` : `<span class="mute">${phase === 'playing' ? '전투 중…' : '다음 층으로 이동 중…'} · 배속 ${speed ? `${speed}배` : '스킵'} (방장 설정)</span>`;
+    return;
+  }
   const autoBox = `<label class="chk"><input type="checkbox" data-a="toggleAuto" ${ex.settings.auto ? 'checked' : ''}> ${ex.repeating ? '자동 반복' : '자동 진행'}</label>`;
   if (phase === 'playing') el.innerHTML = `<span class="mute">전투 중…</span>${autoBox}`;
   else if (phase === 'done') el.innerHTML = `<button class="btn" data-a="endRun">결과 보기</button>`;
@@ -2057,6 +2068,7 @@ app.addEventListener('click', (ev) => {
     case 'mStart': (async () => { if (!mPick.length) { toast('데려갈 단원을 골라주세요', true); return; } mBusy = true; render(); await mSync(true); if (S) await saveGameNow(S); const r = await Cloud.multiCall({ action: 'start', room: myRoom }); mBusy = false; if (r?.error) { toast(r.error, true); render(); return; } refreshRoom(); })(); break;
     case 'mKick': if (myRoom) Cloud.kickMember(myRoom, d.v!).then(() => refreshRoom()); break;
     case 'mDelete': Cloud.deleteRoom(d.v!).then(() => { toast('방을 삭제했어요'); refreshRooms(); }); break;
+    case 'mSpeed': if (myRoom) Cloud.setRoomSpeed(myRoom, Number(d.v)).then(() => refreshRoom()); break;
     case 'mInvite': if (myRoom && roomSt) { Cloud.sendInvite(d.v!, myRoom, roomSt.room.floor); toast('초대를 보냈어요'); } break;
     case 'mInviteJoin': (async () => { invitePending = null; renderInvite(); const e = await Cloud.joinRoom(d.v!); if (e) { toast(e, true); return; } screen = 'multi'; await enterRoom(d.v!); render(); })(); break;
     case 'mInviteNo': invitePending = null; renderInvite(); break;

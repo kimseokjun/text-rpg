@@ -494,3 +494,4 @@ svg.px{image-rendering:pixelated;flex:none}
 .czart.g3 img{border-color:#7fb3ff}.czart.g2 img{border-color:#7fd48a}.czart.g1 img{border-color:#9aa3ad}
 .czart figcaption{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;justify-content:center}
 .czstar{color:#ffd970;letter-spacing:2px}
+.dchat{margin-top:10px;padding:10px}.dchat .roomlog{max-height:120px}

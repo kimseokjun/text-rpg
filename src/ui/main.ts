@@ -1130,6 +1130,7 @@ function startMultiReplay(room: Cloud.Room) {
   units = {};
   screen = 'dungeon';
   render();
+  renderRoomLog();
   drawParty();
   logLine('sp', `멀티 던전 출발! ${res.chars.map((c: Character) => c.name).join(', ')}`);
   playFloor();
@@ -1643,6 +1644,8 @@ function viewDungeon() {
     <div class="stage"><div class="side" id="pside"></div><div class="vs">VS</div><div class="side" id="eside"></div></div>
     <div class="log" id="log" aria-live="polite"></div>
     <div class="dctl" id="dctl"></div>
+    ${ex.settings.multi && myRoom ? `<div class="panel dchat"><div class="small mute" style="margin-bottom:4px">💬 파티 채팅</div><div id="roomlog" class="roomlog">${roomLogHtml()}</div>
+      <form class="cin" data-form="room" style="display:flex;gap:6px;margin-top:6px"><input id="roomIn" maxlength="200" placeholder="파티원에게 한마디" value="${esc(roomDraft)}" autocomplete="off" enterkeyhint="send" style="flex:1;min-width:0"><button class="btn sm" type="submit">보내기</button></form></div>` : ''}
   </div>`;
 }
 

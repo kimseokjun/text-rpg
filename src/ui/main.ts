@@ -71,7 +71,7 @@ function renderToast() {
 }
 // ───────── 채팅·친구 (서버 버전) ─────────
 let chatOpen = false;
-let chatTab: 'chat' | 'friends' = 'chat';
+let chatTab: 'chat' | 'friends' | 'online' = 'chat';
 let chatMsgs: Cloud.ChatMsg[] = [];
 let chatUnread = 0;
 let chatDraft = '';
@@ -102,7 +102,7 @@ async function startSocial() {
     chatUnread++;
     renderChat();
   }, async () => { friends = await Cloud.loadFriends(); if (!(chatOpen && chatTab === 'chat')) renderChat(); });
-  Cloud.joinPresence(() => { if (screen === 'multi' && myRoom) refreshRoom(); const el = document.querySelector('.chatbox .onl'); if (el) el.textContent = `접속 ${Object.keys(Cloud.online).length}명`; else renderChat(); });
+  Cloud.joinPresence(() => { if (screen === 'multi' && myRoom) refreshRoom(); if (chatOpen && chatTab === 'online') { renderChat(); return; } const el = document.querySelector('.chatbox .onl'); if (el) el.textContent = `● 접속 ${Object.keys(Cloud.online).length}명`; else renderChat(); });
   renderChat();
 }
 let invitePending: { from: string; room: string; floor: number } | null = null;
@@ -127,7 +127,12 @@ function renderChat(scrollBottom = false) {
     app.insertAdjacentHTML('beforeend', `<button class="chatfab" data-a="chatToggle" aria-label="채팅 열기">💬${chatUnread + pending ? `<span class="badge">${Math.min(99, chatUnread + pending)}</span>` : ''}</button>`);
     return;
   }
-  const body = chatTab === 'chat'
+  const me2 = Cloud.session.user.id;
+  const friendIds = new Set(friends.map((f) => f.other));
+  const onlineList = Object.entries(Cloud.online).sort((a, b) => Number(b[0] === me2) - Number(a[0] === me2) || Number(friendIds.has(b[0])) - Number(friendIds.has(a[0])) || a[1].localeCompare(b[1]));
+  const body = chatTab === 'online'
+    ? `<div class="clist flist">${onlineList.map(([id, name]) => `<div class="frow"><span class="dot on"></span><b>${esc(name || '?')}</b><span class="small mute">${id === me2 ? '나' : friendIds.has(id) ? (friends.find((f) => f.other === id)?.status === 'accepted' ? '친구' : '요청 중') : ''}</span>${id !== me2 && !friendIds.has(id) && name ? `<button class="btn ghost sm" data-a="friendAdd" data-v="${esc(name)}">친구 요청</button>` : ''}</div>`).join('') || '<p class="small mute">접속 정보를 불러오는 중…</p>'}</div>`
+    : chatTab === 'chat'
     ? `<div class="clist">${chatMsgs.map(msgHtml).join('') || '<p class="small mute">첫 메시지를 남겨보세요.</p>'}</div>
       <form class="cin" data-form="chat"><input id="chatIn" maxlength="200" placeholder="메시지 (200자)" value="${esc(chatDraft)}" autocomplete="off"><button class="btn sm" type="submit">보내기</button></form>`
     : `<div class="clist flist">
@@ -138,7 +143,7 @@ function renderChat(scrollBottom = false) {
         ${friends.length ? '' : '<p class="small mute">아이디로 친구를 추가해 보세요.</p>'}
       </div>`;
   app.insertAdjacentHTML('beforeend', `<section class="chatbox" aria-label="채팅">
-    <div class="chead"><div class="tabs"><button class="${chatTab === 'chat' ? 'on' : ''}" data-a="chatTab" data-v="chat">전체 채팅</button><button class="${chatTab === 'friends' ? 'on' : ''}" data-a="chatTab" data-v="friends">친구${pending ? ` (${pending})` : ''}</button></div><span class="small mute onl">접속 ${onlineN}명</span><button class="btn ghost sm" data-a="chatToggle" aria-label="채팅 닫기">✕</button></div>
+    <div class="chead"><div class="tabs"><button class="${chatTab === 'chat' ? 'on' : ''}" data-a="chatTab" data-v="chat">전체 채팅</button><button class="${chatTab === 'friends' ? 'on' : ''}" data-a="chatTab" data-v="friends">친구${pending ? ` (${pending})` : ''}</button></div><button class="linkbtn small onl ${chatTab === 'online' ? 'on' : ''}" data-a="chatTab" data-v="online" title="누가 접속 중인지 보기">● 접속 ${onlineN}명</button><button class="btn ghost sm" data-a="chatToggle" aria-label="채팅 닫기">✕</button></div>
     ${body}</section>`);
   const nb = document.querySelector('.chatbox .clist');
   if (nb && chatTab === 'chat' && (scrollBottom ? atBottom : true)) nb.scrollTop = nb.scrollHeight;
@@ -1990,7 +1995,8 @@ app.addEventListener('click', (ev) => {
     case 'rankKind': rankKind = d.v as Cloud.RankKind; render(); break;
     case 'rankRefresh': loadRanks(true); break;
     case 'chatToggle': chatOpen = !chatOpen; if (chatOpen && chatTab === 'chat') chatUnread = 0; renderChat(); break;
-    case 'chatTab': chatTab = d.v as 'chat' | 'friends'; if (chatTab === 'chat') chatUnread = 0; renderChat(); break;
+    case 'chatTab': chatTab = d.v as 'chat' | 'friends' | 'online'; if (chatTab === 'chat') chatUnread = 0; renderChat(); break;
+    case 'friendAdd': Cloud.requestFriend(d.v!).then(async (e) => { if (e) toast(e, true); else { toast('친구 요청을 보냈어요'); friends = await Cloud.loadFriends(); renderChat(); } }); break;
     case 'friendAccept': Cloud.acceptFriend(Number(d.v)).then(async () => { friends = await Cloud.loadFriends(); renderChat(); toast('친구가 됐어요'); }); break;
     case 'friendRemove': Cloud.removeFriend(Number(d.v)).then(async () => { friends = await Cloud.loadFriends(); renderChat(); }); break;
     case 'wbAttack': wbAttack(); break;

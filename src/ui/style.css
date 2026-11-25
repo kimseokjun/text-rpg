@@ -495,3 +495,4 @@ svg.px{image-rendering:pixelated;flex:none}
 .czart figcaption{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;justify-content:center}
 .czstar{color:#ffd970;letter-spacing:2px}
 .dchat{margin-top:10px;padding:10px}.dchat .roomlog{max-height:120px}
+.dopts{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}.dopt{text-align:left;background:#140c22;border:1px solid var(--line);border-radius:10px;padding:10px;color:inherit;cursor:pointer;display:flex;flex-direction:column;gap:4px}.dopt:hover{border-color:#d08cff}

@@ -1324,6 +1324,7 @@ let cardTab: 'deck' | 'all' | 'open' = 'deck';
 let cardSet = 'all';
 let cardSel: string | null = null;
 let cardZoom: string | null = null;
+let deckOpts: G.DeckOption[] | null = null;
 function viewCards() {
   const s = S!;
   const owned = s.cards ?? {};
@@ -1343,7 +1344,10 @@ function viewCards() {
   if (cardTab === 'deck') {
     const slots = Array.from({ length: DECK_SIZE }, (_, i) => deck[i]).map((id) => id ? `<button class="cslot" data-a="cardSel" data-v="${id}">${cardHtml(id, { awaken: owned[id]?.awaken ?? 0, size: 104 })}</button>` : `<button class="cslot empty" data-a="cardTab" data-v="all"><span>+</span><span class="small mute">카드 넣기</span></button>`).join('');
     const setLines = eff.lines.filter((l) => l.kind !== 'codex');
-    body = `<div class="cdeck">${slots}</div>
+    const opts = deckOpts ? `<div class="panel dopts"><div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">어떤 조합으로 낄까요?</h3><button class="btn ghost sm" data-a="deckAuto" data-v="close">닫기</button></div>
+      ${deckOpts.map((o, i) => `<button class="dopt" data-a="deckApply" data-i="${i}"><div class="row" style="justify-content:space-between;gap:8px"><b>${esc(o.label)}${i === 0 ? ' <span class="cbadge up" style="position:static">추천</span>' : ''}</b><span class="cp">전투력 ${fmt(o.power)}</span></div>
+        <div class="small mute">${o.deck.map((id) => esc(CARD_BY_ID[id].name)).join(' · ')}</div>${o.bonuses.length ? `<div class="small">${o.bonuses.map((t) => `✔ ${esc(t)}`).join('<br>')}</div>` : ''}</button>`).join('')}</div>` : '';
+    body = `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn sm" data-a="deckAuto" ${Object.keys(owned).length ? '' : 'disabled'}>⚡ 자동 장착</button></div>${opts}<div class="cdeck">${slots}</div>
       <div class="panel"><h3 style="margin-top:0">적용 중인 효과 <span class="small mute">출전 파티 전원</span></h3>
         <div class="small">${deck.map((id) => CARD_BY_ID[id]).filter(Boolean).map((c) => `<span class="tag">${esc(c.name)} · ${esc(cardEffectText(c, owned[c.id]?.awaken ?? 0))}</span>`).join(' ') || '<span class="mute">장착한 카드가 없어요</span>'}</div>
         <ul class="csets">${setLines.map((l) => `<li class="${l.on ? 'on' : ''}"><span>${l.on ? '✔' : '·'}</span>${esc(l.text)}</li>`).join('')}</ul>
@@ -2212,8 +2216,16 @@ app.addEventListener('click', (ev) => {
     case 'autoTries': autoTries = Number(d.v); render(); break;
     case 'autoRefresh': boardConfirm = null; curAction = 'autoRefresh'; commit(G.autoRefresh(s!, autoGrade, autoTries)); break;
     case 'autoEnh': curAction = 'autoEnh'; commit(G.autoEnhance(s!, d.e!, Number(d.v), useBlessing)); if (s && s.blessings === 0) useBlessing = false; break;
-    case 'cardTab': cardTab = d.v as typeof cardTab; cardSel = null; cardZoom = null; render(); break;
+    case 'cardTab': cardTab = d.v as typeof cardTab; cardSel = null; cardZoom = null; deckOpts = null; render(); break;
     case 'cardSetF': cardSet = d.v!; render(); break;
+    case 'deckAuto': {
+      if (d.v === 'close') { deckOpts = null; render(); break; }
+      const o = G.autoDeckOptions(s!);
+      if (!o.length) break;
+      if (o.length === 1 || !o.some((x) => x.bonuses.length)) { deckOpts = null; commit(G.applyDeck(s!, o[0].deck)); break; }
+      deckOpts = o; render(); break;
+    }
+    case 'deckApply': { const o = deckOpts?.[Number(d.i)]; deckOpts = null; if (o) commit(G.applyDeck(s!, o.deck)); else render(); break; }
     case 'cardZoom': cardZoom = d.v || null; render(); break;
     case 'cardSel': cardSel = cardSel === d.v ? null : d.v!; render(); if (cardSel) document.querySelector('.cdetail')?.scrollIntoView({ block: 'nearest' }); break;
     case 'cardDeck': curAction = 'cardDeck'; commit(G.toggleDeck(s!, d.v!)); break;

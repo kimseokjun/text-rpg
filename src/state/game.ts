@@ -14,7 +14,7 @@ import { MILESTONES, MILESTONE_SCALES, RAID_DIFF, RAID_DIFF_NAME, RAID_LIMIT, at
 import { EGG_PRICE, PET_BY_ID, PET_GRADE_NAME, PET_MAX_STARS, hatch, petMods, petSellPrice, type Pet } from '../data/pets';
 import { charPower, partyPower } from '../core/power';
 import { JOBS } from '../data/jobs';
-import { AWAKEN_COST, CARD_BY_ID, DECK_SIZE, MAX_AWAKEN, cardMods, openPack, type OwnedCard } from '../data/cards';
+import { AWAKEN_COST, CARD_BY_ID, CARD_SETS, DECK_SIZE, cardValue, MAX_AWAKEN, cardMods, openPack, type OwnedCard } from '../data/cards';
 import { MERC_BY_ID } from '../data/mercenaries';
 import { QUESTS, rewardText, type QuestView } from '../data/quests';
 import { TOWER_UNLOCK, towerGimmick, towerReward } from '../data/tower';
@@ -1066,6 +1066,46 @@ export function toggleDeck(s: GameState, id: string): Result {
   s.deck.push(id);
   return { ok: true, msg: `${CARD_BY_ID[id].name} 장착` };
 }
+/** 자동 장착 후보: 높은 순 + 세트 조합들. 전투력으로 비교 */
+export interface DeckOption { deck: string[]; power: number; label: string; bonuses: string[] }
+export function autoDeckOptions(s: GameState): DeckOption[] {
+  const owned = s.cards ?? {};
+  const val = (id: string) => cardValue(CARD_BY_ID[id], owned[id].awaken) + CARD_BY_ID[id].grade * 0.01;
+  const ids = Object.keys(owned).filter((id) => CARD_BY_ID[id]).sort((a, b) => val(b) - val(a));
+  const fill = (base: string[]) => [...base, ...ids.filter((x) => !base.includes(x))].slice(0, DECK_SIZE);
+  const bySet = CARD_SETS.map((st) => ids.filter((id) => CARD_BY_ID[id].set === st.id)).filter((l) => l.length >= 2);
+  const cands: string[][] = [fill([])];
+  for (const a of bySet) {
+    cands.push(fill(a.slice(0, 5)));
+    if (a.length >= 4) cands.push(fill(a.slice(0, 4)));
+    for (const b of bySet) if (b !== a) {
+      if (a.length >= 4) cands.push(fill([...a.slice(0, 4), ...b.slice(0, 2)]));
+      cands.push(fill([...a.slice(0, 2), ...b.slice(0, 2)]));
+      for (const c of bySet) if (c !== a && c !== b) cands.push(fill([...a.slice(0, 2), ...b.slice(0, 2), ...c.slice(0, 2)]));
+    }
+  }
+  const keep = s.deck;
+  const seen = new Set<string>();
+  const out: DeckOption[] = [];
+  for (const d of cands) {
+    const k = [...d].sort().join();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    s.deck = d;
+    const power = statePower(s);
+    const bonuses = cardMods(owned, d).lines.filter((l) => l.on && l.kind === 'set').map((l) => l.text);
+    const counts = CARD_SETS.map((st) => [st.name, d.filter((id) => CARD_BY_ID[id].set === st.id).length] as const).filter(([, n]) => n >= 2);
+    out.push({ deck: d, power, bonuses, label: counts.length ? counts.map(([n, c]) => `${n} ${c}장`).join(' + ') : '세트 없이 높은 순' });
+  }
+  s.deck = keep;
+  return out.sort((a, b) => b.power - a.power).slice(0, 4);
+}
+export function applyDeck(s: GameState, deck: string[]): Result {
+  if (deck.some((id) => !s.cards?.[id])) return fail('없는 카드가 있어요');
+  s.deck = deck.slice(0, DECK_SIZE);
+  return { ok: true, msg: `카드 ${s.deck.length}장 자동 장착` };
+}
+
 /** 각성: 같은 카드 여분을 소모 (count = 보유 장수, 1장은 본체) */
 export const awakenNeed = (o: OwnedCard) => (o.awaken >= MAX_AWAKEN ? Infinity : AWAKEN_COST[o.awaken]);
 export function awakenCard(s: GameState, id: string): Result {

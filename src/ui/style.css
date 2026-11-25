@@ -502,3 +502,4 @@ svg.px{image-rendering:pixelated;flex:none}
 .pb.p1{color:#6aaeff}.pb.p2{color:#c08aff}.pb.p3{color:#ffd23a}.pb.p4{color:#7dff7a;box-shadow:0 0 8px #7dff7a55}
 .refine.addi{border-top:1px dashed var(--line);padding-top:8px;margin-top:6px}
 .phead{align-items:center;margin-bottom:4px}
+.lootcnt{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-weight:700}.lootrest{margin-top:8px;padding:10px}.autol{margin:0 0 8px}.linkbtn{background:none;border:0;color:#7fb3ff;text-decoration:underline;cursor:pointer;padding:0;font:inherit}.autolp{margin:12px 0}

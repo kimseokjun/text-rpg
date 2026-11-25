@@ -1162,22 +1162,22 @@ async function finishMulti() {
   EX = null;
   const r = await Cloud.multiCall({ action: 'claim', room: room.id });
   const s = S!;
-  let ups: { name: string; to: number }[] = [], equips: Equip[] = [];
+  let ups: { name: string; to: number }[] = [], equips: Equip[] = [], autoLine: string | undefined;
   const rw = room.result.reward;
   if (r?.error) toast(r.error, true);
   else {
     const prefix = `${Cloud.session!.user.id.slice(0, 8)}_`;
     const res = G.applyMultiReward(s, r.reward, (r.myChars as string[]).map((u) => u.replace(prefix, '')), r.totalChars);
-    ups = res.ups; equips = res.equips;
+    ups = res.ups; equips = res.equips; autoLine = res.autoLine;
   }
   const lost = ex.stopReason === 'wipe' || ex.stopReason === 'timeout';
   const myRw = r?.error ? null : r.reward;
   summary = { reason: lost ? `균열 ${ex.floor}층에서 ${ex.stopReason === 'timeout' ? '시간 초과로 후퇴' : '전멸'}` : `균열 ${room.result.cleared}층 완주!`, daily: `${room.host_name}의 방 · 협동 보너스 +20%${myRw?.level && myRw.level < room.floor ? ` · 보상은 내 최고층(${floorName(myRw.level)}) 기준` : ''}`, report: ex.report, lost, diag: [], insured: true, floor: ex.floor, repeat: false, runs: ex.floorsCleared,
-    gold: myRw?.gold ?? 0, exp: myRw?.exp ?? 0, stones: myRw?.stones ?? 0, blessings: myRw?.blessings ?? 0, refineStones: myRw?.refineStones ?? 0, shards: 0, cores: myRw?.cores ?? 0, cardPacks: myRw?.cardPacks ?? 0, equips, levelUps: ups, bosses: [], newMaxFloor: false } as unknown as G.ExpeditionSummary;
+    gold: myRw?.gold ?? 0, exp: myRw?.exp ?? 0, stones: myRw?.stones ?? 0, blessings: myRw?.blessings ?? 0, refineStones: myRw?.refineStones ?? 0, shards: 0, cores: myRw?.cores ?? 0, cardPacks: myRw?.cardPacks ?? 0, equips, autoLine, levelUps: ups, bosses: [], newMaxFloor: false } as unknown as G.ExpeditionSummary;
   Cloud.logEvent('multi', `${(summary as G.ExpeditionSummary).reason} · ${room.host_name}의 방`);
   myRoom = null; roomSt = null; multiRoom = null; Cloud.watchRoom(null, () => {});
   speed = mySpeed;
-  screen = 'result';
+  lootOpen = false; screen = 'result';
   commit();
 }
 
@@ -1602,6 +1602,39 @@ type WhFilter = 'all' | EquipSlot | 'worn' | 'bag';
 let whFilter: WhFilter = 'all';
 let whOpen: string | null = null;
 
+/** 결과 화면 획득 장비: 등급별 개수 + 영웅 이상만 펼침, 나머지는 접기 + 바로 정리 */
+let lootOpen = false;
+function lootSection(r: G.ExpeditionSummary) {
+  const s = S!;
+  const auto = r.autoLine ? `<p class="small autol">♻️ ${esc(r.autoLine)} <button class="linkbtn" data-a="go" data-to="storage">자동 처리 설정</button></p>` : '';
+  if (!r.equips.length) return auto ? `<div class="sec"><h3>획득 장비</h3>${auto}</div>` : '';
+  const cnt = ([5, 4, 3, 2, 1] as Rarity[]).map((x) => [x, r.equips.filter((e) => e.rarity === x).length] as const).filter(([, n]) => n);
+  const top = r.equips.filter((e) => e.rarity >= 4).sort((a, b) => b.rarity - a.rarity);
+  const rest = r.equips.filter((e) => e.rarity < 4);
+  const restIn = rest.filter((e) => s.inventory.some((x) => x.uid === e.uid));
+  const uids = restIn.map((e) => e.uid).join(',');
+  const gold = restIn.reduce((a, e) => a + G.sellPrice(e), 0), st = restIn.reduce((a, e) => a + G.dismantleValue(e), 0);
+  const line = (e: Equip) => `<div class="item"><div>${equipLine(e)}</div></div>`;
+  return `<div class="sec"><h3>획득 장비 <span class="small mute">${r.equips.length}개</span></h3>
+    <div class="lootcnt">${cnt.map(([x, n]) => `<span class="iname r${x}">${RARITY_NAME[x]} ${n}</span>`).join('<span class="mute">·</span>')}</div>
+    ${auto}
+    ${top.length ? `<div class="items">${top.map(line).join('')}</div>` : ''}
+    ${rest.length ? `<div class="panel lootrest"><div class="row" style="justify-content:space-between;gap:6px;flex-wrap:wrap"><button class="btn ghost sm" data-a="lootOpen">${lootOpen ? '접기' : `희귀 이하 ${rest.length}개 보기`}</button>
+      ${restIn.length ? `<span class="row" style="gap:6px"><button class="btn sm" data-a="lootProc" data-v="dismantle" data-u="${uids}">${restIn.length}개 분해 · 강화석 +${st}</button><button class="btn ghost sm" data-a="lootProc" data-v="sell" data-u="${uids}">판매 +${fmt(gold)}G</button></span>` : '<span class="small mute">정리 완료</span>'}</div>
+      ${lootOpen ? `<div class="items" style="margin-top:8px">${rest.sort((a, b) => b.rarity - a.rarity).map(line).join('')}</div>` : ''}</div>` : ''}
+    ${!s.autoLoot?.on ? `<p class="small mute" style="margin:6px 0 0">매번 정리하기 귀찮다면 <button class="linkbtn" data-a="go" data-to="storage">창고에서 자동 처리</button>를 켜보세요.</p>` : ''}
+  </div>`;
+}
+function autoLootPanel() {
+  const s = S!;
+  const a = s.autoLoot ?? { on: false, rarities: [1, 2] as Rarity[], mode: 'dismantle' as const };
+  return `<div class="panel autolp"><div class="row" style="justify-content:space-between;align-items:center;gap:8px"><div><h3 style="margin:0">줍자마자 자동 처리</h3><span class="small mute">체크한 등급은 가방에 안 들어오고 바로 정리돼요 (탐험·균열 보상)</span></div>
+    <button class="btn sm ${a.on ? '' : 'ghost'}" data-a="autoLoot" data-v="toggle" aria-pressed="${a.on}">${a.on ? '켜짐' : '꺼짐'}</button></div>
+    <div class="tabs" role="group" aria-label="자동 처리 등급" style="margin-top:8px">${([1, 2, 3, 4] as Rarity[]).map((r) => `<button class="rr r${r} ${a.rarities.includes(r) ? 'on' : ''}" data-a="autoLoot" data-v="r" data-r="${r}" aria-pressed="${a.rarities.includes(r)}">${RARITY_NAME[r]}</button>`).join('')}</div>
+    <div class="tabs" role="group" aria-label="처리 방법">${(['dismantle', 'sell'] as const).map((m) => `<button class="${a.mode === m ? 'on' : ''}" data-a="autoLoot" data-v="mode" data-m="${m}">${m === 'dismantle' ? '분해 (강화석)' : '판매 (골드)'}</button>`).join('')}</div>
+    <p class="small mute" style="margin:0">전설 장비는 항상 가방에 들어와요.</p></div>`;
+}
+
 function viewStorage() {
   const s = S!;
   const all = allEquips();
@@ -1645,6 +1678,7 @@ function viewStorage() {
       <div><span class="small mute">벨리알의 파편</span><b>${s.scales}</b></div>
       ${pots}
     </div>
+    ${autoLootPanel()}
     ${bulkPanel()}
     <div class="tabs" role="group" aria-label="필터">${filters.map(([v, n]) => `<button class="${whFilter === v ? 'on' : ''}" data-a="whFilter" data-v="${v}">${n}</button>`).join('')}</div>
     <div class="wlist">${cards || '<p class="mute">해당하는 장비가 없습니다.</p>'}</div>
@@ -1863,7 +1897,7 @@ function endRun() {
   summary = G.finishExpedition(S, EX);
   if (CLOUD) Cloud.logEvent(ex0.settings.tower ? 'tower' : ex0.settings.raid ? 'raid' : ex0.settings.daily ? 'daily' : 'run', `${summary.reason} · ${summary.daily ?? floorName(ex0.floor)} · 골드 ${summary.gold}`);
   EX = null;
-  screen = 'result';
+  lootOpen = false; screen = 'result';
   commit();
 }
 
@@ -1885,7 +1919,7 @@ function viewResult() {
       ${(r as { cardPacks?: number }).cardPacks ? `<div><span class="small mute">신비 카드 팩</span><b style="color:var(--gold)">+${(r as { cardPacks?: number }).cardPacks}</b></div>` : ''}
     </div>
     ${r.levelUps.length ? `<div class="panel"><h3>레벨 업</h3><p>${r.levelUps.map((l) => `${esc(l.name)} Lv.${l.to}`).join(' · ')}</p></div>` : ''}
-    ${r.equips.length ? `<div class="sec"><h3>획득 장비</h3><div class="items">${r.equips.map((e) => `<div class="item"><div>${equipLine(e)}</div></div>`).join('')}</div></div>` : ''}
+    ${lootSection(r)}
     ${r.report ? reportPanel(r) : ''}
     ${r.dailyRef ? dailyResultPanel(r.dailyRef) : ''}
     <div class="row" style="margin-top:18px"><button class="btn ${r.dailyRef ? 'ghost' : ''}" data-a="go" data-to="town">마을로</button></div>
@@ -2240,6 +2274,15 @@ app.addEventListener('click', (ev) => {
     case 'autoEnh': curAction = 'autoEnh'; commit(G.autoEnhance(s!, d.e!, Number(d.v), useBlessing)); if (s && s.blessings === 0) useBlessing = false; break;
     case 'cardTab': cardTab = d.v as typeof cardTab; cardSel = null; cardZoom = null; deckOpts = null; render(); break;
     case 'cardSetF': cardSet = d.v!; render(); break;
+    case 'lootOpen': lootOpen = !lootOpen; render(); break;
+    case 'lootProc': commit(G.processUids(s!, (d.u ?? '').split(',').filter(Boolean), d.v as 'sell' | 'dismantle')); break;
+    case 'autoLoot': {
+      const a = s!.autoLoot ?? { on: false, rarities: [1, 2] as Rarity[], mode: 'dismantle' as const };
+      if (d.v === 'toggle') G.setAutoLoot(s!, { on: !a.on });
+      else if (d.v === 'mode') G.setAutoLoot(s!, { mode: d.m as 'sell' | 'dismantle' });
+      else { const r = Number(d.r) as Rarity; G.setAutoLoot(s!, { rarities: a.rarities.includes(r) ? a.rarities.filter((x) => x !== r) : [...a.rarities, r] }); }
+      commit(); break;
+    }
     case 'deckAuto': {
       if (d.v === 'close') { deckOpts = null; render(); break; }
       const o = G.autoDeckOptions(s!);

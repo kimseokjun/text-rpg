@@ -30,6 +30,8 @@ export interface GameState {
   stones: number;
   blessings: number;
   refineStones: number;
+  /** 줍자마자 자동 처리: 체크한 등급은 가방에 안 넣고 분해/판매 */
+  autoLoot?: { on: boolean; rarities: Rarity[]; mode: 'dismantle' | 'sell' };
   /** 고대 룬석: 에디셔널 잠재 재료 */
   runes?: number;
   pets: Pet[];
@@ -810,6 +812,32 @@ export function bulkSell(s: GameState, f: BulkFilter): Result {
   return { ok: true, msg: `${list.length}개 판매 · +${gold.toLocaleString('ko-KR')}G` };
 }
 
+/** 새로 얻은 장비에 자동 처리 적용 → 남길 장비만 반환 */
+export function applyAutoLoot(s: GameState, equips: Equip[]): { kept: Equip[]; line?: string } {
+  const a = s.autoLoot;
+  if (!a?.on || !a.rarities.length) return { kept: equips };
+  const set = new Set(a.rarities);
+  const gone = equips.filter((e) => set.has(e.rarity) && !e.enhance);
+  if (!gone.length) return { kept: equips };
+  const kept = equips.filter((e) => !gone.includes(e));
+  if (a.mode === 'sell') { const g = gone.reduce((x, e) => x + sellPrice(e), 0); s.gold += g; return { kept, line: `자동 판매 ${gone.length}개 → +${g.toLocaleString('ko-KR')}G` }; }
+  const st = gone.reduce((x, e) => x + dismantleValue(e), 0); s.stones += st;
+  return { kept, line: `자동 분해 ${gone.length}개 → 강화석 +${st}` };
+}
+export function setAutoLoot(s: GameState, patch: Partial<NonNullable<GameState['autoLoot']>>) {
+  s.autoLoot = { on: false, rarities: [1, 2], mode: 'dismantle', ...s.autoLoot, ...patch };
+}
+/** 결과 화면: 이번에 얻은 장비 중 지정 uid만 판매/분해 (가방에 남아있는 것만) */
+export function processUids(s: GameState, uids: string[], mode: 'sell' | 'dismantle'): Result {
+  const ids = new Set(uids);
+  const list = s.inventory.filter((e) => ids.has(e.uid));
+  if (!list.length) return fail('이미 정리했어요');
+  s.inventory = s.inventory.filter((e) => !ids.has(e.uid));
+  if (mode === 'sell') { const g = list.reduce((x, e) => x + sellPrice(e), 0); s.gold += g; return { ok: true, msg: `${list.length}개 판매 · +${g.toLocaleString('ko-KR')}G` }; }
+  const st = list.reduce((x, e) => x + dismantleValue(e), 0); s.stones += st;
+  return { ok: true, msg: `${list.length}개 분해 · 강화석 +${st}` };
+}
+
 export function bulkDismantle(s: GameState, f: BulkFilter): Result {
   const list = bulkTargets(s, f);
   if (!list.length) return fail('조건에 맞는 장비가 없습니다');
@@ -873,6 +901,7 @@ export interface ExpeditionSummary {
   runs: number;
   insured: boolean;
   gold: number; exp: number; stones: number; blessings: number; refineStones: number; shards: number; cores: number; runes?: number;
+  autoLine?: string;
   report?: Report;
   towerLines?: string[];
   diag?: string[];
@@ -904,6 +933,8 @@ export function finishExpedition(s: GameState, ex: Expedition): ExpeditionSummar
   s.runes = (s.runes ?? 0) + (ex.loot.runes ?? 0);
   s.shards += ex.loot.shards;
   s.cores += ex.loot.cores;
+  const auto = applyAutoLoot(s, ex.loot.equips);
+  ex.loot.equips = auto.kept;
   s.inventory.push(...ex.loot.equips);
   const raidLines = ex.settings.raid ? applyRaid(s, ex) : undefined;
   const dly = ex.settings.daily;
@@ -940,6 +971,7 @@ export function finishExpedition(s: GameState, ex: Expedition): ExpeditionSummar
   return {
     reason: ex.settings.tower ? (failed ? `무한 탑 ${ex.floor}층에서 막혔다${ex.towerCleared ? ` (${ex.towerCleared}층까지 돌파)` : ''}` : `무한 탑 ${ex.towerCleared}층까지 돌파하고 귀환`) : ex.settings.raid ? (ex.raidKilled ? '군단장 벨리알 처치!' : `벨리알에게 ${ex.raidDealt.toLocaleString('ko-KR')} 피해 (${((ex.raidDealt / ex.settings.raid.maxHp) * 100).toFixed(1)}%)`) : dly ? (won ? `${DAILY_BY_ID[dly.id].name} ${dly.stage}단계 클리어!` : ex.stopReason === 'timeout' ? '시간 초과… 입장 횟수는 차감되지 않았다' : '파티 전멸… 입장 횟수는 차감되지 않았다') : ex.repeating && ex.stopReason === 'target' ? '반복 파밍을 마치고 귀환했다' : REASON[ex.stopReason ?? 'manual'],
     towerLines,
+    autoLine: auto.line,
     daily: ex.settings.tower ? `무한 탑 · 최고 기록 ${s.tower?.best ?? 0}층` : ex.settings.raid ? `레이드 · ${RAID_DIFF_NAME[ex.settings.raid.diff]}` : dly ? `${DAILY_BY_ID[dly.id].name} ${dly.stage}단계` : undefined,
     report: ex.report,
     lost: ex.settings.raid ? !ex.raidKilled && ex.stopReason === 'wipe' : !won,
@@ -1011,7 +1043,8 @@ function applyTower(s: GameState, ex: Expedition): string[] {
 export function applyMultiReward(s: GameState, r: { gold: number; exp: number; stones: number; blessings: number; refineStones: number; cores: number; cardPacks?: number; equips: Equip[] }, myUids: string[], totalChars: number) {
   s.gold += r.gold; s.stones += r.stones; s.blessings += r.blessings; s.refineStones += r.refineStones; s.cores += r.cores;
   s.cardPacks = (s.cardPacks ?? 0) + (r.cardPacks ?? 0);
-  const equips = r.equips.map((e) => ({ ...e, uid: newUid('e') }));
+  const auto = applyAutoLoot(s, r.equips.map((e) => ({ ...e, uid: newUid('e') })));
+  const equips = auto.kept;
   s.inventory.push(...equips);
   const mine = myUids.map((u) => byUid(s, u)).filter(Boolean) as Character[];
   const ups: { name: string; to: number }[] = [];
@@ -1021,7 +1054,7 @@ export function applyMultiReward(s: GameState, r: { gold: number; exp: number; s
   }
   s.day++;
   news(s, `멀티 던전 보상: 골드 ${r.gold.toLocaleString('ko-KR')}${equips.length ? ` · 장비 ${equips.length}개` : ''}`);
-  return { equips, ups };
+  return { equips, ups, autoLine: auto.line };
 }
 
 /** 서버 보상 지급 (월드보스 등) */

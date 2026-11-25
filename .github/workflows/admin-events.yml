@@ -1,0 +1,13 @@
+name: Admin · 활동 로그 집계
+on: workflow_dispatch
+jobs:
+  stats:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: |
+          Q="select kind, count(*) as n, max(created_at) as last from public.events group by kind order by n desc"
+          BODY=$(jq -n --arg q "$Q" '{query: $q}')
+          curl -sS -X POST "https://api.supabase.com/v1/projects/$REF/database/query" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$BODY"

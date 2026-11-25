@@ -24,6 +24,7 @@ import { WB_LIMIT, wbInfo } from '../server/worldboss';
 import { slotsFor } from '../server/multi';
 import { DEFAULT_SETTINGS, Expedition } from '../core/dungeon';
 import { Raid4Battle, type R4Member, type R4State } from '../core/raid4battle';
+import { mountStage, playEvents, setBanner, setPanel, stageMounted, updateStage } from './r4stage';
 import { R4, R4_DIFFS, R4_MAX, R4_ROUNDS, R4_TURN_SEC, r4Reward, type R4Diff } from '../data/raid4';
 import { Rng } from '../core/rng';
 import { CARDS, CARD_BY_ID, CARD_SETS, DECK_SIZE, MAX_AWAKEN, PACK_ODDS, SET_BY_ID as CARD_SET_BY_ID, cardEffectText, cardMods } from '../data/cards';
@@ -1009,7 +1010,6 @@ interface R4Room {
 }
 let r4: R4Room | null = null;
 let r4CodeDraft = '';
-let r4Tick = 0;
 const myId = () => Cloud.session?.user.id ?? '';
 function r4Track() {
   if (!r4) return;
@@ -1067,12 +1067,43 @@ const r4Line = (e: BattleEvent): { c: string; t: string } | null => {
     default: return null;
   }
 };
-function r4Apply(events: BattleEvent[], st: R4State, choice: R4Room['choice']) {
-  if (!r4) return;
-  for (const e of events) { const l = r4Line(e); if (l) r4.log.push(l); }
-  if (r4.log.length > 200) r4.log = r4.log.slice(-200);
-  r4.st = st; r4.choice = choice;
-  if (screen === 'raid4') { render(); const lg = document.getElementById('r4log'); if (lg) lg.scrollTop = lg.scrollHeight; }
+/** 받은 기록 연출 → 끝나면 상태·선택 창 반영 */
+async function r4Apply(events: BattleEvent[], st: R4State, choice: R4Room['choice']) {
+  const room = r4;
+  if (!room) return;
+  for (const e of events) { const l = r4Line(e); if (l) room.log.push(l); }
+  if (room.log.length > 200) room.log = room.log.slice(-200);
+  r4LogRender();
+  if (screen === 'raid4' && room.phase === 'battle' && stageMounted()) {
+    room.choice = null; r4UpdateUI();
+    await playEvents(events);
+    if (r4 !== room) return;
+    room.st = st; room.choice = choice;
+    updateStage(st); r4UpdateUI();
+  } else {
+    room.st = st; room.choice = choice;
+    if (screen === 'raid4') render();
+  }
+}
+function r4LogRender() {
+  const lg = document.getElementById('r4log');
+  if (!lg || !r4) return;
+  lg.innerHTML = r4.log.slice(-60).map((l) => `<div class="${l.c}">${esc(l.t)}</div>`).join('');
+  lg.scrollTop = lg.scrollHeight;
+}
+/** 무대 위 배너(나의 턴)와 스킬 창 */
+function r4UpdateUI() {
+  const room = r4;
+  if (!room?.st || !stageMounted()) return;
+  const st = room.st;
+  const turnU = st.units.find((u) => u.id === st.turn);
+  const c = room.choice;
+  const mine = !!c && c.owner === myId() && c.deadline > 0;
+  const left = c ? Math.max(0, Math.ceil((c.deadline - Date.now()) / 1000)) : 0;
+  setBanner(mine ? `나의 턴 <b id="r4cd">${left}</b>` : turnU ? (turnU.boss ? '아바돈의 턴' : c ? `${esc(turnU.ownerName ?? '')}의 턴 <b id="r4cd">${left}</b>` : `${esc(turnU.name)}`) : '', mine);
+  setPanel(mine ? `<div class="r4ph"><b>${esc(turnU?.name ?? '')}</b><span class="small mute">MP ${turnU?.mp ?? 0}/${turnU?.maxMp ?? 0}</span></div>
+    <div class="r4skills">${c!.skills.map((k) => `<button class="r4skb" data-a="r4Skill" data-v="${esc(k.skillId)}" ${k.ok ? '' : 'disabled'} title="${esc(k.why ?? '')}"><b>${esc(k.name)}</b><span>MP ${k.mp}${k.ok ? '' : ` · ${esc(k.why ?? '')}`}</span></button>`).join('')}
+      <button class="r4skb atk" data-a="r4Skill" data-v="attack"><b>일반 공격</b><span>MP 0</span></button><button class="r4skb auto" data-a="r4Skill" data-v=""><b>자동</b><span>알아서</span></button></div>` : '');
 }
 function r4Msg(ev: string, p: any) {
   if (!r4) return;
@@ -1119,13 +1150,13 @@ function r4Pump() {
     const choice = { turn: cur.id, owner, skills: b.skillsOf(cur), deadline: Date.now() + (here ? R4_TURN_SEC : 1.5) * 1000 };
     const events = b.drain(), st = b.state();
     room.ch.send('tick', { events, st, choice });
-    r4Apply(events, st, choice);
-    room.timer = window.setTimeout(() => r4Take(cur.id, undefined, owner), (here ? R4_TURN_SEC : 1.5) * 1000);
+    // 연출이 끝난 뒤부터 제한 시간이 흐르도록 여유를 줌
+    r4Apply(events, st, choice).then(() => { if (r4 !== room || room.choice?.turn !== cur.id) return; room.choice = { ...room.choice, deadline: Date.now() + (here ? R4_TURN_SEC : 1.5) * 1000 }; room.ch.send('tick', { events: [], st, choice: room.choice }); r4UpdateUI(); clearTimeout(room.timer); room.timer = window.setTimeout(() => r4Take(cur.id, undefined, owner), (here ? R4_TURN_SEC : 1.5) * 1000); });
+    room.timer = window.setTimeout(() => r4Take(cur.id, undefined, owner), (here ? R4_TURN_SEC + 8 : 9) * 1000);
   } else {
     const events = b.drain(), st = b.state();
     room.ch.send('tick', { events, st, choice: null });
-    r4Apply(events, st, null);
-    room.timer = window.setTimeout(() => { if (r4 === room) { b.step(); r4Pump(); } }, 900);
+    r4Apply(events, st, null).then(() => { if (r4 !== room) return; room.timer = window.setTimeout(() => { if (r4 === room && !b.over) { b.step(); r4Pump(); } }, 350); });
   }
 }
 /** 방장: 차례 적용 (from = 고른 사람) */
@@ -1187,34 +1218,20 @@ function viewRaid4() {
       <div class="panel"><h3 style="margin-top:0">친구 초대 <span class="small mute">접속 중인 친구</span></h3>${fr.map((f) => `<div class="item"><div><b>${esc(f.username)}</b> <span class="small mute">전투력 ${fmt(f.power)}</span></div><button class="btn sm" data-a="r4Invite" data-v="${esc(f.other)}">초대</button></div>`).join('') || '<p class="small mute">접속 중인 친구가 없어요. 방 코드를 알려줘도 돼요.</p>'}</div>
     </div>`;
   }
-  // ── 전투 화면 ──
-  const st = room.st;
-  const by = Object.fromEntries(st.units.map((u) => [u.id, u]));
-  const boss = st.units.find((u) => u.boss)!;
-  const party = st.units.filter((u) => !u.boss);
-  const turnU = st.turn ? by[st.turn] : null;
-  const mine = room.choice && room.choice.owner === myId() && room.choice.deadline > 0;
-  const left = room.choice ? Math.max(0, Math.ceil((room.choice.deadline - Date.now()) / 1000)) : 0;
-  const order = st.order.slice(0, 8).map((id, i) => { const u = by[id]; return u ? `<div class="r4o ${i === 0 ? 'now' : ''} ${u.boss ? 'boss' : u.owner === myId() ? 'me' : ''}" title="${esc(u.name)}">${unitIcon(u, 36)}</div>` : ''; }).join('');
-  const unit = (u: typeof party[number]) => `<div class="r4u ${u.alive ? '' : 'dead'} ${u.id === st.turn ? 'turn' : ''} ${u.owner === myId() ? 'me' : ''}"><div class="r4fig">${unitIcon(u, 64)}</div>
-    <div class="r4ui"><b>${esc(u.name)}</b><span class="uown ${u.owner === myId() ? 'me' : ''}">${esc(u.ownerName ?? '')}</span>
-      <div class="bar"><i style="width:${pctW(u.hp, u.maxHp)}"></i></div><div class="small mute">${fmt(u.hp)} / ${fmt(u.maxHp)}</div>
-      <div class="bar mp"><i style="width:${pctW(u.mp, Math.max(1, u.maxMp))}"></i></div></div></div>`;
-  const act = mine ? `<div class="r4act"><div class="r4turn">⚔️ 나의 턴 <span class="r4cd" id="r4cd">${left}</span></div>
-      <div class="r4sk">${room.choice!.skills.map((k) => `<button class="btn sm ${k.ok ? '' : 'ghost'}" data-a="r4Skill" data-v="${esc(k.skillId)}" ${k.ok ? '' : 'disabled'} title="${esc(k.why ?? '')}">${skillTip(k.skillId)}<span class="small mute"> MP ${k.mp}</span></button>`).join('')}
-        <button class="btn ghost sm" data-a="r4Skill" data-v="attack">일반 공격</button><button class="btn ghost sm" data-a="r4Skill" data-v="">자동</button></div></div>`
-    : `<div class="r4act wait"><span>${turnU ? (turnU.boss ? '아바돈의 차례…' : room.choice ? `${esc(turnU.ownerName ?? '')}의 ${esc(turnU.name)} 차례 · 고르는 중 <span id="r4cd">${left}</span>` : `${esc(turnU.name)} 행동 중…`) : '…'}</span></div>`;
+  // ── 전투 화면 (무대는 그린 뒤 mountStage로 채움) ──
   return `<div class="wrap r4wrap">
-    <div class="row" style="justify-content:space-between"><b>4인 레이드 · ${R4[room.diff].name}</b><span class="small">라운드 <b>${st.round}</b> / ${R4_ROUNDS}</span></div>
-    <div class="r4order">${order}</div>
-    <div class="r4stage"><div class="r4party">${party.map(unit).join('')}</div>
-      <div class="r4boss ${boss.alive ? '' : 'dead'}"><div class="r4bfig">${unitIcon(boss, 150)}</div><b>${esc(boss.name)}</b>
-        <div class="bar e big"><i style="width:${pctW(boss.hp, boss.maxHp)}"></i></div><div class="small">${fmt(boss.hp)} / ${fmt(boss.maxHp)} · ${(boss.hp / boss.maxHp * 100).toFixed(1)}%</div></div></div>
-    ${act}
-    <div class="log r4log" id="r4log">${room.log.slice(-60).map((l) => `<div class="${l.c}">${esc(l.t)}</div>`).join('')}</div>
+    <div class="row" style="justify-content:space-between;margin-bottom:6px"><b>4인 레이드 · ${R4[room.diff].name}</b><span class="small mute">${R4_ROUNDS}라운드 안에 처치 · 방 ${esc(room.code)}</span></div>
+    <div class="r4stage2" id="r4box"></div>
+    <div class="log r4log" id="r4log"></div>
   </div>`;
 }
-setInterval(() => { if (screen !== 'raid4' || !r4?.choice) return; const el = document.getElementById('r4cd'); if (el) el.textContent = String(Math.max(0, Math.ceil((r4.choice.deadline - Date.now()) / 1000))); r4Tick++; }, 500);
+function r4Mount() {
+  const box = document.getElementById('r4box');
+  if (!box || !r4?.st) return;
+  mountStage(box, r4.st, { icon: (u, size) => unitIcon(u, size), esc, fmt, me: myId() });
+  r4LogRender(); r4UpdateUI();
+}
+setInterval(() => { if (screen !== 'raid4' || !r4?.choice) return; const el = document.getElementById('r4cd'); if (el) el.textContent = String(Math.max(0, Math.ceil((r4.choice.deadline - Date.now()) / 1000))); }, 500);
 
 // ───────── 친구 결투 ─────────
 let duelSize = 3;
@@ -2484,6 +2501,11 @@ function keepScroll(draw: () => void) {
 }
 function render() { keepScroll(renderNow); }
 function renderNow() {
+  if (screen === 'raid4' && r4?.phase === 'battle' && r4.st && stageMounted()) {
+    const t = document.querySelector('.top'); if (t) t.outerHTML = topbar();
+    renderModal(); renderToast(); r4UpdateUI();
+    return;
+  }
   if (screen === 'dungeon') {
     if (!document.getElementById('log')) app.innerHTML = topbar() + viewDungeon();
     else { const t = document.querySelector('.top'); if (t) t.outerHTML = topbar(); }
@@ -2494,6 +2516,7 @@ function renderNow() {
     : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
     : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'admin' ? viewAdmin() : screen === 'notice' ? viewNotice() : screen === 'cards' ? viewCards() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : screen === 'duel' ? viewDuel() : screen === 'profile' ? viewProfile() : screen === 'raid4' ? viewRaid4() : viewResult();
   app.innerHTML = (screen === 'title' ? '' : topbar()) + body;
+  if (screen === 'raid4' && r4?.phase === 'battle' && r4.st) r4Mount();
   document.querySelector('.hubtabs .on')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
   renderModal();
   renderToast();

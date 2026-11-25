@@ -112,7 +112,7 @@ export function nameUnique(list: Combatant[]) {
 }
 
 export const snap = (c: Combatant) => ({
-  name: c.name, hp: Math.round(c.hp), maxHp: c.maxHp, boss: c.tags.has('boss'), elite: c.tags.has('elite'), id: c.mdef?.id, tags: [...c.tags],
+  name: c.name, hp: Math.round(c.hp), maxHp: c.maxHp, boss: c.tags.has('boss'), elite: c.tags.has('elite'), id: c.mdef?.id, tags: [...c.tags], ...(c.char && c.side === 'enemy' ? { job: c.char.jobId } : {}),
 });
 
 // ───────── 전투 ─────────
@@ -129,6 +129,8 @@ export interface BattleContext {
   rep?: Report;
   cur?: { c: Combatant; label: string };
   hit?: { mag: boolean; bulwark: boolean };
+  /** 친구 결투: 양쪽 모두 캐릭터 → 같은 규칙 */
+  pvp?: boolean;
 }
 
 const alive = (list: Combatant[]) => list.filter((c) => c.alive);
@@ -136,6 +138,9 @@ const allies = (ctx: BattleContext, c: Combatant) => (c.side === 'party' ? ctx.p
 const foes = (ctx: BattleContext, c: Combatant) => (c.side === 'party' ? ctx.enemies : ctx.party);
 
 const MAX_ROUNDS = 60;
+/** 결투에선 피해를 줄여 한두 턴 만에 끝나지 않게 */
+export const PVP_DMG = 0.6;
+export const PVP_HEAL = 0.5;
 
 export function runBattle(ctx: BattleContext): boolean {
   const { rng, log } = ctx;
@@ -203,19 +208,21 @@ export function runBattle(ctx: BattleContext): boolean {
 }
 
 function endOfRound(ctx: BattleContext) {
-  // 기적: 쓰러진 아군 전원 부활 (탐험당 1회)
-  const saint = alive(ctx.party).find((p) => p.passives.has('miracle') && !p.flags.miracleUsed);
-  const fallen = ctx.party.filter((p) => !p.alive);
-  if (saint && fallen.length) {
-    saint.flags.miracleUsed = true;
-    for (const f of fallen) { f.alive = true; f.hp = Math.round(f.maxHp * 0.3); f.status = {}; }
-    ctx.log.push({ t: 'special', who: saint.name, text: `기적! ${fallen.map((f) => f.name).join(', ')}이(가) 다시 일어선다` });
-  }
-  // 정화: 아군 독·화상 해제
-  if (alive(ctx.party).some((p) => p.passives.has('purify'))) {
-    const cleansed = alive(ctx.party).filter((p) => p.status.poison || p.status.burn);
-    for (const p of cleansed) { delete p.status.poison; delete p.status.burn; }
-    if (cleansed.length) ctx.log.push({ t: 'special', who: alive(ctx.party).find((p) => p.passives.has('purify'))!.name, text: '정화의 빛! 독과 화상이 씻겨 나간다' });
+  for (const side of ctx.pvp ? [ctx.party, ctx.enemies] : [ctx.party]) {
+    // 기적: 쓰러진 아군 전원 부활 (탐험당 1회)
+    const saint = alive(side).find((p) => p.passives.has('miracle') && !p.flags.miracleUsed);
+    const fallen = side.filter((p) => !p.alive);
+    if (saint && fallen.length) {
+      saint.flags.miracleUsed = true;
+      for (const f of fallen) { f.alive = true; f.hp = Math.round(f.maxHp * 0.3); f.status = {}; }
+      ctx.log.push({ t: 'special', who: saint.name, text: `기적! ${fallen.map((f) => f.name).join(', ')}이(가) 다시 일어선다` });
+    }
+    // 정화: 아군 독·화상 해제
+    if (alive(side).some((p) => p.passives.has('purify'))) {
+      const cleansed = alive(side).filter((p) => p.status.poison || p.status.burn);
+      for (const p of cleansed) { delete p.status.poison; delete p.status.burn; }
+      if (cleansed.length) ctx.log.push({ t: 'special', who: alive(side).find((p) => p.passives.has('purify'))!.name, text: '정화의 빛! 독과 화상이 씻겨 나간다' });
+    }
   }
   // 몬스터 기믹
   const boss = alive(ctx.enemies).find((e) => e.tags.has('boss'));
@@ -278,7 +285,7 @@ function act(ctx: BattleContext, c: Combatant) {
 }
 
 function mpCost(ctx: BattleContext, c: Combatant, sk: SkillDef) {
-  if (c.side === 'enemy') return 0;
+  if (c.side === 'enemy' && !c.char) return 0;
   if (ctx.round === 1 && c.passives.has('zeroMpFirstTurn')) return 0;
   return Math.ceil(sk.mp * (1 + eff(c).extra.mpCost / 100));
 }
@@ -326,7 +333,7 @@ function pickFoe(ctx: BattleContext, c: Combatant, prefer?: 'lowest'): Combatant
   const list = alive(foes(ctx, c));
   if (!list.length) return;
   const lowest = (l: Combatant[]) => l.reduce((a, b) => (pctOf(a) <= pctOf(b) ? a : b));
-  if (c.side === 'party') {
+  if (c.side === 'party' && !ctx.pvp) {
     // 우선순위: 보스 우선 = 보스 → 엘리트, 잡몹 우선 = 보스 아닌 적, 자동 = HP 비율 낮은 적
     if (c.pref === 'boss') {
       const big = list.filter((e) => e.tags.has('boss'));
@@ -458,7 +465,8 @@ function dealDamage(ctx: BattleContext, a: Combatant, t: Combatant, e: Extract<S
     return;
   }
   // 파티원이 맞을 때: 방어·마저 비율 감소 (몬스터 레벨 기준) / 몬스터가 맞을 때: 기존 차감식
-  let dmg = (t.side === 'party' ? raw * mitigation(defVal, a.lvl ?? 1) * (a.dmgComp ?? 1) : Math.max(raw * 0.15, raw - defVal * 0.5)) * rng.range(0.9, 1.1);
+  let dmg = (t.side === 'party' || (ctx.pvp && t.char) ? raw * mitigation(defVal, a.lvl ?? a.char?.level ?? 1) * (a.dmgComp ?? 1) : Math.max(raw * 0.15, raw - defVal * 0.5)) * rng.range(0.9, 1.1);
+  if (ctx.pvp) dmg *= PVP_DMG;
   const crit = sure || rng.chance(sa.stats.crit + (e.critBonus ?? 0));
   a.flags.firstHitDone = true;
   if (crit) dmg *= 1.5 + sa.extra.critDmg;
@@ -481,8 +489,8 @@ function dealDamage(ctx: BattleContext, a: Combatant, t: Combatant, e: Extract<S
 function applyHpLoss(ctx: BattleContext, t: Combatant, dmg: number, src: Combatant | null, crit = false): number {
   const { log } = ctx;
   // 최후의 방벽: 아군이 쓰러질 공격을 대신 맞음
-  if (src && t.side === 'party' && dmg >= t.hp) {
-    const guard = alive(ctx.party).find((g) => g !== t && g.passives.has('lastBastion') && (g.flags.bastionLeft ?? 0) > 0 && g.hp > dmg);
+  if (src && (t.side === 'party' || (ctx.pvp && t.char)) && dmg >= t.hp) {
+    const guard = alive(allies(ctx, t)).find((g) => g !== t && g.passives.has('lastBastion') && (g.flags.bastionLeft ?? 0) > 0 && g.hp > dmg);
     if (guard) {
       guard.flags.bastionLeft!--;
       log.push({ t: 'special', who: guard.name, text: `최후의 방벽! ${t.name} 대신 공격을 받아낸다` });
@@ -523,7 +531,7 @@ function applyHpLoss(ctx: BattleContext, t: Combatant, dmg: number, src: Combata
       log.push({ t: 'death', who: t.name, side: t.side });
       if (ctx.rep && t.side === 'party') recordDeath(ctx, ctx.rep, t, src);
       const reviver = alive(allies(ctx, t)).find((r) => r.passives.has('revive') && !r.flags.reviveUsed);
-      if (reviver && t.side === 'party') {
+      if (reviver && (t.side === 'party' || (ctx.pvp && t.char))) {
         reviver.flags.reviveUsed = true;
         t.alive = true; t.hp = Math.round(t.maxHp * 0.3); t.status = {};
         log.push({ t: 'special', who: reviver.name, text: `부활! ${t.name}이(가) 다시 일어선다` });
@@ -542,6 +550,7 @@ function applyHpLoss(ctx: BattleContext, t: Combatant, dmg: number, src: Combata
 
 function heal(ctx: BattleContext, src: Combatant, t: Combatant, amount: number) {
   if (!t.alive) return;
+  if (ctx.pvp) amount *= PVP_HEAL;
   const v = Math.round(Math.min(amount, t.maxHp - t.hp));
   t.hp += v;
   if (ctx.rep) {

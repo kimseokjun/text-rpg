@@ -1,5 +1,5 @@
 import './style.css';
-import { canAdvance, levelCap } from '../core/character';
+import { canAdvance, levelCap, syncSkillSlots } from '../core/character';
 import { mitigation, rowOf } from '../core/combat';
 import { charPower, floorPower, hasHealer, noHealerFactor, partyPower, powerLevel } from '../core/power';
 import type { ExpeditionSettings, FloorResult } from '../core/dungeon';
@@ -22,7 +22,7 @@ import { TRAITS } from '../data/traits';
 import { QUESTS, rewardText } from '../data/quests';
 import { WB_LIMIT, wbInfo } from '../server/worldboss';
 import { slotsFor } from '../server/multi';
-import { Expedition } from '../core/dungeon';
+import { DEFAULT_SETTINGS, Expedition } from '../core/dungeon';
 import { Rng } from '../core/rng';
 import { CARDS, CARD_BY_ID, CARD_SETS, DECK_SIZE, MAX_AWAKEN, PACK_ODDS, SET_BY_ID as CARD_SET_BY_ID, cardEffectText, cardMods } from '../data/cards';
 import { CARD_IMAGES, cardHtml } from './cardart';
@@ -35,7 +35,7 @@ import { townScene } from './art';
 import { charSprite } from './pixel';
 import { equipKind, equipSprite, itemSprite, monsterSprite, petSprite } from './sprites';
 
-type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex' | 'admin' | 'notice' | 'cards';
+type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex' | 'admin' | 'notice' | 'cards' | 'duel';
 
 let S: G.GameState | null = null;
 let screen: Screen = 'title';
@@ -261,7 +261,7 @@ const HUBS: { id: string; name: string; tabs: [string, string][] }[] = [
   { id: 'smith', name: '대장간', tabs: [['smith', '강화'], ['refinery', '제련'], ['forge', '제작']] },
   { id: 'adv', name: '모험', tabs: [['gate', '던전'], ['tower', '무한 탑'], ['daily', '일일'], ['raid', '레이드']] },
 ];
-if (CLOUD) HUBS[2].tabs.push(['multi', '멀티'], ['world', '월드보스']);
+if (CLOUD) HUBS[2].tabs.push(['multi', '멀티'], ['world', '월드보스'], ['duel', '결투']);
 const hubOf = (sc: string) => HUBS.find((h) => h.tabs.some(([t]) => t === sc));
 const hubTabs = () => {
   const h = hubOf(screen);
@@ -848,6 +848,7 @@ function viewRegions() {
 
 /** 실행 중 층 표시: 일일 던전이면 "황금 금고 3단계" */
 function runLabel(f: number) {
+  if (EX?.settings.duel) return `${EX.party.length}:${EX.settings.duel.foes.length} 결투`;
   if (EX?.settings.tower) return `무한 탑 ${f}층`;
   if (EX?.settings.rift) return `균열 ${f}층`;
   const rd = EX?.settings.raid;
@@ -965,6 +966,77 @@ function wbHpBar(b: Cloud.WBBoss | null) {
   const pct = Math.max(0, (b.hp / b.max_hp) * 100);
   return `<div id="wbhp"><div class="bar e big"><i style="width:${pct}%"></i></div><p class="small" style="margin:4px 0 0">${b.killed_at ? `☠ 처치 완료${b.killer ? ` · 막타 ${esc(b.killer)}` : ''}` : `HP ${fmt(b.hp)} / ${fmt(b.max_hp)} (${pct.toFixed(1)}%)`}</p></div>`;
 }
+// ───────── 친구 결투 ─────────
+let duelSize = 3;
+let duelPick: string[] = [];
+let duelLog: Cloud.DuelRow[] = [];
+let duelBusy = false;
+let duelLast: { win: boolean; foe: string; size: number; hp: [number, number] } | null = null;
+let duelFoe: { id: string; name: string } | null = null;
+const topBy = (cs: Character[]) => [...cs].sort((a, b) => charPower(b) - charPower(a));
+function duelDefault() {
+  const s = S!;
+  const party = topBy(G.partyChars(s));
+  const rest = topBy(s.roster.filter((c) => !s.party.includes(c.uid)));
+  duelPick = [...party, ...rest].slice(0, duelSize).map((c) => c.uid);
+}
+async function loadDuelLog() { duelLog = await Cloud.loadDuels(); if (screen === 'duel') render(); }
+function viewDuel() {
+  const s = S!;
+  if (!duelPick.length || duelPick.some((u) => !s.roster.some((c) => c.uid === u))) duelDefault();
+  const me = Cloud.session?.user.id;
+  const fr = friends.filter((f) => f.status === 'accepted');
+  const list = topBy(s.roster);
+  const pick = list.map((c) => { const on = duelPick.includes(c.uid); return `<button class="dpick ${on ? 'on' : ''}" data-a="duelPick" data-uid="${esc(c.uid)}" aria-pressed="${on}"><span class="ico">${avatar(c, 30)}</span><span><b class="small">${esc(c.name)}</b><span class="small mute"> ${esc(JOBS[c.jobId].name)} · ${fmt(charPower(c))}</span></span></button>`; }).join('');
+  const rec = duelLog.map((d) => { const atk = d.attacker === me; const won = atk ? d.win : !d.win; return `<div class="drec ${won ? 'w' : 'l'}"><b>${won ? '승' : '패'}</b> <span>${atk ? `→ ${esc(d.defender_name)}에게 도전` : `← ${esc(d.attacker_name)}의 도전`}</span> <span class="small mute">${d.size}:${d.size} · ${hhmm(d.created_at)}</span></div>`; }).join('');
+  const wins = duelLog.filter((d) => (d.attacker === me ? d.win : !d.win)).length;
+  return `<div class="wrap">${backBtn()}
+    <h2>친구 결투 ⚔️</h2>
+    <p class="small mute">내가 고른 단원과 친구의 출전 파티(전투력 높은 순)가 맞붙어요. 펫·카드 효과 포함, 친구가 접속해 있지 않아도 돼요. 결투에선 피해 60% · 회복 50%, 60라운드가 지나면 남은 HP가 많은 쪽이 이겨요. 보상 없이 전적만 남아요.</p>
+    ${duelLast ? `<div class="panel dres ${duelLast.win ? 'w' : 'l'}"><b>${duelLast.win ? '🏆 승리!' : '💀 패배…'}</b> vs ${esc(duelLast.foe)} · ${duelLast.size}:${duelLast.size} · 남은 HP ${duelLast.hp[0]}% 대 ${duelLast.hp[1]}%</div>` : ''}
+    <div class="tabs" role="group" aria-label="인원">${[2, 3, 4].map((n) => `<button class="${duelSize === n ? 'on' : ''}" data-a="duelSize" data-v="${n}">${n}:${n}</button>`).join('')}</div>
+    <div class="panel"><h3 style="margin-top:0">내 단원 <span class="small mute">${duelPick.length}/${duelSize}명 선택</span></h3><div class="dpicks">${pick}</div></div>
+    <div class="panel"><h3 style="margin-top:0">도전할 친구</h3>
+      ${fr.length ? fr.map((f) => `<div class="item"><div><b>${esc(f.username)}</b> <span class="small mute">${Cloud.online[f.other] ? '● 접속 중 · ' : ''}전투력 ${fmt(f.power)}</span></div><button class="btn sm" data-a="duelGo" data-v="${esc(f.other)}" data-n="${esc(f.username)}" ${duelBusy || duelPick.length !== duelSize ? 'disabled' : ''}>${duelSize}:${duelSize} 결투</button></div>`).join('') : '<p class="small mute">아직 친구가 없어요. 오른쪽 아래 채팅 → 친구 탭에서 추가해 보세요.</p>'}</div>
+    <div class="panel"><h3 style="margin-top:0">전적 <span class="small mute">최근 ${duelLog.length}판 · ${wins}승 ${duelLog.length - wins}패</span></h3><div class="drecs">${rec || '<p class="small mute">아직 결투 기록이 없어요.</p>'}</div></div>
+  </div>`;
+}
+async function startDuel(id: string, name: string) {
+  const s = S!;
+  if (duelPick.length !== duelSize) { toast(`단원을 ${duelSize}명 골라주세요`, true); return; }
+  duelBusy = true; render();
+  const t = await Cloud.duelTarget(id);
+  duelBusy = false;
+  if (typeof t === 'string') { toast(t, true); render(); return; }
+  const roster = (t.roster ?? []) as Character[];
+  for (const c of roster) syncSkillSlots(c);
+  const party = topBy(roster.filter((c) => (t.party ?? []).includes(c.uid)));
+  const rest = topBy(roster.filter((c) => !(t.party ?? []).includes(c.uid)));
+  const foes = [...party, ...rest].slice(0, duelSize).map((c) => structuredClone(c));
+  if (!foes.length) { toast('친구에게 단원이 없어요', true); render(); return; }
+  const foeState = { pets: t.pets ?? [], activePet: t.activePet ?? null, cards: t.cards ?? {}, deck: t.deck ?? [] } as unknown as G.GameState;
+  const mine = duelPick.map((u) => s.roster.find((c) => c.uid === u)!).filter(Boolean);
+  duelFoe = { id, name: t.username || name };
+  EX = new Expedition(mine, { ...DEFAULT_SETTINGS, insured: true, auto: true, potions: [], petMods: G.petPartyMods(s), duel: { foes, foeMods: G.petPartyMods(foeState), foeName: duelFoe.name } }, new Rng(Date.now() % 1e9));
+  units = {};
+  screen = 'dungeon';
+  render();
+  drawParty();
+  logLine('sp', `결투 시작! ${mine.map((c) => c.name).join(', ')} vs ${foes.map((c) => c.name).join(', ')}`);
+  playFloor();
+}
+function finishDuel() {
+  const ex = EX!;
+  playToken++;
+  const d = ex.settings.duel!;
+  duelLast = { win: ex.duelWin, foe: d.foeName, size: ex.party.length, hp: ex.duelHp };
+  if (duelFoe) Cloud.recordDuel(duelFoe.id, ex.party.length, ex.duelWin).then(loadDuelLog);
+  Cloud.logEvent('duel', `${d.foeName}와 ${ex.party.length}:${ex.party.length} 결투 ${ex.duelWin ? '승리' : '패배'}`);
+  EX = null;
+  screen = 'duel';
+  render();
+}
+
 function viewWorld() {
   const s = S!;
   if (!wb && !wbLoading) setTimeout(() => loadWB(true), 0);
@@ -1048,6 +1120,7 @@ function renderRoomLog() {
   el.scrollTop = el.scrollHeight;
 }
 const roomLogHtml = () => roomLog.slice(-80).map((l) => l.sys ? `<div class="rl sys">· ${esc(l.text)} <span class="ct">${hhmm(l.at)}</span></div>` : `<div class="rl"><b class="${l.mine ? 'me' : ''}">${esc(l.name ?? '')}</b> ${esc(l.text)} <span class="ct">${hhmm(l.at)}</span></div>`).join('') || '<p class="small mute" style="margin:0">아직 조용해요. 인사해 보세요!</p>';
+Cloud.setDuelHandler((d) => { toast(`⚔️ ${d.attacker_name}님이 ${d.size}:${d.size} 결투를 걸어와 ${d.win ? '내가 졌어요' : '내가 이겼어요'}!`); if (screen === 'duel') loadDuelLog(); });
 Cloud.setRoomChatHandler((m) => {
   if (!myRoom || (m as Cloud.ChatMsg2).channel !== `room:${myRoom}`) return;
   roomLog.push({ name: m.username, text: m.body, at: m.created_at, mine: m.user_id === Cloud.session?.user.id });
@@ -1211,7 +1284,7 @@ function viewCodex() {
 }
 
 // ───────── 관리자 대시보드 ─────────
-const KIND_NAME: Record<string, string> = { cardOpen: '카드 팩', cardAwaken: '카드 각성', autoRefresh: '자동 교체', autoEnh: '자동 강화', login: '접속', signup: '회원가입', run: '던전', tower: '무한 탑', raid: '레이드', daily: '일일 던전', worldboss: '월드보스', multi: '멀티 던전', hire: '용병 고용', upgradeGuild: '길드 강화', advance: '전직', enhance: '강화', buyEquip: '장비 구매', buyDeal: '상점 구매', train: '훈련', reroll: '특성 재설정', refine: '제련', craft: '세트 제작', buyEgg: '펫 알', petSellLow: '펫 정리', claimQuest: '목표 보상', dailySweep: '소탕', buyStones: '강화석 구매', buyPack: '카드 팩 구매', admin_gift: '관리자 지급' };
+const KIND_NAME: Record<string, string> = { cardOpen: '카드 팩', cardAwaken: '카드 각성', autoRefresh: '자동 교체', autoEnh: '자동 강화', login: '접속', signup: '회원가입', run: '던전', tower: '무한 탑', raid: '레이드', daily: '일일 던전', worldboss: '월드보스', multi: '멀티 던전', hire: '용병 고용', upgradeGuild: '길드 강화', advance: '전직', enhance: '강화', buyEquip: '장비 구매', buyDeal: '상점 구매', train: '훈련', reroll: '특성 재설정', refine: '제련', craft: '세트 제작', buyEgg: '펫 알', petSellLow: '펫 정리', claimQuest: '목표 보상', dailySweep: '소탕', buyStones: '강화석 구매', buyPack: '카드 팩 구매', admin_gift: '관리자 지급', duel: '친구 결투' };
 let adTab: 'over' | 'users' | 'log' | 'chat' = 'over';
 let adStats: any = null, adUsers: Cloud.AdminUser[] = [], adEvents: Cloud.EventRow[] = [], adChats: (Cloud.ChatMsg & { channel: string })[] = [];
 let adSel: string | null = null, adSave: any = null, adSelEvents: Cloud.EventRow[] = [];
@@ -1698,7 +1771,7 @@ function viewDungeon() {
   const ex = EX!;
   const zone = zoneOf(ex.floor);
   return `<div class="wrap">
-    <div class="dhead"><div><div class="small mute">${ex.settings.rift ? `균열 · ${esc(zoneOf(ex.settings.rift.level).name)}` : ex.settings.tower ? `무한 탑 · ${esc(towerGimmick(ex.floor).icon)} ${esc(towerGimmick(ex.floor).name)}` : ex.settings.raid ? `개인 레이드 · ${esc(raidForm(ex.settings.raid.week).name)}` : ex.daily ? '일일 던전' : `${esc(regionOf(ex.floor).name)} · ${esc(zone.name)}`}</div><h2 id="floorTitle">${floorTitle(ex)}</h2></div>
+    <div class="dhead"><div><div class="small mute">${ex.settings.duel ? `친구 결투 · vs ${esc(ex.settings.duel.foeName)}` : ex.settings.rift ? `균열 · ${esc(zoneOf(ex.settings.rift.level).name)}` : ex.settings.tower ? `무한 탑 · ${esc(towerGimmick(ex.floor).icon)} ${esc(towerGimmick(ex.floor).name)}` : ex.settings.raid ? `개인 레이드 · ${esc(raidForm(ex.settings.raid.week).name)}` : ex.daily ? '일일 던전' : `${esc(regionOf(ex.floor).name)} · ${esc(zone.name)}`}</div><h2 id="floorTitle">${floorTitle(ex)}</h2></div>
       <div class="speed" role="group" aria-label="전투 속도">${([1, 2, 0] as const).map((v) => `<button data-a="speed" data-v="${v}" class="${speed === v ? 'on' : ''}" ${EX?.settings.multi ? 'disabled title="멀티에서는 방장이 정한 배속으로 고정돼요"' : ''}>${v === 0 ? '스킵' : `${v}x`}</button>`).join('')}</div></div>
     <div class="stage"><div class="side" id="pside"></div><div class="vs">VS</div><div class="side" id="eside"></div></div>
     <div class="log" id="log" aria-live="polite"></div>
@@ -1733,7 +1806,7 @@ function drawEnemies(list: UnitSnap[], append = false) {
   if (!append) { el.innerHTML = ''; for (const k of Object.keys(units)) if (units[k].side === 'e') delete units[k]; }
   for (const m of list) {
     const u = (units[m.name] = { id: `e${uidSeq++}`, hp: m.hp, max: m.maxHp, dead: false, side: 'e' });
-    el.insertAdjacentHTML('beforeend', unitHtml(m.name, u, monsterSprite(m.id ?? '', { size: m.boss ? 72 : 52, boss: m.boss, elite: m.elite, tags: m.tags }), m.boss ? 'boss' : m.elite ? 'elite' : ''));
+    el.insertAdjacentHTML('beforeend', unitHtml(m.name, u, m.job ? charSprite(JOBS[m.job as JobId].base, m.name.replace('(상대)', ''), JOBS[m.job as JobId].tier, { size: 52 }) : monsterSprite(m.id ?? '', { size: m.boss ? 72 : 52, boss: m.boss, elite: m.elite, tags: m.tags }), m.boss ? 'boss' : m.elite ? 'elite' : ''));
   }
 }
 function setHp(name: string, hp: number, max: number, hit: boolean) {
@@ -1814,6 +1887,7 @@ async function playFloor() {
 
 function afterFloor(r: FloorResult) {
   const ex = EX!;
+  if (ex.settings.duel) { phase = 'done'; logLine(r.win ? 'hl' : 'de', r.win ? `승리! ${ex.settings.duel.foeName}의 파티를 꺾었다 (남은 HP ${ex.duelHp[0]}%)` : `패배… ${ex.settings.duel.foeName}의 파티가 이겼다 (상대 남은 HP ${ex.duelHp[1]}%)`); renderDctl(); return; }
   if (!r.win) { phase = 'done'; logLine('de', ex.stopReason === 'timeout' ? '60라운드가 지나도 끝나지 않아 후퇴했다… (화력 부족 · 회복하는 적을 먼저 잡아보세요)' : '파티가 전멸했다…'); renderDctl(); return; }
   logLine('hl', `${runLabel(r.floor)} 클리어${ex.repeating ? ` (${ex.floorsCleared}/${ex.settings.repeatCount})` : ''} · 파티 평균 HP ${Math.round(ex.avgHpPct)}%`);
   const reason = ex.autoStopReason();
@@ -1892,6 +1966,7 @@ function startRun() {
 function endRun() {
   if (!EX || !S) return;
   if (EX.settings.multi) { finishMulti(); return; }
+  if (EX.settings.duel) { finishDuel(); return; }
   playToken++;
   const ex0 = EX;
   summary = G.finishExpedition(S, EX);
@@ -2080,7 +2155,7 @@ function renderNow() {
   }
   const body = !S || screen === 'title' ? viewTitle()
     : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
-    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'admin' ? viewAdmin() : screen === 'notice' ? viewNotice() : screen === 'cards' ? viewCards() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : viewResult();
+    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'admin' ? viewAdmin() : screen === 'notice' ? viewNotice() : screen === 'cards' ? viewCards() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : screen === 'duel' ? viewDuel() : viewResult();
   app.innerHTML = (screen === 'title' ? '' : topbar()) + body;
   document.querySelector('.hubtabs .on')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
   renderModal();
@@ -2145,7 +2220,7 @@ app.addEventListener('click', (ev) => {
     }
     case 'continue': S = lastSave; screen = 'town'; commit(); break;
     case 'go': if (d.to === 'forge' && screen === 'raid') forgeSet = RAID_SET;
-      screen = d.to as Screen; modal = null; boardConfirm = null; if (screen === 'gate') gateRegion = null; render(); window.scrollTo(0, 0); break;
+      screen = d.to as Screen; modal = null; boardConfirm = null; if (screen === 'gate') gateRegion = null; if (screen === 'duel') { duelLast = null; loadDuelLog(); } render(); window.scrollTo(0, 0); break;
     case 'openChar': confirmDismiss = null; modal = { kind: 'char', uid: d.uid! }; renderModal(); break;
     case 'openSave': modal = { kind: 'save' }; renderModal(); break;
     case 'closeModal': modal = null; render(); break;
@@ -2283,6 +2358,9 @@ app.addEventListener('click', (ev) => {
       else { const r = Number(d.r) as Rarity; G.setAutoLoot(s!, { rarities: a.rarities.includes(r) ? a.rarities.filter((x) => x !== r) : [...a.rarities, r] }); }
       commit(); break;
     }
+    case 'duelSize': duelSize = Number(d.v); duelDefault(); render(); break;
+    case 'duelPick': { const u = d.uid!; duelPick = duelPick.includes(u) ? duelPick.filter((x) => x !== u) : duelPick.length >= duelSize ? [...duelPick.slice(1), u] : [...duelPick, u]; render(); break; }
+    case 'duelGo': startDuel(d.v!, d.n ?? ''); break;
     case 'deckAuto': {
       if (d.v === 'close') { deckOpts = null; render(); break; }
       const o = G.autoDeckOptions(s!);

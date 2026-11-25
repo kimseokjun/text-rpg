@@ -35,6 +35,8 @@ export interface ExpeditionSettings {
   multi?: boolean;
   /** 멀티 전용 던전 '균열': level = 기준 층 (1~70), 10층 진행 */
   rift?: { level: number };
+  /** 친구 결투: 상대 캐릭터와 상대 공용 효과(펫·카드) */
+  duel?: { foes: Character[]; foeMods: Modifier[]; foeName: string };
 }
 
 /** 최고 기록보다 낮은 층의 골드·경험치 배율: 5층 이상 아래 75%, 10층 이상 아래 50% */
@@ -109,6 +111,7 @@ export class Expedition {
 
   /** 현재 층 진행 (3웨이브 또는 보스) */
   runFloor(): FloorResult {
+    if (this.settings.duel) return this.runDuel();
     if (this.settings.raid) return this.runRaid();
     if (this.settings.tower) return this.runTower();
     if (this.settings.rift) return this.runRift();
@@ -319,6 +322,36 @@ export class Expedition {
   get repeating() { return this.settings.mode === 'repeat'; }
   /** 다음 층으로 (반복 모드면 같은 층 다시) */
   next() { if (!this.repeating) this.floor++; }
+  /** 친구 결투: 1판, 60라운드가 지나면 남은 HP 비율로 판정 */
+  duelWin = false;
+  duelHp: [number, number] = [0, 0];
+  private runDuel(): FloorResult {
+    const d = this.settings.duel!;
+    const log: BattleEvent[] = [];
+    const mine = new Set(this.party.map((p) => p.name));
+    const shared = [...partyMods(d.foes), ...d.foeMods];
+    const enemies = d.foes.map((c) => {
+      const x = fromCharacter(c, shared);
+      x.side = 'enemy'; x.id = `foe_${x.id}`;
+      if (mine.has(x.name)) x.name = `${x.name}(상대)`;
+      return x;
+    });
+    log.push({ t: 'wave', floor: 0, wave: 1, enemies: enemies.map(snap), elite: false, boss: false });
+    const ctx = { rng: this.rng, log, party: this.party, enemies, round: 0, hasBoss: false, floor: 0, rep: this.report, pvp: true };
+    let win = runBattle(ctx);
+    const pct = (l: Combatant[]) => Math.round((l.reduce((a, c) => a + (c.alive ? c.hp / c.maxHp : 0), 0) / l.length) * 100);
+    this.duelHp = [pct(this.party), pct(enemies)];
+    const timeout = this.party.some((c) => c.alive) && enemies.some((c) => c.alive);
+    if (timeout) {
+      win = this.duelHp[0] > this.duelHp[1];
+      log.push({ t: 'special', who: '심판', text: `60라운드 종료! 남은 HP ${this.duelHp[0]}% 대 ${this.duelHp[1]}% → ${win ? '승리' : '패배'}` });
+    }
+    this.duelWin = win;
+    this.finished = false;
+    this.finish(win ? 'cleared' : timeout ? 'timeout' : 'wipe');
+    return { floor: 0, win, log };
+  }
+
   /** 이번 탐험에서 끝까지 클리어한 가장 깊은 층 */
   reachedFloor() {
     if ((this.stopReason === 'wipe' || this.stopReason === 'timeout') && (!this.repeating || this.floorsCleared === 0)) return this.floor - 1;

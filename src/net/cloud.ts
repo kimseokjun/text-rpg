@@ -116,6 +116,7 @@ export function subscribeChat(onMsg: (m: ChatMsg) => void, onFriends: () => void
   chatCh = sb.channel('db-changes')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (p) => { const m = p.new as ChatMsg2; if (!m.channel || m.channel === 'global') onMsg(m); else roomMsgHandler?.(m); })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, () => onFriends())
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'duels' }, (p) => { const d = p.new as DuelRow; if (d.defender === session?.user.id) duelHandler?.(d); })
     .subscribe();
 }
 export async function sendChat(body: string, channel = 'global'): Promise<string | null> {
@@ -361,3 +362,24 @@ export async function saveNotice(n: { id?: number; kind: string; title: string; 
 }
 export async function deleteNotice(id: number) { if (sb) await sb.from('notices').delete().eq('id', id); }
 export async function setRoomSpeed(id: string, speed: number) { if (sb) await sb.from('rooms').update({ speed }).eq('id', id); }
+
+// ───────── 친구 결투 ─────────
+export interface DuelRow { id: number; attacker: string; defender: string; attacker_name: string; defender_name: string; size: number; win: boolean; created_at: string }
+let duelHandler: ((d: DuelRow) => void) | null = null;
+export function setDuelHandler(h: typeof duelHandler) { duelHandler = h; }
+export interface DuelTarget { username: string; roster: any[]; party: string[]; pets: any[]; activePet: string | null; cards: any; deck: string[] }
+export async function duelTarget(id: string): Promise<DuelTarget | string> {
+  if (!sb || !session) return '로그인이 필요해요';
+  const { data, error } = await sb.rpc('duel_target', { p_target: id });
+  if (error) return /not friends/.test(error.message) ? '친구끼리만 결투할 수 있어요' : /no save/.test(error.message) ? '친구의 저장 기록이 아직 없어요' : error.message;
+  return data as DuelTarget;
+}
+export async function recordDuel(defender: string, size: number, win: boolean) {
+  if (!sb || !session) return;
+  await sb.from('duels').insert({ attacker: session.user.id, defender, size, win });
+}
+export async function loadDuels(): Promise<DuelRow[]> {
+  if (!sb || !session) return [];
+  const { data } = await sb.from('duels').select('*').order('id', { ascending: false }).limit(30);
+  return (data ?? []) as DuelRow[];
+}

@@ -503,3 +503,8 @@ svg.px{image-rendering:pixelated;flex:none}
 .refine.addi{border-top:1px dashed var(--line);padding-top:8px;margin-top:6px}
 .phead{align-items:center;margin-bottom:4px}
 .lootcnt{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-weight:700}.lootrest{margin-top:8px;padding:10px}.autol{margin:0 0 8px}.linkbtn{background:none;border:0;color:#7fb3ff;text-decoration:underline;cursor:pointer;padding:0;font:inherit}.autolp{margin:12px 0}
+.dpicks{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
+.dpick{display:flex;gap:6px;align-items:center;text-align:left;background:#140c22;border:1px solid var(--line);border-radius:10px;padding:6px;color:inherit;cursor:pointer}
+.dpick.on{border-color:#7fb3ff;background:#1a2440}
+.drecs{display:flex;flex-direction:column;gap:4px}.drec{font-size:14px}.drec.w b{color:#7dff7a}.drec.l b{color:#ff6a6a}
+.dres{margin:10px 0}.dres.w{border-color:#7dff7a}.dres.l{border-color:#ff6a6a}

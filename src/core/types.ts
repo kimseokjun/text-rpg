@@ -177,7 +177,7 @@ export interface Character {
 }
 
 // ───────── 전투 로그 이벤트 ─────────
-export interface UnitSnap { name: string; hp: number; maxHp: number; boss?: boolean; elite?: boolean; id?: string; tags?: string[] }
+export interface UnitSnap { name: string; hp: number; maxHp: number; boss?: boolean; elite?: boolean; id?: string; tags?: string[]; job?: string }
 
 export type BattleEvent =
   | { t: 'wave'; floor: number; wave: number; enemies: UnitSnap[]; elite: boolean; boss: boolean }

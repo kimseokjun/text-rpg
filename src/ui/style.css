@@ -509,3 +509,21 @@ svg.px{image-rendering:pixelated;flex:none}
 .drecs{display:flex;flex-direction:column;gap:4px}.drec{font-size:14px}.drec.w b{color:#7dff7a}.drec.l b{color:#ff6a6a}
 .dres{margin:10px 0}.dres.w{border-color:#7dff7a}.dres.l{border-color:#ff6a6a}
 .profrow{display:flex;gap:10px;align-items:center;width:100%;background:none;border:0;color:inherit;text-align:left;cursor:pointer;padding:0}.profrow .cinfo{display:flex;flex-direction:column;flex:1;min-width:0}
+
+/* ── UI 품질 개선 ── */
+.nw,.pl,.cp{white-space:nowrap}
+.item.col{display:flex;flex-direction:column;align-items:stretch}
+.bench.top{align-items:start}
+.profeq{width:100%;display:grid;gap:8px;margin-top:10px}
+.profeq .eqcell{margin:0}
+.pcard .cinfo .cname{display:block}
+.prof2{grid-template-columns:minmax(0,1fr) minmax(0,1.6fr)}
+.cdeck .tcard{width:100%;height:auto;max-width:150px}
+.cdeck.fit{grid-template-columns:repeat(auto-fill,minmax(84px,1fr))}
+.cdeck.fit .tcard{max-width:120px}
+.sum b.sm{font-size:17px;line-height:1.35}
+.region .tag{align-self:start}
+.csets li span{min-width:2.2em;display:inline-block;color:var(--mute);font-size:12px}
+.csets li.on span{color:var(--ok);font-size:inherit}
+@media (min-width:700px){.cdeck:not(.fit){max-width:900px;margin-left:auto;margin-right:auto}}
+@media (max-width:860px){.prof2{grid-template-columns:minmax(0,1fr)}}

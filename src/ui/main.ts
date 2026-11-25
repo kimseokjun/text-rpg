@@ -274,10 +274,10 @@ const avatar = (c: Character, size = 44) => charSprite(JOBS[c.jobId].base, c.nam
 const equipIcon = (e: Equip, size = 34) => { const b = EQUIP_BY_ID[e.baseId]; return equipSprite(equipKind(b.slot, b.jobs?.[0]), b.tier, { size, set: b.set }); };
 const POTION_COLOR: Record<string, string> = { p_str: '#d8443a', p_str2: '#ff3a2a', p_iron: '#8a94a4', p_iron2: '#c8d0dc', p_sage: '#3f7fd8', p_sage2: '#6a5aff', p_wind: '#6fcf97', p_luck: '#e8c84a', p_life: '#ff70a0', p_greed: '#d8a030' };
 const potionIcon = (id: string, size = 30) => itemSprite('potion', { size, color: POTION_COLOR[id] ?? '#d8443a' });
-function equipLine(e: Equip) {
+function equipLine(e: Equip, opts: { pot?: boolean } = {}) {
   const b = EQUIP_BY_ID[e.baseId];
-  const st = Object.entries(equipStats(e)).map(([k, v]) => `${STAT_LABEL[k as StatKey]} +${Math.round(v as number)}`).join(', ');
-  const opt = potSummary(e);
+  const st = Object.entries(equipStats(e)).map(([k, v]) => `<span class="nw">${STAT_LABEL[k as StatKey]} +${Math.round(v as number)}</span>`).join(', ');
+  const opt = opts.pot === false ? '' : potSummary(e);
   return `<span class="eico r${e.rarity}e ${b.set ? 'setico' : ''}">${equipIcon(e)}</span><span class="iname r${e.rarity}">${esc(b.name)}${e.enhance ? ` +${e.enhance}` : ''}</span>${b.set ? ` <span class="settag">${esc(SET_BY_ID[b.set].name)} 세트</span>` : ''} <span class="small mute">${RARITY_NAME[e.rarity]}${b.jobs ? ` · ${b.jobs.map((j) => JOBS[j].name).join('/')}` : ''}</span><div class="istat">${st}${opt ? ` · ${opt}` : ''}</div>`;
 }
 const STAT_LABEL: Record<StatKey, string> = { hp: 'HP', mp: 'MP', atk: '공격', mag: '마력', def: '방어', res: '마저', agi: '민첩', crit: '치명' };
@@ -292,8 +292,8 @@ const potLine = (o: Modifier, def: number) => `<span class="pl p${o.g ?? def}">$
 const potBadge = (g: number, add = false) => `<span class="pb p${g}">${add ? '에디 ' : ''}${POT_NAME[g]}</span>`;
 function potSummary(e: Equip) {
   const parts: string[] = [];
-  if (e.options.length) parts.push(`${potBadge(e.pot ?? 1)} ${e.options.map((o) => potLine(o, e.pot ?? 1)).join(', ')}`);
-  if (e.add?.length) parts.push(`${potBadge(e.addG ?? 1, true)} ${e.add.map((o) => potLine(o, e.addG ?? 1)).join(', ')}`);
+  if (e.options.length) parts.push(`<span class="nw">${potBadge(e.pot ?? 1)} ${potLine(e.options[0], e.pot ?? 1)}</span>${e.options.slice(1).map((o) => `, ${potLine(o, e.pot ?? 1)}`).join('')}`);
+  if (e.add?.length) parts.push(`<span class="nw">${potBadge(e.addG ?? 1, true)} ${potLine(e.add[0], e.addG ?? 1)}</span>${e.add.slice(1).map((o) => `, ${potLine(o, e.addG ?? 1)}`).join('')}`);
   return parts.join(' · ');
 }
 const SLOT_NAME: Record<EquipSlot, string> = { weapon: '무기', armor: '방어구', accessory: '장신구' };
@@ -580,7 +580,7 @@ function equipGroup(c: Character, mode: 'smith' | 'storage' | 'refine') {
     const bag = s.inventory.filter((x) => EQUIP_BY_ID[x.baseId].slot === sl && G.canWear(c, x));
     const pick = mode === 'storage' && bag.length
       ? `<select data-a="equipSel" data-uid="${esc(c.uid)}" aria-label="${esc(c.name)} ${SLOT_NAME[sl]}"><option value="">${e ? '교체…' : '장착…'}</option>${bag.map((x) => `<option value="${esc(x.uid)}">${esc(EQUIP_BY_ID[x.baseId].name)}${x.enhance ? ` +${x.enhance}` : ''} (${RARITY_NAME[x.rarity]})</option>`).join('')}</select>` : '';
-    const body = e ? equipLine(e) : '<span class="mute">비어 있음</span>';
+    const body = e ? equipLine(e, { pot: mode !== 'refine' }) : '<span class="mute">비어 있음</span>';
     const ctl = mode === 'smith' ? (e ? enhanceCtl(e) : '')
       : mode === 'refine' ? (e ? refineCtl(e) : '')
       : `<div class="row" style="gap:6px">${e ? `<button class="btn ghost sm" data-a="unequip" data-uid="${esc(c.uid)}" data-slot="${sl}">해제</button>` : ''}${pick}</div>`;
@@ -601,7 +601,7 @@ function bagList(mode: 'smith' | 'storage' | 'refine') {
   if (!list.length) return '<p class="mute">가방이 비었습니다.</p>';
   return `<div class="items">${list.map((e) => {
     if (mode === 'smith') return `<div class="item"><div>${equipLine(e)}</div><div>${enhanceCtl(e)}</div></div>`;
-    if (mode === 'refine') return `<div class="item col"><div>${equipLine(e)}</div>${refineCtl(e)}</div>`;
+    if (mode === 'refine') return `<div class="item col"><div>${equipLine(e, { pot: false })}</div>${refineCtl(e)}</div>`;
     const wearers = s.roster.filter((c) => G.canWear(c, e));
     return `<div class="item"><div>${equipLine(e)}</div><div class="row">
       ${wearers.length ? `<select data-a="equipToSel" data-e="${esc(e.uid)}" aria-label="장착할 캐릭터"><option value="">장착하기…</option>${wearers.map((c) => `<option value="${esc(c.uid)}">${esc(c.name)} (${esc(JOBS[c.jobId].name)})</option>`).join('')}</select>` : ''}
@@ -1065,16 +1065,16 @@ function viewProfile() {
   const setLines = cardMods(owned, deck).lines.filter((l) => l.on && l.kind === 'set');
   const rows = party.map((c) => {
     const on = profOpen === c.uid;
-    const eq = SLOTS.map((sl) => { const e = c.equipment[sl]; return `<div class="item"><span class="small mute" style="min-width:44px">${SLOT_NAME[sl]}</span><div>${e ? equipLine(e) : '<span class="small mute">없음</span>'}</div></div>`; }).join('');
+    const eq = SLOTS.map((sl) => { const e = c.equipment[sl]; return `<div class="eqcell ${e ? `rb${e.rarity}` : 'none'}"><div class="small mute">${SLOT_NAME[sl]}</div><div>${e ? equipLine(e) : '<span class="small mute">없음</span>'}</div></div>`; }).join('');
     return `<div class="pcard ${on ? 'inparty' : ''}" style="flex-wrap:wrap"><button class="profrow" data-a="profOpen" data-v="${esc(c.uid)}" aria-expanded="${on}"><span class="ico">${avatar(c)}</span>
       <span class="cinfo"><span class="cname">${esc(c.name)} ${stars(c.grade)}</span><span class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} · ${rowOf(c) === 'front' ? '전열' : '후열'} · <span class="cp">전투력 ${fmt(charPower(c, mods))}</span></span></span><span class="chev">${on ? '▴' : '▾'}</span></button>
-      ${on ? `<div class="items" style="width:100%">${eq}<p class="small mute" style="margin:4px 0 0">특성: ${c.traitIds.map(esc).join(', ') || '없음'} · 스킬: ${c.skillSlots.map((x) => esc(SKILLS[x.skillId]?.name ?? '')).filter(Boolean).join(', ')}</p></div>` : ''}</div>`;
+      ${on ? `<div class="profeq">${eq}<p class="small mute" style="margin:4px 0 0">특성: ${c.traitIds.map(esc).join(', ') || '없음'} · 스킬: ${c.skillSlots.map((x) => esc(SKILLS[x.skillId]?.name ?? '')).filter(Boolean).join(', ')}</p></div>` : ''}</div>`;
   }).join('');
   return `<div class="wrap"><div class="back"><button class="btn ghost sm" data-a="go" data-to="${profBack}">← 돌아가기</button></div>
     <h2>${esc(t.username)}의 용병단</h2>
     <div class="sum" style="margin:10px 0">
       <div><span class="small mute">파티 전투력</span><b class="cp">${fmt(power)}</b></div>
-      <div><span class="small mute">최고 층</span><b>${t.maxFloor ? esc(floorName(t.maxFloor)) : '-'}</b></div>
+      <div><span class="small mute">최고 층</span><b class="sm">${t.maxFloor ? esc(floorName(t.maxFloor)) : '-'}</b></div>
       <div><span class="small mute">무한 탑</span><b>${t.tower?.best ?? 0}층</b></div>
       <div><span class="small mute">길드</span><b>Lv.${t.guildLevel ?? 1}</b></div>
       <div><span class="small mute">단원</span><b>${roster.length}명</b></div>
@@ -1082,11 +1082,11 @@ function viewProfile() {
     </div>
     <div class="row" style="gap:6px;margin-bottom:10px">${CLOUD && prof.id !== Cloud.session?.user.id ? `<button class="btn sm" data-a="profDuel">⚔️ 결투 걸기</button>` : ''}</div>
     <h3>출전 파티 <span class="small mute">눌러서 장비 보기</span></h3>
-    <div class="bench">${rows || '<p class="mute">출전 파티가 비어 있어요.</p>'}</div>
-    <div class="cols" style="margin-top:12px">
+    <div class="bench top">${rows || '<p class="mute">출전 파티가 비어 있어요.</p>'}</div>
+    <div class="cols prof2" style="margin-top:12px">
       <section class="panel"><h3 style="margin-top:0">동행 펫</h3>${pet ? `<div class="row" style="gap:10px;align-items:center"><span>${petSprite(pet.kind, pet.grade, { size: 64 })}</span><div><b class="g${pet.grade}">${esc(PET_BY_ID[pet.kind].name)}</b> <span class="small mute">${PET_GRADE_NAME[pet.grade]} · ★${pet.stars}</span><div class="small">${esc(petEffectText(pet))}</div></div></div>` : '<p class="small mute">동행 중인 펫이 없어요.</p>'}</section>
       <section class="panel"><h3 style="margin-top:0">카드 덱 <span class="small mute">${deck.length}/${DECK_SIZE} · 보유 ${Object.keys(owned).length}종</span></h3>
-        <div class="cdeck">${deck.map((id) => `<button class="cslot" data-a="profCard" data-v="${id}">${cardHtml(id, { awaken: owned[id].awaken, size: 90 })}</button>`).join('') || '<p class="small mute">장착한 카드가 없어요.</p>'}</div>
+        <div class="cdeck fit">${deck.map((id) => `<button class="cslot" data-a="profCard" data-v="${id}">${cardHtml(id, { awaken: owned[id].awaken, size: 104 })}</button>`).join('') || '<p class="small mute">장착한 카드가 없어요.</p>'}</div>
         ${setLines.length ? `<ul class="csets">${setLines.map((l) => `<li class="on"><span>✔</span>${esc(l.text)}</li>`).join('')}</ul>` : ''}</section>
     </div>
     ${cardZoom && owned[cardZoom] ? zoomHtml(owned) : ''}
@@ -1492,14 +1492,22 @@ function viewCards() {
   let body = '';
   if (cardTab === 'deck') {
     const slots = Array.from({ length: DECK_SIZE }, (_, i) => deck[i]).map((id) => id ? `<button class="cslot" data-a="cardSel" data-v="${id}">${cardHtml(id, { awaken: owned[id]?.awaken ?? 0, size: 104 })}</button>` : `<button class="cslot empty" data-a="cardTab" data-v="all"><span>+</span><span class="small mute">카드 넣기</span></button>`).join('');
-    const setLines = eff.lines.filter((l) => l.kind !== 'codex');
+    // 켜진 효과 + 세트마다 다음 목표 하나씩만 (세트·각성 각각)
+    const shownNext = new Set<string>();
+    const setLines = eff.lines.filter((l) => {
+      if (l.kind === 'codex') return false;
+      if (l.on) return true;
+      const k = `${CARD_SETS.find((st) => l.text.startsWith(st.name))?.id}:${l.kind}`;
+      if (shownNext.has(k)) return false;
+      shownNext.add(k); return true;
+    });
     const opts = deckOpts ? `<div class="panel dopts"><div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">어떤 조합으로 낄까요?</h3><button class="btn ghost sm" data-a="deckAuto" data-v="close">닫기</button></div>
       ${deckOpts.map((o, i) => `<button class="dopt" data-a="deckApply" data-i="${i}"><div class="row" style="justify-content:space-between;gap:8px"><b>${esc(o.label)}${i === 0 ? ' <span class="cbadge up" style="position:static">추천</span>' : ''}</b><span class="cp">전투력 ${fmt(o.power)}</span></div>
         <div class="small mute">${o.deck.map((id) => esc(CARD_BY_ID[id].name)).join(' · ')}</div>${o.bonuses.length ? `<div class="small">${o.bonuses.map((t) => `✔ ${esc(t)}`).join('<br>')}</div>` : ''}</button>`).join('')}</div>` : '';
     body = `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn sm" data-a="deckAuto" ${Object.keys(owned).length ? '' : 'disabled'}>⚡ 자동 장착</button></div>${opts}<div class="cdeck">${slots}</div>
       <div class="panel"><h3 style="margin-top:0">적용 중인 효과 <span class="small mute">출전 파티 전원</span></h3>
-        <div class="small">${deck.map((id) => CARD_BY_ID[id]).filter(Boolean).map((c) => `<span class="tag">${esc(c.name)} · ${esc(cardEffectText(c, owned[c.id]?.awaken ?? 0))}</span>`).join(' ') || '<span class="mute">장착한 카드가 없어요</span>'}</div>
-        <ul class="csets">${setLines.map((l) => `<li class="${l.on ? 'on' : ''}"><span>${l.on ? '✔' : '·'}</span>${esc(l.text)}</li>`).join('')}</ul>
+        <div class="small tags" style="margin:6px 0 8px">${deck.map((id) => CARD_BY_ID[id]).filter(Boolean).map((c) => `<span class="tag">${esc(c.name)} · ${esc(cardEffectText(c, owned[c.id]?.awaken ?? 0))}</span>`).join(' ') || '<span class="mute">장착한 카드가 없어요</span>'}</div>
+        <ul class="csets">${setLines.map((l) => `<li class="${l.on ? 'on' : ''}"><span>${l.on ? '✔' : '다음'}</span>${esc(l.text)}</li>`).join('')}</ul>
         ${eff.lines.filter((l) => l.kind === 'codex').map((l) => `<p class="small" style="margin:6px 0 0"><b>📖 ${esc(l.text)}</b> <span class="mute">(장착 안 해도 적용)</span></p>`).join('') || '<p class="small mute" style="margin:6px 0 0">📖 도감: 카드를 모을 때마다 HP·공격·마력이 영구로 올라요</p>'}</div>
       <div class="panel"><h3 style="margin-top:0">세트 안내</h3>${CARD_SETS.map((st) => `<div class="cset"><b style="color:${st.color}">${esc(st.name)}</b> <span class="small mute">${esc(st.desc)}</span><div class="small">${st.bonus.map((b) => `${b.n}장: ${esc(b.text)}`).join(' · ')}</div><div class="small mute">각성 합계 ${st.awaken.map((a) => `${a.sum}: ${esc(a.text)}`).join(' · ')}</div></div>`).join('')}</div>`;
   } else if (cardTab === 'all') {

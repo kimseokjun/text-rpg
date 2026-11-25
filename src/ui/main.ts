@@ -35,7 +35,7 @@ import { townScene } from './art';
 import { charSprite } from './pixel';
 import { equipKind, equipSprite, itemSprite, monsterSprite, petSprite } from './sprites';
 
-type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex' | 'admin' | 'notice' | 'cards' | 'duel';
+type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex' | 'admin' | 'notice' | 'cards' | 'duel' | 'profile';
 
 let S: G.GameState | null = null;
 let screen: Screen = 'title';
@@ -176,7 +176,7 @@ function renderChat(scrollBottom = false) {
     : `<div class="clist flist">
         <form class="cin" data-form="friend"><input id="friendIn" maxlength="12" placeholder="친구 아이디" value="${esc(friendDraft)}" autocomplete="off"><button class="btn sm" type="submit">친구 요청</button></form>
         ${friends.filter((f) => f.status === 'pending' && f.incoming).map((f) => `<div class="frow"><b>${esc(f.username)}</b><span class="small mute">친구 요청</span><button class="btn sm" data-a="friendAccept" data-v="${f.id}">수락</button><button class="btn ghost sm" data-a="friendRemove" data-v="${f.id}">거절</button></div>`).join('')}
-        ${friends.filter((f) => f.status === 'accepted').sort((a, b) => Number(!!Cloud.online[b.other]) - Number(!!Cloud.online[a.other])).map((f) => `<div class="frow"><span class="dot ${Cloud.online[f.other] ? 'on' : ''}" title="${Cloud.online[f.other] ? '접속 중' : '오프라인'}"></span><b>${esc(f.username)}</b><span class="small mute">전투력 ${fmt(f.power)} · 탑 ${f.tower_best}층</span><button class="btn ghost sm" data-a="friendRemove" data-v="${f.id}" aria-label="친구 삭제">✕</button></div>`).join('')}
+        ${friends.filter((f) => f.status === 'accepted').sort((a, b) => Number(!!Cloud.online[b.other]) - Number(!!Cloud.online[a.other])).map((f) => `<div class="frow"><span class="dot ${Cloud.online[f.other] ? 'on' : ''}" title="${Cloud.online[f.other] ? '접속 중' : '오프라인'}"></span><b>${esc(f.username)}</b><span class="small mute">전투력 ${fmt(f.power)} · 탑 ${f.tower_best}층</span><button class="btn sm" data-a="profile" data-v="${esc(f.other)}">프로필</button><button class="btn ghost sm" data-a="friendRemove" data-v="${f.id}" aria-label="친구 삭제">✕</button></div>`).join('')}
         ${friends.filter((f) => f.status === 'pending' && !f.incoming).map((f) => `<div class="frow"><b>${esc(f.username)}</b><span class="small mute">수락 대기 중</span><button class="btn ghost sm" data-a="friendRemove" data-v="${f.id}">취소</button></div>`).join('')}
         ${friends.length ? '' : '<p class="small mute">아이디로 친구를 추가해 보세요.</p>'}
       </div>`;
@@ -997,7 +997,7 @@ function viewDuel() {
     <div class="tabs" role="group" aria-label="인원">${[2, 3, 4].map((n) => `<button class="${duelSize === n ? 'on' : ''}" data-a="duelSize" data-v="${n}">${n}:${n}</button>`).join('')}</div>
     <div class="panel"><h3 style="margin-top:0">내 단원 <span class="small mute">${duelPick.length}/${duelSize}명 선택</span></h3><div class="dpicks">${pick}</div></div>
     <div class="panel"><h3 style="margin-top:0">도전할 친구</h3>
-      ${fr.length ? fr.map((f) => `<div class="item"><div><b>${esc(f.username)}</b> <span class="small mute">${Cloud.online[f.other] ? '● 접속 중 · ' : ''}전투력 ${fmt(f.power)}</span></div><button class="btn sm" data-a="duelGo" data-v="${esc(f.other)}" data-n="${esc(f.username)}" ${duelBusy || duelPick.length !== duelSize ? 'disabled' : ''}>${duelSize}:${duelSize} 결투</button></div>`).join('') : '<p class="small mute">아직 친구가 없어요. 오른쪽 아래 채팅 → 친구 탭에서 추가해 보세요.</p>'}</div>
+      ${fr.length ? fr.map((f) => `<div class="item"><div><b>${esc(f.username)}</b> <span class="small mute">${Cloud.online[f.other] ? '● 접속 중 · ' : ''}전투력 ${fmt(f.power)}</span></div><span class="row" style="gap:6px"><button class="btn ghost sm" data-a="profile" data-v="${esc(f.other)}">프로필</button><button class="btn sm" data-a="duelGo" data-v="${esc(f.other)}" data-n="${esc(f.username)}" ${duelBusy || duelPick.length !== duelSize ? 'disabled' : ''}>${duelSize}:${duelSize} 결투</button></span></div>`).join('') : '<p class="small mute">아직 친구가 없어요. 오른쪽 아래 채팅 → 친구 탭에서 추가해 보세요.</p>'}</div>
     <div class="panel"><h3 style="margin-top:0">전적 <span class="small mute">최근 ${duelLog.length}판 · ${wins}승 ${duelLog.length - wins}패</span></h3><div class="drecs">${rec || '<p class="small mute">아직 결투 기록이 없어요.</p>'}</div></div>
   </div>`;
 }
@@ -1035,6 +1035,62 @@ function finishDuel() {
   EX = null;
   screen = 'duel';
   render();
+}
+
+// ───────── 친구 프로필 ─────────
+let prof: { id: string; t: Cloud.DuelTarget } | null = null;
+let profBack: Screen = 'town';
+let profOpen: string | null = null;
+async function openProfile(id: string) {
+  profBack = screen === 'profile' ? profBack : screen;
+  const t = await Cloud.duelTarget(id);
+  if (typeof t === 'string') { toast(t, true); return; }
+  for (const c of (t.roster ?? []) as Character[]) syncSkillSlots(c);
+  prof = { id, t }; profOpen = null;
+  chatOpen = false; renderChat();
+  screen = 'profile'; render(); window.scrollTo(0, 0);
+}
+function viewProfile() {
+  if (!prof) return '<div class="wrap"><p class="mute">불러오는 중…</p></div>';
+  const t = prof.t;
+  const roster = (t.roster ?? []) as Character[];
+  const partyIds = (t.party ?? []) as string[];
+  const party = partyIds.map((u) => roster.find((c) => c.uid === u)).filter(Boolean) as Character[];
+  const pstate = { pets: t.pets ?? [], activePet: t.activePet ?? null, cards: t.cards ?? {}, deck: t.deck ?? [] } as unknown as G.GameState;
+  const mods = G.petPartyMods(pstate);
+  const power = partyPower(party, mods);
+  const pet = G.activePet(pstate);
+  const owned = (t.cards ?? {}) as Record<string, { count: number; awaken: number }>;
+  const deck = ((t.deck ?? []) as string[]).filter((id) => CARD_BY_ID[id] && owned[id]);
+  const setLines = cardMods(owned, deck).lines.filter((l) => l.on && l.kind === 'set');
+  const rows = party.map((c) => {
+    const on = profOpen === c.uid;
+    const eq = SLOTS.map((sl) => { const e = c.equipment[sl]; return `<div class="item"><span class="small mute" style="min-width:44px">${SLOT_NAME[sl]}</span><div>${e ? equipLine(e) : '<span class="small mute">없음</span>'}</div></div>`; }).join('');
+    return `<div class="pcard ${on ? 'inparty' : ''}" style="flex-wrap:wrap"><button class="profrow" data-a="profOpen" data-v="${esc(c.uid)}" aria-expanded="${on}"><span class="ico">${avatar(c)}</span>
+      <span class="cinfo"><span class="cname">${esc(c.name)} ${stars(c.grade)}</span><span class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} · ${rowOf(c) === 'front' ? '전열' : '후열'} · <span class="cp">전투력 ${fmt(charPower(c, mods))}</span></span></span><span class="chev">${on ? '▴' : '▾'}</span></button>
+      ${on ? `<div class="items" style="width:100%">${eq}<p class="small mute" style="margin:4px 0 0">특성: ${c.traitIds.map(esc).join(', ') || '없음'} · 스킬: ${c.skillSlots.map((x) => esc(SKILLS[x.skillId]?.name ?? '')).filter(Boolean).join(', ')}</p></div>` : ''}</div>`;
+  }).join('');
+  return `<div class="wrap"><div class="back"><button class="btn ghost sm" data-a="go" data-to="${profBack}">← 돌아가기</button></div>
+    <h2>${esc(t.username)}의 용병단</h2>
+    <div class="sum" style="margin:10px 0">
+      <div><span class="small mute">파티 전투력</span><b class="cp">${fmt(power)}</b></div>
+      <div><span class="small mute">최고 층</span><b>${t.maxFloor ? esc(floorName(t.maxFloor)) : '-'}</b></div>
+      <div><span class="small mute">무한 탑</span><b>${t.tower?.best ?? 0}층</b></div>
+      <div><span class="small mute">길드</span><b>Lv.${t.guildLevel ?? 1}</b></div>
+      <div><span class="small mute">단원</span><b>${roster.length}명</b></div>
+      <div><span class="small mute">용병 도감</span><b>${t.codex ?? 0}</b></div>
+    </div>
+    <div class="row" style="gap:6px;margin-bottom:10px">${CLOUD && prof.id !== Cloud.session?.user.id ? `<button class="btn sm" data-a="profDuel">⚔️ 결투 걸기</button>` : ''}</div>
+    <h3>출전 파티 <span class="small mute">눌러서 장비 보기</span></h3>
+    <div class="bench">${rows || '<p class="mute">출전 파티가 비어 있어요.</p>'}</div>
+    <div class="cols" style="margin-top:12px">
+      <section class="panel"><h3 style="margin-top:0">동행 펫</h3>${pet ? `<div class="row" style="gap:10px;align-items:center"><span>${petSprite(pet.kind, pet.grade, { size: 64 })}</span><div><b class="g${pet.grade}">${esc(PET_BY_ID[pet.kind].name)}</b> <span class="small mute">${PET_GRADE_NAME[pet.grade]} · ★${pet.stars}</span><div class="small">${esc(petEffectText(pet))}</div></div></div>` : '<p class="small mute">동행 중인 펫이 없어요.</p>'}</section>
+      <section class="panel"><h3 style="margin-top:0">카드 덱 <span class="small mute">${deck.length}/${DECK_SIZE} · 보유 ${Object.keys(owned).length}종</span></h3>
+        <div class="cdeck">${deck.map((id) => `<button class="cslot" data-a="profCard" data-v="${id}">${cardHtml(id, { awaken: owned[id].awaken, size: 90 })}</button>`).join('') || '<p class="small mute">장착한 카드가 없어요.</p>'}</div>
+        ${setLines.length ? `<ul class="csets">${setLines.map((l) => `<li class="on"><span>✔</span>${esc(l.text)}</li>`).join('')}</ul>` : ''}</section>
+    </div>
+    ${cardZoom && owned[cardZoom] ? zoomHtml(owned) : ''}
+  </div>`;
 }
 
 function viewWorld() {
@@ -2155,7 +2211,7 @@ function renderNow() {
   }
   const body = !S || screen === 'title' ? viewTitle()
     : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
-    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'admin' ? viewAdmin() : screen === 'notice' ? viewNotice() : screen === 'cards' ? viewCards() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : screen === 'duel' ? viewDuel() : viewResult();
+    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'admin' ? viewAdmin() : screen === 'notice' ? viewNotice() : screen === 'cards' ? viewCards() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : screen === 'duel' ? viewDuel() : screen === 'profile' ? viewProfile() : viewResult();
   app.innerHTML = (screen === 'title' ? '' : topbar()) + body;
   document.querySelector('.hubtabs .on')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
   renderModal();
@@ -2361,6 +2417,10 @@ app.addEventListener('click', (ev) => {
     case 'duelSize': duelSize = Number(d.v); duelDefault(); render(); break;
     case 'duelPick': { const u = d.uid!; duelPick = duelPick.includes(u) ? duelPick.filter((x) => x !== u) : duelPick.length >= duelSize ? [...duelPick.slice(1), u] : [...duelPick, u]; render(); break; }
     case 'duelGo': startDuel(d.v!, d.n ?? ''); break;
+    case 'profile': openProfile(d.v!); break;
+    case 'profOpen': profOpen = profOpen === d.v ? null : d.v!; render(); break;
+    case 'profCard': cardZoom = d.v!; render(); break;
+    case 'profDuel': if (prof) { screen = 'duel'; duelLast = null; loadDuelLog(); render(); window.scrollTo(0, 0); } break;
     case 'deckAuto': {
       if (d.v === 'close') { deckOpts = null; render(); break; }
       const o = G.autoDeckOptions(s!);

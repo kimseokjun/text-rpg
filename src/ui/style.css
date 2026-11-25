@@ -508,3 +508,4 @@ svg.px{image-rendering:pixelated;flex:none}
 .dpick.on{border-color:#7fb3ff;background:#1a2440}
 .drecs{display:flex;flex-direction:column;gap:4px}.drec{font-size:14px}.drec.w b{color:#7dff7a}.drec.l b{color:#ff6a6a}
 .dres{margin:10px 0}.dres.w{border-color:#7dff7a}.dres.l{border-color:#ff6a6a}
+.profrow{display:flex;gap:10px;align-items:center;width:100%;background:none;border:0;color:inherit;text-align:left;cursor:pointer;padding:0}.profrow .cinfo{display:flex;flex-direction:column;flex:1;min-width:0}

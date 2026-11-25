@@ -367,7 +367,7 @@ export async function setRoomSpeed(id: string, speed: number) { if (sb) await sb
 export interface DuelRow { id: number; attacker: string; defender: string; attacker_name: string; defender_name: string; size: number; win: boolean; created_at: string }
 let duelHandler: ((d: DuelRow) => void) | null = null;
 export function setDuelHandler(h: typeof duelHandler) { duelHandler = h; }
-export interface DuelTarget { username: string; roster: any[]; party: string[]; pets: any[]; activePet: string | null; cards: any; deck: string[] }
+export interface DuelTarget { username: string; roster: any[]; party: string[]; pets: any[]; activePet: string | null; cards: any; deck: string[]; maxFloor?: number; tower?: { best: number }; guildLevel?: number; codex?: number }
 export async function duelTarget(id: string): Promise<DuelTarget | string> {
   if (!sb || !session) return '로그인이 필요해요';
   const { data, error } = await sb.rpc('duel_target', { p_target: id });

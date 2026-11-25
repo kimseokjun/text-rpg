@@ -31,6 +31,8 @@ export interface ExpeditionSettings {
   raid?: { diff: RaidDiff; week: number; hpLeft: number; maxHp: number };
   /** 무한 탑 (floor = 탑 층) */
   tower?: boolean;
+  /** 멀티 던전 (보상은 서버에서) */
+  multi?: boolean;
 }
 
 /** 최고 기록보다 낮은 층의 골드·경험치 배율: 5층 이상 아래 75%, 10층 이상 아래 50% */

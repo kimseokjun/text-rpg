@@ -1,3 +1,4 @@
 node_modules
 dist
 supabase/functions/worldboss/core.js
+supabase/functions/multi/core.js

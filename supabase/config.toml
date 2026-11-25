@@ -25,3 +25,6 @@ max_frequency = "1s"
 
 [functions.worldboss]
 verify_jwt = false
+
+[functions.multi]
+verify_jwt = false

@@ -2,7 +2,7 @@ import './style.css';
 import { canAdvance, levelCap } from '../core/character';
 import { mitigation, rowOf } from '../core/combat';
 import { charPower, floorPower, hasHealer, noHealerFactor, partyPower, powerLevel } from '../core/power';
-import type { Expedition, ExpeditionSettings, FloorResult } from '../core/dungeon';
+import type { ExpeditionSettings, FloorResult } from '../core/dungeon';
 import { finalStats, expToNext, STAT_KEYS } from '../core/stats';
 import { BOARD_SIZE, enhanceCost, enhanceRate, refreshSlotCost, rosterLimit } from '../core/town';
 import { equipStats } from '../core/stats';
@@ -21,6 +21,9 @@ import { SKILLS, describeSkill } from '../data/skills';
 import { TRAITS } from '../data/traits';
 import { QUESTS, rewardText } from '../data/quests';
 import { WB_LIMIT, wbInfo } from '../server/worldboss';
+import { slotsFor } from '../server/multi';
+import { Expedition } from '../core/dungeon';
+import { Rng } from '../core/rng';
 import { TOWER_UNLOCK, isTowerBoss, towerBoss, towerGimmick, towerReward } from '../data/tower';
 import * as G from '../state/game';
 import { exportSave, importSave, initRemote, loadGame, remoteReady, saveGame, saveGameNow, wipeSave } from '../state/save';
@@ -30,7 +33,7 @@ import { townScene } from './art';
 import { charSprite } from './pixel';
 import { equipKind, equipSprite, itemSprite, monsterSprite, petSprite } from './sprites';
 
-type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world';
+type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi';
 
 let S: G.GameState | null = null;
 let screen: Screen = 'title';
@@ -97,6 +100,13 @@ async function startSocial() {
   Cloud.joinPresence(() => { const el = document.querySelector('.chatbox .onl'); if (el) el.textContent = `접속 ${Object.keys(Cloud.online).length}명`; else renderChat(); });
   renderChat();
 }
+let invitePending: { from: string; room: string; floor: number } | null = null;
+function renderInvite() {
+  document.querySelector('.invite')?.remove();
+  if (!invitePending) return;
+  app.insertAdjacentHTML('beforeend', `<div class="invite" role="alertdialog"><b>${esc(invitePending.from)}</b>님이 멀티 던전(${esc(floorName(invitePending.floor))})에 초대했어요<div class="row" style="gap:6px;margin-top:8px"><button class="btn sm" data-a="mInviteJoin" data-v="${esc(invitePending.room)}">참가</button><button class="btn ghost sm" data-a="mInviteNo">거절</button></div></div>`);
+}
+Cloud.setInviteHandler((p) => { invitePending = p; renderInvite(); });
 function stopSocial() { Cloud.leaveRealtime(); socialOn = false; chatOpen = false; chatMsgs = []; friends = []; renderChat(); }
 const msgHtml = (m: Cloud.ChatMsg) => `<div class="cmsg ${m.user_id === Cloud.session?.user.id ? 'mine' : ''}"><span class="cn">${esc(m.username)}</span><span class="cb">${esc(m.body)}</span><span class="ct">${hhmm(m.created_at)}</span></div>`;
 const hhmm = (t: string) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
@@ -195,9 +205,9 @@ const traitTag = (id: string, focusable = true) => {
 const HUBS: { id: string; name: string; tabs: [string, string][] }[] = [
   { id: 'guild', name: '모험가 길드', tabs: [['guild', '용병 모집'], ['training', '훈련소'], ['temple', '신전']] },
   { id: 'smith', name: '대장간', tabs: [['smith', '강화'], ['refinery', '제련'], ['forge', '제작']] },
-  { id: 'adv', name: '모험', tabs: [['gate', '던전'], ['tower', '무한 탑'], ['daily', '일일 던전'], ['raid', '개인 레이드']] },
+  { id: 'adv', name: '모험', tabs: [['gate', '던전'], ['tower', '무한 탑'], ['daily', '일일'], ['raid', '레이드']] },
 ];
-if (CLOUD) HUBS[2].tabs.push(['world', '월드보스']);
+if (CLOUD) HUBS[2].tabs.push(['multi', '멀티'], ['world', '월드보스']);
 const hubOf = (sc: string) => HUBS.find((h) => h.tabs.some(([t]) => t === sc));
 const hubTabs = () => {
   const h = hubOf(screen);
@@ -901,6 +911,114 @@ async function wbClaim(season: number) {
   await loadWB(true); render();
 }
 
+// ───────── 멀티 던전 (서버) ─────────
+let myRoom: string | null = null;
+let roomSt: { room: Cloud.Room; members: Cloud.RoomMember[] } | null = null;
+let roomList: (Cloud.Room & { n: number })[] = [];
+let roomListAt = 0;
+let mFloor = 0, mMax = 2;
+let mPick: string[] = [];
+let mBusy = false;
+let replayRoom: string | null = null;
+async function refreshRooms() { roomList = await Cloud.listRooms(); roomListAt = Date.now(); if (screen === 'multi') render(); }
+async function refreshRoom() {
+  if (!myRoom) return;
+  const st = await Cloud.roomState(myRoom);
+  if (!st || (!st.members.some((m) => m.user_id === Cloud.session?.user.id) && st.room.status === 'open')) {
+    if (roomSt && !st) toast('방이 닫혔어요');
+    else if (roomSt) toast('방에서 나왔어요');
+    myRoom = null; roomSt = null; Cloud.watchRoom(null, () => {}); if (screen === 'multi') render(); return;
+  }
+  roomSt = st;
+  if (st.room.status === 'done' && st.room.result && replayRoom !== st.room.id && st.members.some((m) => m.user_id === Cloud.session?.user.id)) {
+    replayRoom = st.room.id;
+    startMultiReplay(st.room);
+    return;
+  }
+  if (screen === 'multi') render();
+}
+async function enterRoom(id: string) { myRoom = id; mPick = []; Cloud.watchRoom(id, () => refreshRoom()); await refreshRoom(); }
+function viewMulti() {
+  const s = S!;
+  const me = Cloud.session?.user.id;
+  if (!myRoom) {
+    if (Date.now() - roomListAt > 10000) setTimeout(refreshRooms, 0);
+    if (!mFloor) mFloor = Math.max(1, Math.min(70, s.maxFloor || 1));
+    const maxF = Math.max(1, Math.min(70, s.maxFloor || 1));
+    return `<div class="wrap">${backBtn()}
+      <h2>멀티 던전</h2>
+      <p class="mute">친구와 단원을 모아 <b>4인 파티</b>로 ${3}층을 함께 돌아요. 전투는 서버가 계산하고, 모두의 화면에서 똑같이 재생돼요. 끝나면 <b>모두가 같은 보상</b>(협동 보너스 +20%)을 받고, 경험치는 각자 데려간 단원이 받아요.</p>
+      <div class="panel grid"><h3 style="margin:0">방 만들기</h3>
+        <div class="field"><label for="mFloor">시작 층 (내가 깬 층까지)</label><select id="mFloor" data-m="floor">${Array.from({ length: maxF }, (_, i) => i + 1).reverse().map((f) => `<option value="${f}" ${f === mFloor ? 'selected' : ''}>${esc(floorName(f))} · 권장 ${fmt(floorPower(f))}</option>`).join('')}</select></div>
+        <div class="seg mini" role="group" aria-label="인원">${[2, 3, 4].map((n) => `<button class="${mMax === n ? 'on' : ''}" data-a="mMax" data-v="${n}">${n}인</button>`).join('')}</div>
+        <p class="small mute" style="margin:0">2인: 각자 2명 · 3인: 방장 2명, 나머지 1명 · 4인: 각자 1명</p>
+        <button class="btn" data-a="mCreate" ${mBusy ? 'disabled' : ''}>방 만들기</button></div>
+      <div class="panel"><div class="row" style="justify-content:space-between"><h3 style="margin:0">열린 방</h3><button class="btn ghost sm" data-a="mRooms">새로고침</button></div>
+        <div class="tlist">${roomList.map((r) => `<div class="trow"><b class="tf">${r.n}/${r.max_players}</b><div class="tg"><span><b>${esc(r.host_name)}</b>의 방 · ${esc(floorName(r.floor))}</span><span class="small mute">${hhmm(r.created_at)} 개설</span></div><button class="btn sm" data-a="mJoin" data-v="${r.id}" ${r.n >= r.max_players ? 'disabled' : ''} style="grid-column:2;justify-self:start">참가</button></div>`).join('') || '<p class="small mute">열린 방이 없어요. 방을 만들고 친구를 초대해 보세요.</p>'}</div></div>
+    </div>`;
+  }
+  const st = roomSt;
+  if (!st) return `<div class="wrap">${backBtn()}<h2>멀티 던전</h2><p class="mute">방 정보를 불러오는 중…</p></div>`;
+  const { room, members } = st;
+  const isHost = room.host === me;
+  const meM = members.find((m) => m.user_id === me);
+  const n = members.length;
+  const slots = slotsFor(Math.max(n, 2), isHost);
+  if (meM && !mPick.length && meM.chars.length) mPick = meM.chars.filter((u) => G.byUid(s, u));
+  const card = (m: Cloud.RoomMember) => `<div class="mmem ${m.ready || m.user_id === room.host ? 'ready' : ''}"><div class="row" style="justify-content:space-between"><b>${esc(m.username)}${m.user_id === room.host ? ' 👑' : ''}</b><span class="small ${m.ready || m.user_id === room.host ? '' : 'mute'}">${m.user_id === room.host ? '방장' : m.ready ? '✔ 준비' : '준비 중'}</span></div><span class="small mute">데려갈 단원 ${m.chars.length}/${slotsFor(Math.max(n, 2), m.user_id === room.host)}명</span></div>`;
+  const friendsOn = friends.filter((f) => f.status === 'accepted' && Cloud.online[f.other] && !members.some((m) => m.user_id === f.other));
+  return `<div class="wrap">${backBtn()}
+    <h2>멀티 던전 · ${esc(floorName(room.floor))}</h2>
+    <p class="small mute">${esc(room.host_name)}의 방 · ${n}/${room.max_players}명 · ${3}층 진행 · 권장 전투력 ${fmt(floorPower(room.floor))}</p>
+    <div class="mgrid">${members.map(card).join('')}${Array.from({ length: room.max_players - n }, () => '<div class="mmem empty"><span class="small mute">빈 자리</span></div>').join('')}</div>
+    <div class="panel"><h3 style="margin-top:0">내가 데려갈 단원 <span class="small mute">${mPick.length}/${slots}명 선택</span></h3>
+      <div class="cards">${s.roster.map((c) => `<button class="card ${mPick.includes(c.uid) ? 'inparty' : ''}" data-a="mPick" data-uid="${esc(c.uid)}"><div class="ico">${avatar(c)}</div><div><b>${esc(c.name)}</b><div class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} · 전투력 ${fmt(charPower(c))}</div></div></button>`).join('')}</div>
+      <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
+        ${isHost ? `<button class="btn" data-a="mStart" ${mBusy || n < 2 ? 'disabled' : ''}>${mBusy ? '서버 계산 중…' : n < 2 ? '2명 이상 모이면 시작' : '출발!'}</button>` : `<button class="btn ${meM?.ready ? 'ghost' : ''}" data-a="mReady">${meM?.ready ? '준비 취소' : '준비 완료'}</button>`}
+        <button class="btn ghost" data-a="mLeave">${isHost ? '방 닫기' : '나가기'}</button></div></div>
+    ${friendsOn.length ? `<div class="panel"><h3 style="margin-top:0">접속 중인 친구 초대</h3>${friendsOn.map((f) => `<div class="frow"><span class="dot on"></span><b>${esc(f.username)}</b><span class="small mute">전투력 ${fmt(f.power)}</span><button class="btn sm" data-a="mInvite" data-v="${f.other}">초대</button></div>`).join('')}</div>` : '<p class="small mute">친구가 접속하면 여기서 초대할 수 있어요. 열린 방 목록에서 직접 참가할 수도 있어요.</p>'}
+  </div>`;
+}
+async function mSync(ready?: boolean) {
+  if (!myRoom || !roomSt) return;
+  const meM = roomSt.members.find((m) => m.user_id === Cloud.session?.user.id);
+  const err = await Cloud.setMember(myRoom, mPick, ready ?? meM?.ready ?? false);
+  if (err) toast(err, true);
+}
+function startMultiReplay(room: Cloud.Room) {
+  const res = room.result;
+  EX = new Expedition(res.chars, res.settings, new Rng(res.seed));
+  multiRoom = room;
+  units = {};
+  screen = 'dungeon';
+  render();
+  drawParty();
+  logLine('sp', `멀티 던전 출발! ${res.chars.map((c: Character) => c.name).join(', ')}`);
+  playFloor();
+}
+let multiRoom: Cloud.Room | null = null;
+async function finishMulti() {
+  const ex = EX!, room = multiRoom!;
+  playToken++;
+  EX = null;
+  const r = await Cloud.multiCall({ action: 'claim', room: room.id });
+  const s = S!;
+  let ups: { name: string; to: number }[] = [], equips: Equip[] = [];
+  const rw = room.result.reward;
+  if (r?.error) toast(r.error, true);
+  else {
+    const prefix = `${Cloud.session!.user.id.slice(0, 8)}_`;
+    const res = G.applyMultiReward(s, r.reward, (r.myChars as string[]).map((u) => u.replace(prefix, '')), r.totalChars);
+    ups = res.ups; equips = res.equips;
+  }
+  const lost = ex.stopReason === 'wipe';
+  summary = { reason: lost ? `멀티 던전 · ${localFloor(ex.floor)}층에서 전멸` : `멀티 던전 · ${room.result.cleared}층 돌파!`, daily: `${room.host_name}의 방 · 협동 보너스 +20%`, report: ex.report, lost, diag: [], insured: true, floor: ex.floor, repeat: false, runs: ex.floorsCleared,
+    gold: r?.error ? 0 : rw.gold, exp: r?.error ? 0 : rw.exp, stones: r?.error ? 0 : rw.stones, blessings: r?.error ? 0 : rw.blessings, refineStones: r?.error ? 0 : rw.refineStones, shards: 0, cores: r?.error ? 0 : rw.cores, equips, levelUps: ups, bosses: [], newMaxFloor: false } as unknown as G.ExpeditionSummary;
+  myRoom = null; roomSt = null; multiRoom = null; Cloud.watchRoom(null, () => {});
+  screen = 'result';
+  commit();
+}
+
 function viewTower() {
   const s = S!;
   if (!G.towerOpen(s)) return `<div class="wrap">${backBtn()}<h2>무한 탑</h2><p class="mute">마왕숲 ${TOWER_UNLOCK}층을 클리어하면 열려요.</p></div>`;
@@ -1347,6 +1465,7 @@ function startRun() {
 
 function endRun() {
   if (!EX || !S) return;
+  if (EX.settings.multi) { finishMulti(); return; }
   playToken++;
   summary = G.finishExpedition(S, EX);
   EX = null;
@@ -1531,12 +1650,14 @@ function renderNow() {
   }
   const body = !S || screen === 'title' ? viewTitle()
     : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
-    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : viewResult();
+    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : viewResult();
   app.innerHTML = (screen === 'title' ? '' : topbar()) + body;
+  document.querySelector('.hubtabs .on')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
   renderModal();
   renderToast();
   checkPower();
   renderChat();
+  renderInvite();
 }
 
 /** 전투력 변동 알림: 마을 화면에서 파티 전투력이 바뀌면 +/− 표시 */
@@ -1674,6 +1795,24 @@ app.addEventListener('click', (ev) => {
     case 'wbAttack': wbAttack(); break;
     case 'wbRefresh': loadWB(true); break;
     case 'wbClaim': wbClaim(Number(d.v)); break;
+    case 'mMax': mMax = Number(d.v); render(); break;
+    case 'mRooms': refreshRooms(); break;
+    case 'mCreate': (async () => { mBusy = true; render(); const r = await Cloud.createRoom(mFloor, mMax); mBusy = false; if (r.error) { toast(r.error, true); render(); return; } await enterRoom(r.id!); })(); break;
+    case 'mJoin': (async () => { const e = await Cloud.joinRoom(d.v!); if (e) { toast(e, true); refreshRooms(); return; } await enterRoom(d.v!); })(); break;
+    case 'mLeave': (async () => { const host = roomSt?.room.host === Cloud.session?.user.id; await Cloud.leaveRoom(myRoom!, host); myRoom = null; roomSt = null; Cloud.watchRoom(null, () => {}); refreshRooms(); })(); break;
+    case 'mPick': {
+      const uid = d.uid!; const isHost = roomSt?.room.host === Cloud.session?.user.id;
+      const max = slotsFor(Math.max(roomSt?.members.length ?? 2, 2), isHost);
+      if (mPick.includes(uid)) mPick = mPick.filter((x) => x !== uid);
+      else if (mPick.length < max) mPick = [...mPick, uid];
+      else { toast(`${max}명까지 데려갈 수 있어요`, true); break; }
+      render(); mSync(false); break;
+    }
+    case 'mReady': { const meM = roomSt?.members.find((m) => m.user_id === Cloud.session?.user.id); if (!mPick.length) { toast('데려갈 단원을 골라주세요', true); break; } if (S) saveGameNow(S); mSync(!meM?.ready); break; }
+    case 'mStart': (async () => { if (!mPick.length) { toast('데려갈 단원을 골라주세요', true); return; } mBusy = true; render(); await mSync(true); if (S) await saveGameNow(S); const r = await Cloud.multiCall({ action: 'start', room: myRoom }); mBusy = false; if (r?.error) { toast(r.error, true); render(); return; } refreshRoom(); })(); break;
+    case 'mInvite': if (myRoom && roomSt) { Cloud.sendInvite(d.v!, myRoom, roomSt.room.floor); toast('초대를 보냈어요'); } break;
+    case 'mInviteJoin': (async () => { invitePending = null; renderInvite(); const e = await Cloud.joinRoom(d.v!); if (e) { toast(e, true); return; } screen = 'multi'; await enterRoom(d.v!); render(); })(); break;
+    case 'mInviteNo': invitePending = null; renderInvite(); break;
     case 'claimQuest': commit(G.claimQuest(s!)); break;
     case 'whFilter': whFilter = d.v as WhFilter; render(); break;
     case 'whOpen': whOpen = whOpen === d.e ? null : d.e!; render(); break;
@@ -1729,6 +1868,8 @@ app.addEventListener('submit', (ev) => {
   if (f.dataset.form === 'friend') { ev.preventDefault(); submitFriend(); }
 });
 app.addEventListener('change', (ev) => {
+  const sel = ev.target as HTMLSelectElement;
+  if (sel.dataset?.m === 'floor') { mFloor = Number(sel.value); return; }
   const el = ev.target as HTMLElement;
   const key = el.dataset.g as keyof ExpeditionSettings | undefined;
   if (key && S) {

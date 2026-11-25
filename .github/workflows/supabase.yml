@@ -30,7 +30,9 @@ jobs:
         with:
           node-version: 22
       - name: Bundle game core for functions
-        run: npx --yes esbuild@0.28 src/server/worldboss.ts --bundle --format=esm --platform=neutral --target=es2022 --outfile=supabase/functions/worldboss/core.js
+        run: |
+          npx --yes esbuild@0.28 src/server/worldboss.ts --bundle --format=esm --platform=neutral --target=es2022 --outfile=supabase/functions/worldboss/core.js
+          npx --yes esbuild@0.28 src/server/multi.ts --bundle --format=esm --platform=neutral --target=es2022 --outfile=supabase/functions/multi/core.js
       - name: Deploy functions
         run: |
           if [ -d supabase/functions ] && [ "$(ls -A supabase/functions 2>/dev/null)" ]; then supabase functions deploy --use-api --yes; else echo "함수 없음"; fi

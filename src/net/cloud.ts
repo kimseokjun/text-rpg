@@ -125,6 +125,7 @@ export let online: Record<string, string> = {}; // user_id → username
 export function joinPresence(onChange: () => void) {
   if (!sb || !session || presCh) return;
   presCh = sb.channel('online', { config: { presence: { key: session.user.id } } });
+  presCh.on('broadcast', { event: 'invite' }, (m) => { const p = m.payload as { to: string; from: string; room: string; floor: number }; if (p?.to === session?.user.id) onInvite?.(p); });
   presCh.on('presence', { event: 'sync' }, () => {
     const st = presCh!.presenceState() as Record<string, { username?: string }[]>;
     online = Object.fromEntries(Object.entries(st).map(([k, v]) => [k, v[0]?.username ?? '']));
@@ -211,4 +212,71 @@ let wbCh: ReturnType<SupabaseClient['channel']> | null = null;
 export function subscribeWB(onChange: (b: WBBoss) => void) {
   if (!sb || wbCh) return;
   wbCh = sb.channel('wb').on('postgres_changes', { event: '*', schema: 'public', table: 'worldboss' }, (p) => onChange(p.new as WBBoss)).subscribe();
+}
+
+// ───────── 멀티 던전 ─────────
+export interface Room { id: string; host: string; host_name: string; floor: number; max_players: number; status: 'open' | 'running' | 'done'; result: any; created_at: string }
+export interface RoomMember { room_id: string; user_id: string; username: string; chars: string[]; ready: boolean; claimed: boolean; joined_at: string }
+export async function listRooms(): Promise<(Room & { n: number })[]> {
+  if (!sb) return [];
+  const since = new Date(Date.now() - 3 * 3600_000).toISOString();
+  const { data } = await sb.from('rooms').select('id, host, host_name, floor, max_players, status, created_at').eq('status', 'open').gt('created_at', since).order('created_at', { ascending: false }).limit(30);
+  const rooms = (data ?? []) as Room[];
+  if (!rooms.length) return [];
+  const { data: m } = await sb.from('room_members').select('room_id').in('room_id', rooms.map((r) => r.id));
+  const cnt: Record<string, number> = {};
+  for (const x of (m ?? []) as { room_id: string }[]) cnt[x.room_id] = (cnt[x.room_id] ?? 0) + 1;
+  return rooms.map((r) => ({ ...r, n: cnt[r.id] ?? 0 }));
+}
+export async function roomState(id: string): Promise<{ room: Room; members: RoomMember[] } | null> {
+  if (!sb) return null;
+  const [r, m] = await Promise.all([sb.from('rooms').select('*').eq('id', id).maybeSingle(), sb.from('room_members').select('*').eq('room_id', id).order('joined_at')]);
+  if (!r.data) return null;
+  return { room: r.data as Room, members: (m.data ?? []) as RoomMember[] };
+}
+const dbErr = (m: string) => (/room full/.test(m) ? '방이 꽉 찼어요' : /room closed/.test(m) ? '이미 시작했거나 닫힌 방이에요' : m);
+export async function createRoom(floor: number, max: number): Promise<{ id?: string; error?: string }> {
+  if (!sb || !session) return { error: '로그인이 필요해요' };
+  const { data, error } = await sb.from('rooms').insert({ host: session.user.id, floor, max_players: max }).select('id').single();
+  if (error) return { error: dbErr(error.message) };
+  const j = await joinRoom(data.id);
+  return j ? { error: j } : { id: data.id };
+}
+export async function joinRoom(id: string): Promise<string | null> {
+  if (!sb || !session) return '로그인이 필요해요';
+  const { error } = await sb.from('room_members').insert({ room_id: id, user_id: session.user.id });
+  if (error && !/duplicate/i.test(error.message)) return dbErr(error.message);
+  return null;
+}
+export async function leaveRoom(id: string, host: boolean) {
+  if (!sb || !session) return;
+  if (host) await sb.from('rooms').delete().eq('id', id).eq('status', 'open');
+  else await sb.from('room_members').delete().eq('room_id', id).eq('user_id', session.user.id);
+}
+export async function setMember(id: string, chars: string[], ready: boolean): Promise<string | null> {
+  if (!sb || !session) return '로그인이 필요해요';
+  const { error } = await sb.from('room_members').update({ chars, ready }).eq('room_id', id).eq('user_id', session.user.id);
+  return error ? dbErr(error.message) : null;
+}
+export async function multiCall(body: Record<string, unknown>): Promise<any> {
+  if (!sb || !session) return { error: '로그인이 필요해요' };
+  const { data, error } = await sb.functions.invoke('multi', { body });
+  if (error) { try { const j = await (error as any).context?.json?.(); if (j?.error) return j; } catch { /* 무시 */ } return { error: '서버 함수에 연결할 수 없어요' }; }
+  return data;
+}
+let roomCh: ReturnType<SupabaseClient['channel']> | null = null;
+export function watchRoom(id: string | null, onChange: () => void) {
+  if (!sb) return;
+  if (roomCh) { sb.removeChannel(roomCh); roomCh = null; }
+  if (!id) return;
+  roomCh = sb.channel(`room-${id}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${id}` }, () => onChange())
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'room_members', filter: `room_id=eq.${id}` }, () => onChange())
+    .subscribe();
+}
+/** 초대: 접속 채널로 브로드캐스트 */
+let onInvite: ((p: { from: string; room: string; floor: number }) => void) | null = null;
+export function setInviteHandler(h: typeof onInvite) { onInvite = h; }
+export function sendInvite(to: string, room: string, floor: number) {
+  presCh?.send({ type: 'broadcast', event: 'invite', payload: { to, from: username, room, floor } });
 }

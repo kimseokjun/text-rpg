@@ -377,3 +377,8 @@ svg.px{image-rendering:pixelated;flex:none}
 .dot{width:9px;height:9px;border-radius:50%;background:#555}
 .dot.on{background:var(--ok)}
 .bar.big{height:14px}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin:10px 0}
+.mmem{padding:10px 12px;border-radius:10px;background:var(--panel);border:1px solid var(--line);display:flex;flex-direction:column;gap:4px}
+.mmem.ready{border-color:var(--ok)}
+.mmem.empty{border-style:dashed;align-items:center;justify-content:center;min-height:58px}
+.invite{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);z-index:70;background:#1b1622f5;border:1px solid var(--gold);border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px #000a;width:min(360px,calc(100vw - 24px))}

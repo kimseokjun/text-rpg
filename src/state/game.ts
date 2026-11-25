@@ -1,4 +1,4 @@
-import { advanceJob, canAdvance, createHero, gainExp, levelCap, syncSkillSlots } from '../core/character';
+import { advanceJob, canAdvance, createHero, gainExp, levelCap, newUid, syncSkillSlots } from '../core/character';
 import { expToNext, finalStats, partyMods } from '../core/stats';
 import { COMMON_TRAITS } from '../data/traits';
 import { DEFAULT_SETTINGS, Expedition, type ExpeditionSettings, rollEquip, rollSetEquip } from '../core/dungeon';
@@ -865,6 +865,22 @@ function applyTower(s: GameState, ex: Expedition): string[] {
     news(s, `무한 탑 ${ex.floor}층 도전 실패.`);
   }
   return lines;
+}
+
+/** 멀티 던전 보상: 재화·장비는 전원 동일, 경험치는 내가 데려간 단원 비율만큼 내 단원에게 */
+export function applyMultiReward(s: GameState, r: { gold: number; exp: number; stones: number; blessings: number; refineStones: number; cores: number; equips: Equip[] }, myUids: string[], totalChars: number) {
+  s.gold += r.gold; s.stones += r.stones; s.blessings += r.blessings; s.refineStones += r.refineStones; s.cores += r.cores;
+  const equips = r.equips.map((e) => ({ ...e, uid: newUid('e') }));
+  s.inventory.push(...equips);
+  const mine = myUids.map((u) => byUid(s, u)).filter(Boolean) as Character[];
+  const ups: { name: string; to: number }[] = [];
+  if (mine.length && totalChars) {
+    const each = (r.exp * (mine.length / totalChars)) / mine.length;
+    for (const c of mine) { const lv = c.level; gainExp(c, each); syncSkillSlots(c); if (c.level > lv) ups.push({ name: c.name, to: c.level }); }
+  }
+  s.day++;
+  news(s, `멀티 던전 보상: 골드 ${r.gold.toLocaleString('ko-KR')}${equips.length ? ` · 장비 ${equips.length}개` : ''}`);
+  return { equips, ups };
 }
 
 /** 서버 보상 지급 (월드보스 등) */

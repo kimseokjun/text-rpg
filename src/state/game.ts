@@ -4,7 +4,7 @@ import { COMMON_TRAITS } from '../data/traits';
 import { DEFAULT_SETTINGS, Expedition, type ExpeditionSettings, rollEquip, rollSetEquip } from '../core/dungeon';
 import { Rng } from '../core/rng';
 import { enhance as doEnhance, enhanceCost, hire as doHire, refreshSlotCost, rollBoard, rollCandidate, rosterLimit, type Candidate } from '../core/town';
-import { RARITY_NAME, TARGET_NAME, type Grade, type Character, type Equip, type EquipSlot, type JobId, type Rarity, type Row, type TargetPref } from '../core/types';
+import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Character, type Equip, type EquipSlot, type JobId, type Rarity, type Row, type TargetPref } from '../core/types';
 import { EQUIP_BASES, EQUIP_BY_ID, OPTION_POOL, OPTION_SLOTS, POTIONS, MAX_POTIONS, RARITY_MULT, TIER_INFO, refineGoldCost, refineStoneCost, rollOption } from '../data/items';
 import { MAX_FLOOR, MONSTERS, floorName, regionOf } from '../data/monsters';
 import { CRAFT_COST, RAID_CRAFT_COST, RAID_SET } from '../data/sets';
@@ -14,6 +14,7 @@ import { MILESTONES, MILESTONE_SCALES, RAID_DIFF, RAID_DIFF_NAME, RAID_LIMIT, at
 import { EGG_PRICE, PET_BY_ID, PET_GRADE_NAME, PET_MAX_STARS, hatch, petMods, petSellPrice, type Pet } from '../data/pets';
 import { charPower, partyPower } from '../core/power';
 import { JOBS } from '../data/jobs';
+import { MERC_BY_ID } from '../data/mercenaries';
 import { QUESTS, rewardText, type QuestView } from '../data/quests';
 import { TOWER_UNLOCK, towerGimmick, towerReward } from '../data/tower';
 import { rowOf } from '../core/combat';
@@ -118,6 +119,28 @@ export function refreshAll(s: GameState): Result {
   const r = rngOf(s);
   s.board = s.board.map((c, i) => (s.boardLocks[i] ? c : rollCandidate(r, leadLevel(s), s.guildLevel, s.roster)));
   return { ok: true, msg: `${n}칸 교체` };
+}
+
+/** 자동 교체: 잠기지 않은 칸 중에 minGrade 이상이 나올 때까지 전체 교체 (최대 maxTries번, 골드 한도). 찾으면 그 칸을 잠금 */
+export function autoRefresh(s: GameState, minGrade: Grade, maxTries: number): Result & { tries?: number; spent?: number; found?: string } {
+  const hit = () => s.board.findIndex((c, i) => !s.boardLocks[i] && c && MERC_BY_ID[c.mercId].grade >= minGrade);
+  if (hit() >= 0) return fail('이미 원하는 등급 지원자가 있어요. 먼저 고용하거나 잠가주세요');
+  if (s.boardLocks.every(Boolean)) return fail('모든 칸이 잠겨 있어요');
+  let tries = 0, spent = 0;
+  while (tries < maxTries) {
+    const cost = refreshAllCost(s);
+    if (s.gold < cost) break;
+    s.gold -= cost; spent += cost; tries++;
+    const r = rngOf(s);
+    s.board = s.board.map((c, i) => (s.boardLocks[i] ? c : rollCandidate(r, leadLevel(s), s.guildLevel, s.roster)));
+    const i = hit();
+    if (i >= 0) {
+      s.boardLocks[i] = true;
+      const m = MERC_BY_ID[s.board[i]!.mercId];
+      return { ok: true, tries, spent, found: m.name, msg: `${tries}번 만에 ${GRADE_NAME[m.grade]} ${m.name} 등장! (${spent.toLocaleString('ko-KR')}G 사용 · 자동 잠금)` };
+    }
+  }
+  return { ok: true, tries, spent, msg: tries ? `${tries}번 돌렸지만 못 찾았어요 (${spent.toLocaleString('ko-KR')}G 사용)${s.gold < refreshAllCost(s) ? ' · 골드 부족' : ''}` : '골드가 부족합니다' };
 }
 
 export function hireSlot(s: GameState, i: number): Result {
@@ -550,6 +573,27 @@ export function enhanceEquip(s: GameState, equipUid: string, useBlessing: boolea
 }
 
 export const dismantleValue = (e: Equip) => e.rarity + Math.floor(e.enhance / 3);
+/** 자동 강화: target 단계가 될 때까지 (재료가 떨어지면 멈춤). 실패해도 단계 하락·파괴 없음 */
+export function autoEnhance(s: GameState, equipUid: string, target: number, useBlessing: boolean): Result {
+  const f = findEquip(s, equipUid);
+  if (!f) return fail('장비를 찾을 수 없습니다');
+  if (f.e.enhance >= target) return fail(`이미 +${f.e.enhance}이에요`);
+  const start = f.e.enhance;
+  let tries = 0, stones = 0, gold = 0, bless = 0, stop = '';
+  while (f.e.enhance < target && tries < 500) {
+    const cost = enhanceCost(f.e.enhance + 1);
+    const ub = useBlessing && s.blessings > 0;
+    if (s.stones < cost.stone) { stop = '강화석 부족'; break; }
+    if (s.gold < cost.gold) { stop = '골드 부족'; break; }
+    const r = enhanceEquip(s, equipUid, ub);
+    if (!r.ok) { stop = r.msg ?? ''; break; }
+    tries++; stones += cost.stone; gold += cost.gold; if (ub) bless++;
+  }
+  const b = EQUIP_BY_ID[f.e.baseId].name;
+  const done = f.e.enhance >= target;
+  return { ok: true, msg: `${b} +${start} → +${f.e.enhance}${done ? ' 달성!' : ` (${stop}로 멈춤)`} · ${tries}회 시도 · 강화석 ${stones} · ${gold.toLocaleString('ko-KR')}G${bless ? ` · 축복 ${bless}` : ''}` };
+}
+
 export function dismantle(s: GameState, equipUid: string): Result {
   const idx = s.inventory.findIndex((e) => e.uid === equipUid);
   if (idx < 0) return fail('가방에 있는 장비만 분해할 수 있습니다');

@@ -446,3 +446,4 @@ svg.px{image-rendering:pixelated;flex:none}
 .nbody{white-space:pre-line;margin-top:8px;font-size:14.5px;line-height:1.7}
 .nform textarea,.nform input{width:100%;box-sizing:border-box}
 .nform input[name=title]{min-height:42px;padding:6px 10px}.nform .chk{white-space:nowrap}
+.autorf{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px;padding:10px 12px}

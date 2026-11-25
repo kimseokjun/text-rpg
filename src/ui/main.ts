@@ -62,7 +62,7 @@ const pctW = (a: number, b: number) => `${Math.max(0, Math.min(100, (a / Math.ma
 function toast(text: string, bad = false) {
   toastMsg = { text, bad };
   clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => { toastMsg = null; renderToast(); }, 2600);
+  toastTimer = window.setTimeout(() => { toastMsg = null; renderToast(); }, Math.max(2600, text.length * 70));
   renderToast();
 }
 function renderToast() {
@@ -203,7 +203,7 @@ async function submitFriend() {
 /** 활동 로그로 남길 행동 (관리자 대시보드) */
 let curAction = '';
 let confirmDel = '';
-const LOG_ACTIONS = new Set(['hire', 'upgradeGuild', 'advance', 'enhance', 'buyEquip', 'buyDeal', 'train', 'reroll', 'refine', 'craft', 'buyEgg', 'petSellLow', 'claimQuest', 'dailySweep', 'buyStones']);
+const LOG_ACTIONS = new Set(['autoRefresh', 'autoEnh', 'hire', 'upgradeGuild', 'advance', 'enhance', 'buyEquip', 'buyDeal', 'train', 'reroll', 'refine', 'craft', 'buyEgg', 'petSellLow', 'claimQuest', 'dailySweep', 'buyStones']);
 function commit(r?: G.Result) {
   if (CLOUD && r?.ok && LOG_ACTIONS.has(curAction)) Cloud.logEvent(curAction, r.msg ?? '');
   if (r && !r.ok) toast(r.msg, true);
@@ -471,6 +471,7 @@ function doRefresh(which: { kind: 'one'; i: number } | { kind: 'all' }) {
   commit(which.kind === 'one' ? G.refreshSlot(S!, which.i) : G.refreshAll(S!));
 }
 
+let autoGrade: 4 | 5 = 4, autoTries = 50;
 function viewGuild() {
   const s = S!;
   const lead = G.leadLevel(s);
@@ -498,6 +499,11 @@ function viewGuild() {
     <div class="row" style="justify-content:space-between;margin:6px 0 10px">
       <p class="small mute" style="margin:0">지원자는 골드로만 바뀌어요. 자물쇠를 잠근 칸은 전체 교체에서 빠지고, 같은 용병을 다시 고용하면 각성합니다.</p>
       <button class="btn sm" data-a="refreshAll" ${s.boardLocks.every(Boolean) ? 'disabled' : ''}>전체 교체 ${s.board.filter((_, i) => !s.boardLocks[i]).length}칸 · ${fmt(G.refreshAllCost(s))}G</button></div>
+    <div class="panel autorf"><b class="small">자동 교체</b>
+      <div class="seg mini" role="group" aria-label="목표 등급">${([[4, '영웅 이상'], [5, '전설']] as const).map(([g, n]) => `<button class="${autoGrade === g ? 'on' : ''}" data-a="autoGrade" data-v="${g}">${n}</button>`).join('')}</div>
+      <div class="seg mini" role="group" aria-label="최대 횟수">${[20, 50, 100, 300].map((n) => `<button class="${autoTries === n ? 'on' : ''}" data-a="autoTries" data-v="${n}">${n}회</button>`).join('')}</div>
+      <button class="btn sm" data-a="autoRefresh" ${s.boardLocks.every(Boolean) ? 'disabled' : ''}>나올 때까지 돌리기</button>
+      <span class="small mute">최대 ${fmt(G.refreshAllCost(s) * autoTries)}G · 나오면 멈추고 그 칸을 잠가요</span></div>
     ${boardConfirmBox()}
     <div class="board">${board}</div>
     <div class="row" style="margin-top:22px;justify-content:space-between"><h2>단원 ${s.roster.length}/${rosterLimit(s.guildLevel)}</h2><button class="btn sm" data-a="go" data-to="party">파티 편성 ${s.party.length}/${G.PARTY_MAX}</button></div>
@@ -540,7 +546,7 @@ function enhanceCtl(e: Equip) {
   const cost = enhanceCost(e.enhance + 1);
   const rate = enhanceRate(e, useBlessing);
   return `<div class="ectl"><span class="small mute">+${e.enhance}→+${e.enhance + 1} · 성공 <b class="${rate >= 50 ? 'okt' : rate >= 25 ? 'closet' : 'lowt'}">${rate}%</b> · 강화석 ${cost.stone} · ${fmt(cost.gold)}G${e.failStack ? ` · 천장 +${e.failStack * 5}%p` : ''}</span>
-    <span class="row" style="gap:6px"><button class="btn sm" data-a="enhance" data-e="${esc(e.uid)}">강화</button></span></div>`;
+    <span class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sm" data-a="enhance" data-e="${esc(e.uid)}">강화</button>${[5, 10, 15].filter((t) => e.enhance < t).slice(0, 2).map((t) => `<button class="btn ghost sm" data-a="autoEnh" data-e="${esc(e.uid)}" data-v="${t}" title="성공할 때까지 자동으로 강화 (재료가 떨어지면 멈춤)">+${t}까지</button>`).join('')}</span></div>`;
 }
 
 /** 캐릭터 한 명의 장비 3칸 묶음 */
@@ -1182,7 +1188,7 @@ function viewCodex() {
 }
 
 // ───────── 관리자 대시보드 ─────────
-const KIND_NAME: Record<string, string> = { login: '접속', signup: '회원가입', run: '던전', tower: '무한 탑', raid: '레이드', daily: '일일 던전', worldboss: '월드보스', multi: '멀티 던전', hire: '용병 고용', upgradeGuild: '길드 강화', advance: '전직', enhance: '강화', buyEquip: '장비 구매', buyDeal: '특가 구매', train: '훈련', reroll: '특성 재설정', refine: '제련', craft: '세트 제작', buyEgg: '펫 알', petSellLow: '펫 정리', claimQuest: '목표 보상', dailySweep: '소탕', buyStones: '강화석 구매', admin_gift: '관리자 지급' };
+const KIND_NAME: Record<string, string> = { autoRefresh: '자동 교체', autoEnh: '자동 강화', login: '접속', signup: '회원가입', run: '던전', tower: '무한 탑', raid: '레이드', daily: '일일 던전', worldboss: '월드보스', multi: '멀티 던전', hire: '용병 고용', upgradeGuild: '길드 강화', advance: '전직', enhance: '강화', buyEquip: '장비 구매', buyDeal: '특가 구매', train: '훈련', reroll: '특성 재설정', refine: '제련', craft: '세트 제작', buyEgg: '펫 알', petSellLow: '펫 정리', claimQuest: '목표 보상', dailySweep: '소탕', buyStones: '강화석 구매', admin_gift: '관리자 지급' };
 let adTab: 'over' | 'users' | 'log' | 'chat' = 'over';
 let adStats: any = null, adUsers: Cloud.AdminUser[] = [], adEvents: Cloud.EventRow[] = [], adChats: (Cloud.ChatMsg & { channel: string })[] = [];
 let adSel: string | null = null, adSave: any = null, adSelEvents: Cloud.EventRow[] = [];
@@ -2087,6 +2093,10 @@ app.addEventListener('click', (ev) => {
     case 'noticeCancel': noticeEdit = null; render(); break;
     case 'noticeEditBtn': noticeEdit = { ...notices.find((n) => n.id === Number(d.v)) }; render(); window.scrollTo(0, 0); break;
     case 'noticeDel': if (confirmDel === d.v) { Cloud.deleteNotice(Number(d.v)).then(() => { confirmDel = ''; toast('삭제했어요'); loadNoticesNow(); }); } else { confirmDel = d.v!; toast('한 번 더 누르면 삭제돼요'); } break;
+    case 'autoGrade': autoGrade = Number(d.v) as 4 | 5; render(); break;
+    case 'autoTries': autoTries = Number(d.v); render(); break;
+    case 'autoRefresh': boardConfirm = null; curAction = 'autoRefresh'; commit(G.autoRefresh(s!, autoGrade, autoTries)); break;
+    case 'autoEnh': curAction = 'autoEnh'; commit(G.autoEnhance(s!, d.e!, Number(d.v), useBlessing)); if (s && s.blessings === 0) useBlessing = false; break;
     case 'claimQuest': commit(G.claimQuest(s!)); break;
     case 'whFilter': whFilter = d.v as WhFilter; render(); break;
     case 'whOpen': whOpen = whOpen === d.e ? null : d.e!; render(); break;

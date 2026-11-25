@@ -5,7 +5,7 @@ import { DEFAULT_SETTINGS, Expedition, type ExpeditionSettings, rollEquip, rollS
 import { Rng } from '../core/rng';
 import { enhance as doEnhance, enhanceCost, hire as doHire, refreshSlotCost, rollBoard, rollCandidate, rosterLimit, type Candidate } from '../core/town';
 import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Character, type Equip, type Modifier, type EquipSlot, EQUIP_SLOTS, wornSlots, type JobId, type Rarity, type Row, type TargetPref } from '../core/types';
-import { EQUIP_BASES, EQUIP_BY_ID, OPTION_POOL, OPTION_SLOTS, POTIONS, MAX_POTIONS, RARITY_MULT, TIER_INFO, refineGoldCost, refineStoneCost, rollOption, rollLine, rollLines, POT_NAME, POT_UP, POT_PITY, addRuneCost } from '../data/items';
+import { EQUIP_BASES, EQUIP_BY_ID, OPTION_POOL, OPTION_SLOTS, POTIONS, MAX_POTIONS, RARITY_MULT, TIER_INFO, refineGoldCost, refineStoneCost, rollOption, rollLine, rollLines, convertCritLines, POT_NAME, POT_UP, POT_PITY, addRuneCost } from '../data/items';
 import { MAX_FLOOR, MONSTERS, floorName, regionOf } from '../data/monsters';
 import { R4, r4Reward, r4Today, type R4Diff } from '../data/raid4';
 import { CHESTS, MISSIONS, dRewardText, type DReward } from '../data/missions';
@@ -1063,6 +1063,13 @@ export function migrate(raw: any): GameState | null {
   if (!s.deals) s.deals = []; ensureShopDay(s); s.news ??= []; s.bossesKilled ??= [];
   for (const c of s.roster) syncSkillSlots(c);
   if (s.title && !TITLE_BY_ID[s.title]) delete s.title;
+  // 잠재 「치명타 확률」 줄 → 치명타 피해 (11/25)
+  for (const e of [...s.inventory, ...s.roster.flatMap((c) => Object.values(c.equipment)), ...(s.deals ?? []).map((d) => d.equip)]) {
+    const b = e && EQUIP_BY_ID[e.baseId];
+    if (!e || !b) continue;
+    convertCritLines(e.options, b.slot, b.tier, e.pot ?? 1, false);
+    convertCritLines(e.add, b.slot, b.tier, e.addG ?? 1, true);
+  }
   return s;
 }
 

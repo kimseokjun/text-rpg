@@ -135,7 +135,7 @@ type Slot = PotSlot;
 const M = (key: Modifier['key'], kind: Modifier['kind'], value: number): Modifier => ({ key, kind, value });
 export const POT_POOLS: Record<Slot, [Modifier[], Modifier[], Modifier[]]> = {
   weapon: [
-    [M('atk', 'pct', 4), M('mag', 'pct', 4), M('crit', 'flat', 3), M('bossDmg', 'pct', 6), M('defPierce', 'flat', 5), M('resPierce', 'flat', 5), M('skillDmg', 'pct', 5)],
+    [M('atk', 'pct', 4), M('mag', 'pct', 4), M('bossDmg', 'pct', 6), M('defPierce', 'flat', 5), M('resPierce', 'flat', 5), M('skillDmg', 'pct', 5)],
     [M('critDmg', 'flat', 0.05)],
     [M('physDmg', 'pct', 4)],
   ],
@@ -145,7 +145,7 @@ export const POT_POOLS: Record<Slot, [Modifier[], Modifier[], Modifier[]]> = {
     [M('evade', 'flat', 2)],
   ],
   accessory: [
-    [M('agi', 'flat', 5), M('crit', 'flat', 3), M('hp', 'pct', 5), M('healPower', 'pct', 8), M('goldGain', 'pct', 6), M('expGain', 'pct', 6)],
+    [M('agi', 'flat', 5), M('hp', 'pct', 5), M('healPower', 'pct', 8), M('goldGain', 'pct', 6), M('expGain', 'pct', 6)],
     [M('mpCost', 'pct', -5), M('critDmg', 'flat', 0.05)],
     [M('itemGain', 'pct', 5)],
   ],
@@ -163,6 +163,19 @@ export function rollLine(rng: { pick<T>(a: T[]): T; chance(p: number): boolean }
   for (let i = 0; i < 8 && exclude.includes(o.key); i++) o = rng.pick(pool);
   const v = o.value * optionScale(tier) * POT_MULT[g] * (add ? ADD_MULT : 1);
   return { ...o, value: Math.abs(v) < 1 ? Math.round(v * 100) / 100 : Math.round(v * 10) / 10, g };
+}
+/** 예전 「치명타 확률」 잠재 줄 → 치명타 피해로 변환 (이미 치피가 있으면 그 등급 풀의 다른 옵션으로) */
+export function convertCritLines(lines: Modifier[] | undefined, bslot: BaseSlot, tier: number, grade: number, add: boolean): boolean {
+  if (!lines?.some((o) => o.key === 'crit')) return false;
+  for (let i = 0; i < lines.length; i++) {
+    const o = lines[i];
+    if (o.key !== 'crit') continue;
+    const g = o.g ?? grade;
+    const cd = M('critDmg', 'flat', 0.05);
+    const base = !lines.some((x) => x.key === 'critDmg') ? cd : poolOf(g, potSlot(bslot)).find((x) => !lines.some((y) => y.key === x.key)) ?? cd;
+    lines[i] = { ...base, value: potValue(base, tier, g, add), g: o.g };
+  }
+  return true;
 }
 export function rollLines(rng: { pick<T>(a: T[]): T; chance(p: number): boolean }, slot: BaseSlot, tier: number, grade: number, n: number, add = false): Modifier[] {
   const out: Modifier[] = [];

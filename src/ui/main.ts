@@ -28,7 +28,8 @@ import { mountStage, playEvents, setBanner, setPanel, speech, stageMounted, upda
 import * as Bgm from './bgm';
 import { CHESTS, dRewardText } from '../data/missions';
 import { ACHS, ACH_CAT, ACH_MAX_PTS, ACH_MS, ACH_REWARD, TITLES, TITLE_BY_ID, achPoints, achReady, unlockedTitles, type AchCat } from '../data/achievements';
-import { R4, R4_DIFFS, R4_MAX, R4_ROUNDS, R4_TURN_SEC, r4Reward, type R4Diff } from '../data/raid4';
+import { R4, R4_BOSSES, R4_DIFFS, R4_MAX, R4_ROUNDS, R4_TURN_SEC, r4BossOfWeek, r4NextBoss, r4Reward, type R4BossId, type R4Diff } from '../data/raid4';
+import { startDodge, DODGE_SEC, type DodgeRun } from './dodge';
 import { Rng } from '../core/rng';
 import { CARDS, CARD_BY_ID, CARD_SETS, DECK_SIZE, MAX_AWAKEN, PACK_ODDS, SET_BY_ID as CARD_SET_BY_ID, cardEffectText, cardMods } from '../data/cards';
 import { CARD_IMAGES, cardHtml } from './cardart';
@@ -814,7 +815,7 @@ function viewForge() {
       <span>골드 <b>${fmt(s.gold)}</b></span>
     </div>
     <div class="tabs" role="group" aria-label="세트" style="margin-top:12px">${SETS.map((x) => `<button class="${forgeSet === x.id ? 'on' : ''}" data-a="forgeSet" data-v="${x.id}">${x.id === RAID_SET ? '레이드 · ' : ''}${x.id === MYTH_SET ? '✨ ' : ''}${esc(x.name)}</button>`).join('')}</div>
-    ${forgeSet === MYTH_SET ? '<p class="small mute">신화 장비는 4인 레이드(심연의 왕 아바돈)에서 얻는 신화의 정수로 만들어요. 항상 전설 등급으로 나와요. 하드·헬 처치 시 낮은 확률로 신화 장비가 바로 나오기도 해요.</p>' : ''}
+    ${forgeSet === MYTH_SET ? '<p class="small mute">신화 장비는 4인 레이드(주간 보스)에서 얻는 신화의 정수로 만들어요. 항상 전설 등급으로 나와요. 하드·헬 처치 시 낮은 확률로 신화 장비가 바로 나오기도 해요.</p>' : ''}
     ${raidSet ? '<p class="small mute">레이드 장비는 개인 레이드에서 얻는 벨리알의 파편으로 만들어요. 레이드 보스에게만 강해지는 대신 다른 세트 효과를 포기해야 해요.</p>' : ''}
     <div class="panel setinfo"><b class="r5">${esc(set.name)} 세트</b> <span class="small mute">${esc(set.desc)}</span>
       <div class="small" style="margin-top:6px">${setSteps(set).map(([k, t]) => `<b>${k}세트</b> ${esc(t)}`).join(' · ')}</div>
@@ -1220,6 +1221,9 @@ interface R4Room {
   phase: 'lobby' | 'battle' | 'done'; st: R4State | null; log: { c: string; t: string }[];
   choice: { turn: string; owner: string; skills: { skillId: string; name: string; mp: number; ok: boolean; why?: string; interrupt?: number }[]; deadline: number } | null;
   result?: { win: boolean; frac: number; lines: string[] }; battle?: Raid4Battle; timer?: number; inBattle: string[]; sawHost?: boolean;
+  boss: R4BossId;
+  /** 회피 타임: 진행 중인 미니게임, 방장이 모으는 결과 */
+  dodge?: { run?: DodgeRun; res: Record<string, number>; owners: string[]; timer?: number };
 }
 let r4: R4Room | null = null;
 let r4CodeDraft = '';
@@ -1233,7 +1237,7 @@ function r4Open(code: string, host: boolean, diff: R4Diff = 'normal') {
   if (r4) r4Leave();
   const ch = Cloud.joinR4(code, r4Sync, r4Msg);
   if (!ch) { toast('로그인이 필요해요', true); return; }
-  r4 = { code, host, diff, ch, members: [], pick: null, ready: false, chars: {}, phase: 'lobby', st: null, log: [], choice: null, inBattle: [] };
+  r4 = { code, host, diff, ch, members: [], pick: null, ready: false, chars: {}, phase: 'lobby', st: null, log: [], choice: null, inBattle: [], boss: r4BossOfWeek() };
   const best = sortRoster(G.partyChars(S!))[0];
   if (best) r4.pick = best.uid;
   r4Track();
@@ -1242,7 +1246,7 @@ function r4Open(code: string, host: boolean, diff: R4Diff = 'normal') {
 function r4Leave() {
   if (!r4) return;
   if (r4.host && r4.phase === 'battle') r4.ch.send('abort', { reason: '방장이 나갔어요' });
-  clearTimeout(r4.timer);
+  clearTimeout(r4.timer); clearTimeout(r4.dodge?.timer); r4.dodge?.run?.stop();
   r4.ch.leave();
   r4 = null;
 }
@@ -1285,6 +1289,7 @@ const r4Line = (e: BattleEvent): { c: string; t: string } | null => {
 async function r4Apply(events: BattleEvent[], st: R4State, choice: R4Room['choice']) {
   const room = r4;
   if (!room) return;
+  if (!room.host && room.dodge && !st.dodge) room.dodge = undefined;
   for (const e of events) { const l = r4Line(e); if (l) room.log.push(l); }
   if (room.log.length > 200) room.log = room.log.slice(-200);
   r4LogRender();
@@ -1314,14 +1319,17 @@ function r4UpdateUI() {
   const c = room.choice;
   const mine = !!c && c.owner === myId() && c.deadline > 0;
   const left = c ? Math.max(0, Math.ceil((c.deadline - Date.now()) / 1000)) : 0;
-  setBanner(mine ? `나의 턴 <b id="r4cd">${left}</b>` : turnU ? (turnU.boss ? '아바돈의 턴' : c ? `${esc(turnU.ownerName ?? '')}의 턴 <b id="r4cd">${left}</b>` : `${esc(turnU.name)}`) : '', mine);
+  setBanner(mine ? `나의 턴 <b id="r4cd">${left}</b>` : turnU ? (turnU.boss ? `${esc(R4_BOSSES[st.boss?.id ?? 'abaddon'].short)}의 턴` : c ? `${esc(turnU.ownerName ?? '')}의 턴 <b id="r4cd">${left}</b>` : `${esc(turnU.name)}`) : '', mine);
   setPanel(mine ? `<div class="r4ph"><b>${esc(turnU?.name ?? '')}</b><span class="small mute">MP ${turnU?.mp ?? 0}/${turnU?.maxMp ?? 0}</span></div>
     ${st.boss?.cast ? `<div class="r4cuthint">☠ 시전 중! <b>끊기</b> 스킬로 무력화 게이지(${st.boss.cast.gauge})를 깎으세요</div>` : ''}
     <div class="r4skills">${[...c!.skills].sort((a, b) => (st.boss?.cast ? (b.interrupt ?? 0) - (a.interrupt ?? 0) : 0)).map((k) => `<button class="r4skb ${k.interrupt ? 'cutsk' : ''} ${k.interrupt && st.boss?.cast && k.ok ? 'cut' : ''}" data-a="r4Skill" data-v="${esc(k.skillId)}" ${k.ok ? '' : 'disabled'} title="${esc(k.why ?? (SKILLS[k.skillId] ? describeSkill(SKILLS[k.skillId]) : ''))}"><b>${esc(k.name)}</b><span>MP ${k.mp}${k.interrupt ? ` · 끊기 ${k.interrupt}` : ''}${k.ok ? '' : ` · ${esc(k.why ?? '')}`}</span></button>`).join('')}
       <button class="r4skb atk" data-a="r4Skill" data-v="attack"><b>일반 공격</b><span>MP 0</span></button><button class="r4skb auto" data-a="r4Skill" data-v=""><b>자동</b><span>알아서</span></button></div>` : '');
 }
 /** 4인 레이드 빠른 채팅 */
-const R4_QC = ['제가 기절 걸겠습니다', '제가 침묵 걸겠습니다', '끊기 부탁해요!', '쉴드 걸어주세요', '힐 부탁해요', '표식 대상 회복해 주세요', '그로기! 몰아쳐요', '나이스 커버입니다', '고마워요 🙏', '죄송해요 😅'];
+const R4_QC_ALL = ['쉴드 걸어주세요', '힐 부탁해요', '그로기! 몰아쳐요', '나이스 커버입니다', '고마워요 🙏', '죄송해요 😅'];
+const R4_QC_BOSS: Record<R4BossId, string[]> = { abaddon: ['제가 기절 걸겠습니다', '제가 침묵 걸겠습니다', '끊기 부탁해요!', '표식 대상 회복해 주세요'], frost: ['회피 준비!', '감옥 부숴주세요!', '감옥 깨러 갑니다', '점프! 점프!'], blood: ['보호막 집중 공격!', '딜 몰아주세요!', '박쥐부터 잡아요', '흡혈 조심!'] };
+const R4_QC = [...new Set([...Object.values(R4_QC_BOSS).flat(), ...R4_QC_ALL])];
+const r4QcList = (b: R4BossId) => [...R4_QC_BOSS[b], ...R4_QC_ALL];
 let r4QcAt = 0;
 function r4Qc(i: number) {
   const text = R4_QC[i];
@@ -1342,7 +1350,10 @@ function r4Msg(ev: string, p: any) {
   if (ev === 'qc') { if (typeof p?.text === 'string' && R4_QC.includes(p.text)) r4ShowQc({ from: String(p.from ?? ''), name: String(p.name ?? '').slice(0, 20), text: p.text }); return; }
   if (ev === 'char' && r4.host) { r4.chars[p.owner] = p as R4Member; if (screen === 'raid4') render(); }
   else if (ev === 'diff' && !r4.host) { r4.diff = p.diff; if (screen === 'raid4') render(); }
-  else if (ev === 'begin') { r4.phase = 'battle'; r4.log = []; r4.result = undefined; r4.inBattle = p.members; r4.diff = p.diff; screen = 'raid4'; render(); }
+  else if (ev === 'begin') { r4.phase = 'battle'; r4.log = []; r4.result = undefined; r4.inBattle = p.members; r4.diff = p.diff; if (R4_BOSSES[p.boss as R4BossId]) r4.boss = p.boss; screen = 'raid4'; render(); }
+  else if (ev === 'dodge') r4RunDodge(p);
+  else if (ev === 'dpos') r4.dodge?.run?.ghost(String(p.from), p);
+  else if (ev === 'dres' && r4.host) r4DodgeResult(String(p.from), Number(p.hits));
   else if (ev === 'tick') r4Apply(p.events, p.st, p.choice);
   else if (ev === 'choose' && r4.host) r4Take(p.turn, p.skill, p.from);
   else if (ev === 'end') { r4Apply(p.events, p.st, null); r4Finish(p.win, p.frac); }
@@ -1360,9 +1371,10 @@ function r4Start() {
   const missing = ids.filter((id) => !r4!.chars[id]);
   if (missing.length) { toast('단원 정보를 받는 중이에요. 잠시 후 다시 눌러주세요', true); return; }
   const mems = ids.map((id) => r4!.chars[id]);
-  r4.battle = new Raid4Battle(mems, r4.diff, (Date.now() % 1e9) | 0);
+  r4.boss = r4BossOfWeek();
+  r4.battle = new Raid4Battle(mems, r4.diff, (Date.now() % 1e9) | 0, undefined, r4.boss);
   r4.phase = 'battle'; r4.log = []; r4.result = undefined; r4.inBattle = ids;
-  r4.ch.send('begin', { diff: r4.diff, members: ids });
+  r4.ch.send('begin', { diff: r4.diff, members: ids, boss: r4.boss });
   Cloud.logEvent('raid4', `${R4[r4.diff].name} 시작 · ${r4.members.map((m) => m.name).join(', ')}`);
   r4Pump();
 }
@@ -1392,8 +1404,51 @@ function r4Pump() {
   } else {
     const events = b.drain(), st = b.state();
     room.ch.send('tick', { events, st, choice: null });
-    r4Apply(events, st, null).then(() => { if (r4 !== room) return; room.timer = window.setTimeout(() => { if (r4 === room && !b.over) { b.step(); r4Pump(); } }, 350); });
+    r4Apply(events, st, null).then(() => { if (r4 !== room) return; if (b.dodge) { r4HostDodge(); return; } room.timer = window.setTimeout(() => { if (r4 === room && !b.over) { b.step(); r4Pump(); } }, 350); });
   }
+}
+// ── 회피 타임 (절대영도) ──
+/** 방장: 회피 타임 시작 → 모두에게 시드 방송, 결과를 모아 판정 */
+function r4HostDodge() {
+  const room = r4, b = room?.battle;
+  if (!room?.host || !b?.dodge || room.dodge) return;
+  const d = b.dodge;
+  // 나간 사람은 바로 자리 비움 처리
+  const here = d.owners.filter((o) => o === myId() || room.members.some((m) => m.id === o));
+  room.dodge = { res: {}, owners: here };
+  const p = { seed: d.seed, level: d.level, owners: d.owners };
+  room.ch.send('dodge', p);
+  r4RunDodge(p);
+  room.dodge.timer = window.setTimeout(r4FinishDodge, (3 + DODGE_SEC + 5) * 1000);
+}
+/** 각자: 미니게임 실행 */
+function r4RunDodge(p: { seed: number; level: number; owners: string[] }) {
+  const room = r4;
+  const box = document.getElementById('r4box');
+  if (!room || !box || !room.st) return;
+  room.dodge ??= { res: {}, owners: p.owners };
+  room.dodge.run?.stop();
+  const players = room.st.units.filter((u) => u.owner && u.alive && p.owners.includes(u.owner)).map((u) => ({ owner: u.owner!, name: u.ownerName ?? u.name, icon: unitIcon(u, 64) }));
+  room.dodge.run = startDodge({
+    host: box, seed: p.seed, level: p.level, me: myId(), players,
+    onPos: (q) => room.ch.send('dpos', { from: myId(), ...q }),
+    onEnd: (hits) => { if (room.host) r4DodgeResult(myId(), hits); else room.ch.send('dres', { from: myId(), hits }); },
+  });
+}
+function r4DodgeResult(from: string, hits: number) {
+  const room = r4;
+  if (!room?.host || !room.dodge || !Number.isFinite(hits)) return;
+  room.dodge.res[from] = Math.max(0, Math.min(10, Math.round(hits)));
+  if (room.dodge.owners.every((o) => room.dodge!.res[o] !== undefined)) setTimeout(r4FinishDodge, 1500);
+}
+function r4FinishDodge() {
+  const room = r4, b = room?.battle;
+  if (!room?.host || !b?.dodge || !room.dodge) return;
+  clearTimeout(room.dodge.timer);
+  const res = room.dodge.res;
+  room.dodge = undefined;
+  b.resolveDodge(res);
+  r4Pump();
 }
 /** 방장: 차례 적용 (from = 고른 사람) */
 function r4Take(turn: string, skill: string | undefined, from: string) {
@@ -1419,21 +1474,19 @@ function r4Finish(win: boolean, frac: number) {
   r4Track();
   commit();
 }
-const unitIcon = (u: { jobId?: string; name: string; boss?: boolean }, size: number) => u.boss ? monsterSprite('abyssKing', { size, boss: true, tags: ['demon'] }) : u.jobId ? charSprite(JOBS[u.jobId as JobId].base, u.name.replace(/\(.+\)$/, ''), JOBS[u.jobId as JobId].tier, { size }) : monsterSprite('voidWraith', { size, tags: ['demon'] });
+const unitIcon = (u: { jobId?: string; name: string; boss?: boolean; mid?: string }, size: number) => u.boss ? monsterSprite(u.mid ?? 'abyssKing', { size, boss: true, tags: ['demon'] }) : u.jobId ? charSprite(JOBS[u.jobId as JobId].base, u.name.replace(/\(.+\)$/, ''), JOBS[u.jobId as JobId].tier, { size }) : monsterSprite(u.mid ?? 'voidWraith', { size, tags: ['demon'] });
 function viewRaid4() {
   const s = S!;
   if (!CLOUD || !Cloud.session) return `<div class="wrap">${backBtn()}<h2>4인 레이드</h2><p class="mute">로그인해야 할 수 있어요.</p></div>`;
   const essLine = `<span class="row" style="gap:6px">${equipSprite('ring', 8, { size: 30, set: 'myth' })}<span>신화의 정수 <b>${s.mythEss ?? 0}</b></span></span>`;
   if (!r4) {
     return `<div class="wrap">${backBtn()}
-      <h2>4인 레이드 · 심연의 왕 아바돈</h2>
-      <p class="small mute">친구 최대 4명이 <b>단원 1명씩</b> 데려와 싸워요. 내 단원 차례가 오면 <b>스킬을 직접 골라요</b> (${R4_TURN_SEC}초 안에 안 고르면 자동). ${R4_ROUNDS}라운드 안에 쓰러뜨려야 해요. 방장 화면이 전투를 진행하니 방장은 끝까지 창을 켜 두세요.</p>
-      <div class="panel small"><b>☠ 아바돈의 기믹</b>
+      <h2>4인 레이드 · ${esc(R4_BOSSES[r4BossOfWeek()].name)}</h2>
+      <p class="small mute">이번 주 보스예요 (매주 월요일 0시 교체 · 다음 주: <b>${esc(R4_BOSSES[r4NextBoss()].name)}</b>). 친구 최대 4명이 <b>단원 1명씩</b> 데려와 싸워요. 내 단원 차례가 오면 <b>스킬을 직접 골라요</b> (${R4_TURN_SEC}초 안에 안 고르면 자동). ${R4_ROUNDS}라운드 안에 쓰러뜨려야 해요. 방장 화면이 전투를 진행하니 방장은 끝까지 창을 켜 두세요.</p>
+      <div class="panel small"><b>${R4_BOSSES[r4BossOfWeek()].wipe.kind === 'dodge' ? '❄' : R4_BOSSES[r4BossOfWeek()].wipe.kind === 'shield' ? '🩸' : '☠'} ${esc(R4_BOSSES[r4BossOfWeek()].short)}의 기믹</b>
         <ul style="margin:6px 0 0;padding-left:18px;line-height:1.7">
-          <li><b>심연의 붕괴 (전멸기)</b>: HP 70%·40%·15%와 일정 주기마다 2턴 시전. <b>기절·침묵 스킬</b>(방패 치기·빙결·침묵 화살·봉인의 기도, 15레벨)로 무력화 게이지를 0으로 만들면 끊기고 그로기(받는 피해 +50%). 못 끊으면 파티 전원 최대 HP 150% 피해</li>
-          <li><b>심연의 표식</b>: 한 명에게 표식 → 다음 보스 차례에 최대 HP 60% 폭발. 회복·보호막으로 대비</li>
-          <li><b>사도 소환</b>: 사도가 있는 동안 보스 피해 -70%, 단일 공격은 사도부터 노려요</li>
-          <li><b>부식의 저주</b>: 3라운드 지속 피해 · <b>광폭화</b>: HP 15% 아래에서 공격 +30%</li>
+          ${R4_BOSSES[r4BossOfWeek()].tips.map((x) => `<li>${x}</li>`).join('')}
+          <li>HP 70%·40%·15%에서 페이즈가 바뀌며 바로 전멸기, 15% 아래에선 <b>광폭화</b>(공격 +30%)</li>
           <li>전투 중 <b>빠른 채팅</b>으로 "제가 기절 걸겠습니다" 같은 신호를 주고받을 수 있어요</li>
         </ul></div>
       <div class="panel row" style="gap:16px;flex-wrap:wrap">${essLine}<span class="small mute">신화의 정수로 제작소에서 <b>신화 세트</b>를 만들어요</span></div>
@@ -1453,8 +1506,8 @@ function viewRaid4() {
     const fr = friends.filter((f) => f.status === 'accepted' && Cloud.online[f.other] && !room.members.some((m) => m.id === f.other));
     const allReady = !!room.pick && room.members.every((m) => m.host || m.ready);
     return `<div class="wrap">${backBtn()}
-      <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><h2 style="margin:0">4인 레이드 · ${R4[room.diff].name}</h2><span class="row" style="gap:8px"><span>방 코드 <b class="r4code">${esc(room.code)}</b></span><button class="btn ghost sm" data-a="r4Leave">나가기</button></span></div>
-      ${room.result ? `<div class="panel dres ${room.result.win ? 'w' : 'l'}"><b>${room.result.win ? '🏆 아바돈 처치!' : `💀 실패 · ${Math.round(room.result.frac * 100)}% 피해`}</b>${room.result.lines.map((l) => `<div class="small">${esc(l)}</div>`).join('')}</div>` : ''}
+      <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><h2 style="margin:0">4인 레이드 · ${esc(R4_BOSSES[room.boss].short)} · ${R4[room.diff].name}</h2><span class="row" style="gap:8px"><span>방 코드 <b class="r4code">${esc(room.code)}</b></span><button class="btn ghost sm" data-a="r4Leave">나가기</button></span></div>
+      ${room.result ? `<div class="panel dres ${room.result.win ? 'w' : 'l'}"><b>${room.result.win ? `🏆 ${esc(R4_BOSSES[room.boss].short)} 처치!` : `💀 실패 · ${Math.round(room.result.frac * 100)}% 피해`}</b>${room.result.lines.map((l) => `<div class="small">${esc(l)}</div>`).join('')}</div>` : ''}
       ${room.host ? `<div class="tabs" role="group" aria-label="난이도" style="margin:10px 0">${R4_DIFFS.map((d) => `<button class="${room.diff === d ? 'on' : ''}" data-a="r4Diff" data-v="${d}">${R4[d].name} · 1인 ${fmt(R4[d].power)}</button>`).join('')}</div>` : `<p class="small mute">난이도는 방장이 정해요 · 권장 1인 전투력 ${fmt(R4[room.diff].power)}</p>`}
       <div class="r4slots">${slots}</div>
       <div class="panel"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><h3 style="margin:0">데려갈 단원 1명</h3>${sortBar()}</div><div class="dpicks" style="margin-top:8px">${picks}</div>
@@ -1464,9 +1517,9 @@ function viewRaid4() {
   }
   // ── 전투 화면 (무대는 그린 뒤 mountStage로 채움) ──
   return `<div class="wrap r4wrap">
-    <div class="row" style="justify-content:space-between;margin-bottom:6px"><b>4인 레이드 · ${R4[room.diff].name}</b><span class="small mute">${R4_ROUNDS}라운드 안에 처치 · 방 ${esc(room.code)}</span></div>
+    <div class="row" style="justify-content:space-between;margin-bottom:6px"><b>4인 레이드 · ${esc(R4_BOSSES[room.boss].name)} · ${R4[room.diff].name}</b><span class="small mute">${R4_ROUNDS}라운드 안에 처치 · 방 ${esc(room.code)}</span></div>
     <div class="r4stage2" id="r4box"></div>
-    ${room.inBattle.includes(myId()) || room.members.some((m) => m.id === myId()) ? `<div class="r4qc" role="group" aria-label="빠른 채팅">${R4_QC.map((q, i) => `<button class="btn ghost sm" data-a="r4qc" data-v="${i}">${esc(q)}</button>`).join('')}</div>` : ''}
+    ${room.inBattle.includes(myId()) || room.members.some((m) => m.id === myId()) ? `<div class="r4qc" role="group" aria-label="빠른 채팅">${r4QcList(room.boss).map((q) => `<button class="btn ghost sm" data-a="r4qc" data-v="${R4_QC.indexOf(q)}">${esc(q)}</button>`).join('')}</div>` : ''}
     <div class="log r4log" id="r4log"></div>
   </div>`;
 }

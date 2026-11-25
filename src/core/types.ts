@@ -209,4 +209,4 @@ export type BattleEvent =
   | { t: 'result'; win: boolean; rounds: number }
   /** 4인 레이드 보스 기믹 */
   | { t: 'raid'; kind: RaidFx; text: string; who?: string; target?: string; value?: number };
-export type RaidFx = 'cast' | 'castTick' | 'interrupt' | 'break' | 'wipe' | 'mark' | 'markHit' | 'phase' | 'curse' | 'enrage' | 'groggy' | 'summon' | 'smash' | 'breath';
+export type RaidFx = 'cast' | 'castTick' | 'interrupt' | 'break' | 'wipe' | 'mark' | 'markHit' | 'phase' | 'curse' | 'enrage' | 'groggy' | 'summon' | 'smash' | 'breath' | 'dodge';

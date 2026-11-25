@@ -519,7 +519,7 @@ export function dealDamage(ctx: BattleContext, a: Combatant, t: Combatant, e: Ex
   dmg *= Math.max(0.2, 1 + st.extra.dmgTaken / 100);
   if (e.scale === 'mag') dmg *= Math.max(0.3, 1 + st.extra.magTaken / 100);
   // 결계: 다른 적이 살아있으면 피해 -70%
-  const bw = t.passives.has('bulwark') && alive(allies(ctx, t)).some((x) => x !== t);
+  const bw = t.passives.has('bulwark') && alive(allies(ctx, t)).some((x) => x !== t && !x.tags.has('prison'));
   if (bw) dmg *= 0.3;
   ctx.hit = { mag: e.scale === 'mag' || (e.scale !== 'atk' && a.attackScale === 'mag'), bulwark: bw };
   dmg = Math.max(1, Math.round(dmg));

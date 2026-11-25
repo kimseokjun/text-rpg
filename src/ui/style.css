@@ -757,3 +757,48 @@ svg.px{image-rendering:pixelated;flex:none}
 .r4qc .btn{font-size:12px;padding:4px 9px}
 .r4log .qc{color:#ffe9a8;font-weight:700}
 @media (prefers-reduced-motion:reduce){.r4cast.on,.r4unit.marked::before,.r4skb.cut{animation:none}}
+/* ── 4인 레이드 회피 타임 (절대영도) ── */
+.dodge{position:absolute;inset:0;z-index:20;overflow:hidden;background:linear-gradient(180deg,#0a1a3acc,#1a3a6acc 70%,#2a4a7a);user-select:none;touch-action:none}
+.dodge .dg-sky{position:absolute;inset:0;background:radial-gradient(circle at 80% 30%,#bfe8ff55,transparent 40%);animation:dgsky 2s ease-in-out infinite alternate}
+@keyframes dgsky{to{opacity:.5}}
+.dodge .dg-ground{position:absolute;left:0;right:0;top:82%;bottom:0;background:linear-gradient(180deg,#d8f0ff,#8ab8e0);box-shadow:0 -2px 0 #fff inset}
+.dodge .dg-title{position:absolute;top:4%;left:50%;transform:translateX(-50%);font-family:"Hahmlet",serif;font-weight:900;font-size:clamp(18px,4cqw,34px);color:#dff4ff;text-shadow:0 0 14px #6ac8ff,0 2px 0 #000;letter-spacing:3px}
+.dodge .dg-help{position:absolute;top:14%;left:50%;transform:translateX(-50%);font-size:clamp(11px,1.8cqw,15px);color:#e8f6ff;background:#0a1a3aaa;padding:3px 12px;border-radius:99px;white-space:nowrap}
+.dodge .dg-count{position:absolute;top:36%;left:50%;transform:translate(-50%,-50%);font-size:clamp(44px,12cqw,110px);font-weight:900;color:#fff;text-shadow:0 0 24px #6ac8ff}
+.dodge .dg-timer{position:absolute;top:21%;left:30%;right:30%;height:6px;border-radius:3px;background:#ffffff30;overflow:hidden}
+.dodge .dg-timer i{position:absolute;left:0;top:0;bottom:0;background:#9ae0ff}
+.dodge .dg-field{position:absolute;inset:0}
+.dg-pl{position:absolute;width:6%;transform:translate(-50%,-100%);display:flex;flex-direction:column-reverse;align-items:center;transition:transform .05s}
+.dg-pl .dg-spr{width:100%;transform-origin:bottom center;transition:transform .08s}
+.dg-pl .dg-spr svg,.dg-pl .dg-spr img{width:100%;height:auto;display:block}
+.dg-pl.duck .dg-spr{transform:scaleY(.5) scaleX(1.15)}
+.dg-pl span{font-size:10px;color:#fff;text-shadow:0 1px 2px #000;white-space:nowrap;margin-bottom:2px}
+.dg-pl.ghost{opacity:.45}.dg-pl.me span{color:#ffe070;font-weight:800}
+.dg-pl.inv .dg-spr{animation:dginv .12s steps(2) infinite}
+@keyframes dginv{50%{opacity:.3}}
+.dg-pl.hit .dg-spr{filter:brightness(2.5) saturate(0) drop-shadow(0 0 6px #fff)}
+.dg-ouch{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:#fff;color:#2a1a08;font-size:11px;font-weight:800;padding:2px 7px;border-radius:8px;white-space:nowrap;animation:dgouch .7s ease-out forwards}
+@keyframes dgouch{to{transform:translate(-50%,-14px);opacity:0}}
+.dg-ob{position:absolute;transform:translateX(-50%)}
+.dg-ob.low{width:5%;height:8%;border-radius:50% 50% 40% 40%;background:radial-gradient(circle at 35% 30%,#fff,#9ad8ff 45%,#4a90d0);box-shadow:0 0 10px #9ad8ff;animation:dgroll .35s linear infinite}
+@keyframes dgroll{to{rotate:-360deg}}
+.dg-ob.high{width:7%;height:8%;clip-path:polygon(0 50%,100% 10%,85% 50%,100% 90%);background:linear-gradient(90deg,#fff,#bfe8ff 40%,#5aa8e8);filter:drop-shadow(0 0 6px #9ad8ff)}
+.dg-ob.fall{width:8%;height:0}
+.dg-ob.fall .mark{position:absolute;left:50%;top:0;width:100%;height:14px;transform:translate(-50%,-50%);border-radius:50%;border:2px dashed #ff5070;background:#ff507033;opacity:0}
+.dg-ob.fall.warn .mark{opacity:1;animation:dgwarn .3s ease-in-out infinite alternate}
+@keyframes dgwarn{to{background:#ff507077}}
+.dg-ob.fall .ice{position:absolute;left:50%;top:0;width:100%;height:42cqh;background:linear-gradient(180deg,#e8f8ff,#8ad0ff 70%,#4a90d0);clip-path:polygon(15% 0,85% 0,100% 80%,50% 100%,0 80%);filter:drop-shadow(0 0 8px #bfe8ff)}
+.dg-pad{position:absolute;left:0;right:0;bottom:2%;display:flex;justify-content:space-between;padding:0 3%;pointer-events:none}
+.dg-pad div{display:flex;gap:8px;pointer-events:auto}
+.dg-pad button{width:clamp(48px,9cqw,72px);height:clamp(40px,8cqw,60px);border-radius:12px;border:2px solid #ffffffaa;background:#0a1a3a99;color:#fff;font-weight:800;font-size:clamp(12px,2cqw,16px);touch-action:none}
+.dg-pad button.on{background:#6ac8ffaa}
+@media (hover:hover) and (pointer:fine){.dg-pad{opacity:.55}}
+.dg-result{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);font-size:clamp(20px,5cqw,40px);font-weight:900;color:#ffd0d8;text-shadow:0 2px 0 #000,0 0 14px #ff3050;white-space:nowrap;animation:r4pop .2s ease-out}
+.dg-result span{font-size:.5em;color:#fff}
+.dg-result.perfect{color:#fff3a8;text-shadow:0 2px 0 #000,0 0 18px #ffd95e}
+.r4unit.frozen .r4spr{filter:brightness(1.3) saturate(.3) drop-shadow(0 0 10px #9ad8ff)}
+.r4unit.frozen::after{content:"";position:absolute;left:50%;bottom:16px;width:72px;height:72px;transform:translateX(-50%);border-radius:8px;background:linear-gradient(135deg,#e8f8ffaa,#8ad0ff66);border:2px solid #bfe8ff;pointer-events:none}
+.fx.bigtxt.ice{color:#dff4ff;text-shadow:0 0 18px #3a90ff,0 3px 0 #000}
+.r4cast.dodge{border-color:#6ac8ff;background:#061a30e8;box-shadow:0 0 24px #6ac8ff80;animation:none}
+.r4cast.dodge .r4ct{color:#dff4ff}.r4cast.dodge .r4chint{color:#bfe8ff}
+.r4cast.shield{border-color:#ff3050}.r4cast.shield .r4gauge i{background:linear-gradient(90deg,#8a0a20,#ff3050)}

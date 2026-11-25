@@ -3,7 +3,7 @@
  *   npx tsx src/cli/r4sim.ts [N] [전투력 비율=1]
  */
 import { Raid4Battle, type R4Member } from '../core/raid4battle';
-import { R4, R4_DIFFS } from '../data/raid4';
+import { R4, R4_DIFFS, type R4BossId } from '../data/raid4';
 import { charPower } from '../core/power';
 import { standardParty } from './floorsim';
 import type { Modifier } from '../core/types';
@@ -12,6 +12,8 @@ const N = Number(process.argv[2] ?? 40);
 const ratios = (process.argv[3] ?? '0.75,1,1.25').split(',').map(Number);
 const AI = Number(process.argv[4] ?? 70);
 const DIFFS = (process.argv[5] ?? R4_DIFFS.join(',')).split(',') as typeof R4_DIFFS;
+const BOSS = (process.argv[6] ?? 'abaddon') as R4BossId;
+const DH = Number(process.argv[7] ?? 1);
 
 function scaleTo(c: Parameters<typeof charPower>[0], target: number): Modifier[] {
   let lo = -90, hi = 3000;
@@ -26,7 +28,7 @@ for (const diff of DIFFS) {
     const mems: R4Member[] = party.map((c, i) => ({ owner: `user${i}xxxxxxx`, ownerName: `P${i}`, char: c, mods: scaleTo(c, R4[diff].power * r) }));
     let win = 0, rounds = 0, frac = 0, wipes = 0, breaks = 0, deaths = 0;
     for (let s = 0; s < N; s++) {
-      const b = new Raid4Battle(mems, diff, 1000 + s); b.autoInterrupt = AI; b.runAuto();
+      const b = new Raid4Battle(mems, diff, 1000 + s, undefined, BOSS); b.autoInterrupt = AI; b.simDodgeHits = DH; b.runAuto();
       const st = b.state();
       if (b.win) { win++; rounds += st.round; }
       frac += st.dealt / st.maxHp;

@@ -43,7 +43,7 @@ const snow = () => `<div class="r4snow" aria-hidden="true">${Array.from({ length
 // ── 위치 ──
 const PARTY_POS = [{ x: 35, y: 85 }, { x: 27, y: 94 }, { x: 19, y: 83 }, { x: 11, y: 92 }];
 const BOSS_POS = { x: 72, y: 90 };
-const ADD_POS = [{ x: 56, y: 76 }, { x: 58, y: 100 }, { x: 54, y: 88 }];
+const ADD_POS = [{ x: 56, y: 74 }, { x: 59, y: 93 }, { x: 51, y: 84 }];
 
 let host: HTMLElement | null = null;
 let H: StageHelpers | null = null;
@@ -82,7 +82,7 @@ export const stageMounted = () => !!host && document.body.contains(host);
 /** 소환된 졸개 유닛을 무대에 추가 (이름 기준, id는 나중에 채움) */
 function addUnit(u: R4Unit) {
   if (!host || elOf.get(u.name)?.isConnected) return elOf.get(u.name)!;
-  const n = host.querySelectorAll('.r4unit.add:not(.dead)').length;
+  const n = host.querySelectorAll('.r4unit.add:not([data-gone])').length;
   const wrap = document.createElement('div');
   wrap.innerHTML = unitHtml(u, ADD_POS[n % 3], false, true);
   const e = wrap.firstElementChild as HTMLElement;
@@ -99,6 +99,9 @@ export function updateStage(st: R4State) {
     if (!e && !u.boss && !u.owner && u.alive) { e = elOf.get(u.name)?.isConnected ? elOf.get(u.name)! : addUnit(u); e.dataset.uid = u.id; idEl.set(u.id, e); }
     if (!e) continue;
     e.classList.toggle('marked', st.boss?.mark === u.id);
+    e.classList.toggle('frozen', !!u.frozen);
+    // 쓰러진 졸개는 잠시 뒤 무대에서 치움 (다음 소환 자리 비우기)
+    if (!u.alive && e.classList.contains('add') && !e.dataset.gone) { e.dataset.gone = '1'; setTimeout(() => e.remove(), 900); }
     if (u.boss) { e.classList.toggle('casting', !!st.boss?.cast); e.classList.toggle('groggy', !!st.boss?.groggy); e.classList.toggle('enraged', !!st.boss?.enraged); }
     setBar(e, u.hp, u.maxHp, u.mp, u.maxMp);
     e.classList.toggle('dead', !u.alive);
@@ -113,10 +116,11 @@ export function updateStage(st: R4State) {
   const cb = host.querySelector<HTMLElement>('#r4cast')!;
   const bs = st.boss;
   if (bs?.cast) {
-    cb.className = 'r4cast on';
-    cb.innerHTML = `<div class="r4ct"><b>☠ ${H.esc(bs.cast.name)}</b><span>${bs.cast.left}턴 뒤 발동</span></div>
-      <div class="r4gauge" role="progressbar" aria-label="무력화 게이지" aria-valuenow="${bs.cast.gauge}" aria-valuemax="${bs.cast.max}"><i style="width:${(bs.cast.gauge / bs.cast.max) * 100}%"></i><span>무력화 ${bs.cast.gauge}/${bs.cast.max}</span></div>
-      <div class="r4chint">기절·침묵 스킬로 게이지를 0으로!</div>`;
+    const k = bs.cast.kind;
+    cb.className = `r4cast on ${k}`;
+    cb.innerHTML = `<div class="r4ct"><b>${k === 'dodge' ? '❄' : k === 'shield' ? '🩸' : '☠'} ${H.esc(bs.cast.name)}</b><span>${bs.cast.left}턴 뒤 ${k === 'dodge' ? '회피 타임!' : '발동'}</span></div>
+      ${k === 'dodge' ? '' : `<div class="r4gauge" role="progressbar" aria-label="${k === 'shield' ? '피의 보호막' : '무력화 게이지'}" aria-valuenow="${bs.cast.gauge}" aria-valuemax="${bs.cast.max}"><i style="width:${(bs.cast.gauge / Math.max(1, bs.cast.max)) * 100}%"></i><span>${k === 'shield' ? '피의 보호막' : '무력화'} ${H.fmt(bs.cast.gauge)}/${H.fmt(bs.cast.max)}</span></div>`}
+      <div class="r4chint">${k === 'dodge' ? '곧 직접 움직여요: ↑ 점프 · ↓ 숙이기 · ←→ 이동 (모바일은 화면 버튼)' : k === 'shield' ? '보호막을 깨면 그로기! 딜을 몰아주세요' : '기절·침묵 스킬로 게이지를 0으로!'}</div>`;
   } else if (bs?.groggy) { cb.className = 'r4cast on groggy'; cb.innerHTML = '<div class="r4ct"><b>💫 그로기!</b><span>받는 피해 +50% · 지금 몰아치세요</span></div>'; }
   else { cb.className = 'r4cast'; cb.innerHTML = ''; }
   host.querySelector('#r4round')!.innerHTML = `ROUND ${st.round}${bs ? ` <span class="r4phase">${'◆'.repeat(bs.phase)}${'◇'.repeat(4 - bs.phase)}${bs.enraged ? ' 광폭' : ''}</span>` : ''}`;
@@ -281,7 +285,7 @@ async function run(events: BattleEvent[], fast: boolean) {
       case 'death': { const t = elOf.get(e.who); if (t) { t.classList.add('dead'); t.querySelector('.r4spr')?.animate([{ transform: 'rotate(0)', opacity: 1 }, { transform: 'rotate(-80deg) translateY(10px)', opacity: 0.4 }], { duration: 500, fill: 'forwards' }); } if (!fast) await sleep(300); break; }
       case 'special': { const t = elOf.get(e.who); if (t) { floatText(t, '✦', 'stat'); burst(t.classList.contains('boss') ? 'dark' : 'holy', t, true); if (t.classList.contains('boss')) bossFlash(); } if (/다시 일어선다/.test(e.text)) for (const [n, el] of elOf) if (e.text.includes(n)) { el.classList.remove('dead'); el.querySelector('.r4spr')?.getAnimations().forEach((a) => a.cancel()); } if (!fast) await sleep(220); break; }
       case 'stunned': { const t = elOf.get(e.who); if (t) floatText(t, '기절', 'stat'); break; }
-      case 'summon': { for (const s of e.summoned) addUnit({ id: '', name: s.name, hp: s.hp, maxHp: s.maxHp, mp: 0, maxMp: 0, alive: true }); if (!fast) await sleep(350); break; }
+      case 'summon': { for (const s of e.summoned) addUnit({ id: '', name: s.name, mid: s.id, hp: s.hp, maxHp: s.maxHp, mp: 0, maxMp: 0, alive: true }); if (!fast) await sleep(350); break; }
       case 'raid': await raidFx(e, fast); break;
     }
   }
@@ -304,7 +308,9 @@ async function raidFx(e: Extract<BattleEvent, { t: 'raid' }>, fast: boolean) {
   const wait = (ms: number) => (fast ? Promise.resolve() : sleep(ms));
   switch (e.kind) {
     case 'cast': {
-      bigText('☠ 심연의 붕괴 시전!', 'danger', 1800); screenTint('#a0102080', 900, 0.7);
+      const nm = e.text.match(/「(.+?)」/)?.[1] ?? '전멸기';
+      const ice = /절대영도/.test(nm), blood = /피의 계약/.test(nm);
+      bigText(`${ice ? '❄' : blood ? '🩸' : '☠'} ${nm} 시전!`, ice ? 'ice' : 'danger', 1800); screenTint(ice ? '#3a90ff80' : '#a0102080', 900, 0.7);
       if (b) { b.classList.add('casting'); burst('dark', b, true); }
       host!.animate([{ transform: 'translate(0,0)' }, { transform: 'translate(4px,-3px)' }, { transform: 'translate(-4px,3px)' }, { transform: 'translate(0,0)' }], { duration: 300, iterations: 2 });
       await wait(900); break;
@@ -312,6 +318,8 @@ async function raidFx(e: Extract<BattleEvent, { t: 'raid' }>, fast: boolean) {
     case 'castTick': { if (b) { floatText(b, '시전 중…', 'stat'); burst('dark', b); } screenTint('#80102060', 600, 0.4); await wait(350); break; }
     case 'interrupt': {
       const who = e.target ? elOf.get(e.target) : null;
+      if (/완벽 회피/.test(e.text)) { if (who) floatText(who, '완벽 회피! ✨', 'heal'); await wait(150); break; }
+      if (/피의 보호막/.test(e.text)) { if (b) floatText(b, `🩸 ${H!.fmt(e.value ?? 0)}`, 'gauge'); break; }
       if (b) { if (who) await projectile('ice', who, b); burst('ice', b, true); floatText(b, `무력화 ${e.value ?? ''}`, 'gauge'); shake(b, false); }
       await wait(300); break;
     }
@@ -321,7 +329,8 @@ async function raidFx(e: Extract<BattleEvent, { t: 'raid' }>, fast: boolean) {
       await wait(900); break;
     }
     case 'wipe': {
-      bigText('☠ 심연의 붕괴', 'danger', 1600);
+      const nm = e.text.match(/「(.+?)」/)?.[1] ?? '전멸기';
+      bigText(`☠ ${nm}`, /절대영도/.test(nm) ? 'ice' : 'danger', 1600);
       const r = host!.getBoundingClientRect();
       const d = fxEl('wipeboom', r.width * 0.7, r.height * 0.6);
       d.animate([{ transform: 'translate(-50%,-50%) scale(.1)', opacity: 1 }, { transform: 'translate(-50%,-50%) scale(9)', opacity: 0.95, offset: 0.6 }, { transform: 'translate(-50%,-50%) scale(12)', opacity: 0 }], { duration: 1300, easing: 'ease-in' }).onfinish = () => d.remove();
@@ -343,7 +352,8 @@ async function raidFx(e: Extract<BattleEvent, { t: 'raid' }>, fast: boolean) {
       await wait(300); break;
     }
     case 'smash': { const t = e.target ? elOf.get(e.target) : null; if (t) { const c = center(t); const d = fxEl('warnzone', c.x, c.y + 24); d.animate([{ opacity: 0, transform: 'translate(-50%,-50%) scale(.6)' }, { opacity: 0.9, transform: 'translate(-50%,-50%) scale(1)' }, { opacity: 0 }], { duration: 600 }).onfinish = () => d.remove(); } await wait(250); break; }
-    case 'summon': await wait(200); break;
+    case 'summon': { const t = e.target ? elOf.get(e.target) : null; if (t) { t.classList.remove('frozen'); burst('ice', t, true); floatText(t, '탈출!', 'heal'); } await wait(200); break; }
+    case 'dodge': { bigText('❄ 절대영도!', 'ice', 1400); screenTint('#bfe8ffcc', 700, 0.8); await wait(900); break; }
   }
 }
 function showSkillName(actor: HTMLElement, name: string, kind: Kind) {

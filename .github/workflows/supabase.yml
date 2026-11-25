@@ -33,4 +33,4 @@ jobs:
         run: npx --yes esbuild@0.28 src/server/worldboss.ts --bundle --format=esm --platform=neutral --target=es2022 --outfile=supabase/functions/worldboss/core.js
       - name: Deploy functions
         run: |
-          if [ -d supabase/functions ] && [ "$(ls -A supabase/functions 2>/dev/null)" ]; then supabase functions deploy --project-ref "$PROJECT_REF" --use-api; else echo "함수 없음"; fi
+          if [ -d supabase/functions ] && [ "$(ls -A supabase/functions 2>/dev/null)" ]; then supabase functions deploy --use-api --yes; else echo "함수 없음"; fi

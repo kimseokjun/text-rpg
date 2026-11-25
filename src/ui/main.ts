@@ -773,7 +773,7 @@ function viewShop() {
 
 function viewTraining() {
   const s = S!;
-  const list = [...s.roster].sort((a, b) => (s.party.includes(b.uid) ? 1 : 0) - (s.party.includes(a.uid) ? 1 : 0) || b.level - a.level);
+  const list = orderedRoster(s);
   const rows = list.map((c) => {
     const no = G.canTrain(s, c);
     const cost = G.trainCost(c);
@@ -784,7 +784,7 @@ function viewTraining() {
       <div class="pact"><button class="btn sm" data-a="train" data-uid="${esc(c.uid)}" ${no ? 'disabled' : ''}>Lv.${c.level + 1} · ${fmt(cost)}G</button></div></div>`;
   }).join('');
   return `<div class="wrap">${backBtn()}
-    <h2>훈련소</h2>
+    <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><h2>훈련소</h2>${sortBar()}</div>
     <p class="mute">골드를 내고 단원을 한 레벨씩 훈련시켜요. 직업 레벨 상한까지 올릴 수 있어요.</p>
     <div class="bench">${rows || '<p class="mute">훈련할 단원이 없습니다.</p>'}</div>
   </div>`;
@@ -792,7 +792,7 @@ function viewTraining() {
 
 function viewTemple() {
   const s = S!;
-  const list = s.roster.filter((c) => c.traitIds.length);
+  const list = orderedRoster(s).filter((c) => c.traitIds.length);
   const rows = list.map((c) => {
     const cost = G.rerollTraitCost(c);
     return `<div class="pcard"><div class="ico">${avatar(c)}</div>
@@ -802,7 +802,7 @@ function viewTemple() {
         ${c.uniqueTraitId ? `<div class="sitem"><span class="t">${traitTag(c.uniqueTraitId)}</span><span class="small mute">고유 특성은 바꿀 수 없어요</span></div>` : ''}</div></div></div>`;
   }).join('');
   return `<div class="wrap">${backBtn()}
-    <h2>신전</h2>
+    <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><h2>신전</h2>${sortBar()}</div>
     <p class="mute">골드를 바치고 특성 하나를 무작위로 다시 받아요. 지금 가진 특성과 겹치지 않는 것 중에서 나와요.</p>
     <div class="bench">${rows || '<p class="mute">특성을 가진 단원이 없습니다.</p>'}</div>
   </div>`;
@@ -1004,7 +1004,7 @@ function viewDuel() {
   if (!duelPick.length || duelPick.some((u) => !s.roster.some((c) => c.uid === u))) duelDefault();
   const me = Cloud.session?.user.id;
   const fr = friends.filter((f) => f.status === 'accepted');
-  const list = topBy(s.roster);
+  const list = sortRoster(s.roster);
   const pick = list.map((c) => { const on = duelPick.includes(c.uid); return `<button class="dpick ${on ? 'on' : ''}" data-a="duelPick" data-uid="${esc(c.uid)}" aria-pressed="${on}"><span class="ico">${avatar(c, 30)}</span><span><b class="small">${esc(c.name)}</b><span class="small mute"> ${esc(JOBS[c.jobId].name)} · ${fmt(charPower(c))}</span></span></button>`; }).join('');
   const rec = duelLog.map((d) => { const atk = d.attacker === me; const won = atk ? d.win : !d.win; return `<div class="drec ${won ? 'w' : 'l'}"><b>${won ? '승' : '패'}</b> <span>${atk ? `→ ${esc(d.defender_name)}에게 도전` : `← ${esc(d.attacker_name)}의 도전`}</span> <span class="small mute">${d.size}:${d.size} · ${hhmm(d.created_at)}</span></div>`; }).join('');
   const wins = duelLog.filter((d) => (d.attacker === me ? d.win : !d.win)).length;
@@ -1013,7 +1013,7 @@ function viewDuel() {
     <p class="small mute">내가 고른 단원과 친구의 출전 파티(전투력 높은 순)가 맞붙어요. 펫·카드 효과 포함, 친구가 접속해 있지 않아도 돼요. 결투에선 피해 60% · 회복 50%, 60라운드가 지나면 남은 HP가 많은 쪽이 이겨요. 보상 없이 전적만 남아요.</p>
     ${duelLast ? `<div class="panel dres ${duelLast.win ? 'w' : 'l'}"><b>${duelLast.win ? '🏆 승리!' : '💀 패배…'}</b> vs ${esc(duelLast.foe)} · ${duelLast.size}:${duelLast.size} · 남은 HP ${duelLast.hp[0]}% 대 ${duelLast.hp[1]}%</div>` : ''}
     <div class="tabs" role="group" aria-label="인원">${[2, 3, 4].map((n) => `<button class="${duelSize === n ? 'on' : ''}" data-a="duelSize" data-v="${n}">${n}:${n}</button>`).join('')}</div>
-    <div class="panel"><h3 style="margin-top:0">내 단원 <span class="small mute">${duelPick.length}/${duelSize}명 선택</span></h3><div class="dpicks">${pick}</div></div>
+    <div class="panel"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><h3 style="margin:0">내 단원 <span class="small mute">${duelPick.length}/${duelSize}명 선택</span></h3>${sortBar()}</div><div style="height:8px"></div><div class="dpicks">${pick}</div></div>
     <div class="panel"><h3 style="margin-top:0">도전할 친구</h3>
       ${fr.length ? fr.map((f) => `<div class="item"><div><b>${esc(f.username)}</b> <span class="small mute">${Cloud.online[f.other] ? '● 접속 중 · ' : ''}전투력 ${fmt(f.power)}</span></div><span class="row" style="gap:6px"><button class="btn ghost sm" data-a="profile" data-v="${esc(f.other)}">프로필</button><button class="btn sm" data-a="duelGo" data-v="${esc(f.other)}" data-n="${esc(f.username)}" ${duelBusy || duelPick.length !== duelSize ? 'disabled' : ''}>${duelSize}:${duelSize} 결투</button></span></div>`).join('') : '<p class="small mute">아직 친구가 없어요. 오른쪽 아래 채팅 → 친구 탭에서 추가해 보세요.</p>'}</div>
     <div class="panel"><h3 style="margin-top:0">전적 <span class="small mute">최근 ${duelLog.length}판 · ${wins}승 ${duelLog.length - wins}패</span></h3><div class="drecs">${rec || '<p class="small mute">아직 결투 기록이 없어요.</p>'}</div></div>
@@ -1270,8 +1270,8 @@ function viewMulti() {
     <p class="small mute">${esc(room.host_name)}의 방 · ${n}/${room.max_players}명 · 10층 진행 · 권장 전투력 ${fmt(floorPower(room.floor))}${(s.maxFloor || 0) < room.floor ? ` · <span style="color:var(--gold)">아직 못 깬 구역이라 보상은 내 최고층 수준</span>` : ''}</p>
     <div class="row" style="gap:8px;align-items:center;margin:6px 0"><span class="small">전투 배속</span>${isHost ? `<div class="seg mini" role="group" aria-label="배속">${([1, 2, 0] as const).map((v) => `<button class="${(room.speed ?? 1) === v ? 'on' : ''}" data-a="mSpeed" data-v="${v}">${v ? `${v}배` : '스킵'}</button>`).join('')}</div>` : `<b>${(room.speed ?? 1) ? `${room.speed ?? 1}배` : '스킵'}</b> <span class="small mute">(방장이 정함)</span>`}</div>
     <div class="mgrid">${members.map(card).join('')}${Array.from({ length: room.max_players - n }, () => '<div class="mmem empty"><span class="small mute">빈 자리</span></div>').join('')}</div>
-    <div class="panel"><h3 style="margin-top:0">내가 데려갈 단원 <span class="small mute">${mPick.length}/${slots}명 선택</span></h3>
-      <div class="cards">${s.roster.map((c) => `<button class="card ${mPick.includes(c.uid) ? 'inparty' : ''}" data-a="mPick" data-uid="${esc(c.uid)}"><div class="ico">${avatar(c)}</div><div><b>${esc(c.name)}</b><div class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} · 전투력 ${fmt(charPower(c))}</div></div></button>`).join('')}</div>
+    <div class="panel"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><h3 style="margin:0">내가 데려갈 단원 <span class="small mute">${mPick.length}/${slots}명 선택</span></h3>${sortBar()}</div>
+      <div class="cards" style="margin-top:8px">${sortRoster(s.roster).map((c) => `<button class="card ${mPick.includes(c.uid) ? 'inparty' : ''}" data-a="mPick" data-uid="${esc(c.uid)}"><div class="ico">${avatar(c)}</div><div><b>${esc(c.name)}</b><div class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} · 전투력 ${fmt(charPower(c))}</div></div></button>`).join('')}</div>
       <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
         ${isHost ? `<button class="btn" data-a="mStart" ${mBusy || n < 2 ? 'disabled' : ''}>${mBusy ? '서버 계산 중…' : n < 2 ? '2명 이상 모이면 시작' : '출발!'}</button>` : `<button class="btn ${meM?.ready ? 'ghost' : ''}" data-a="mReady">${meM?.ready ? '준비 취소' : '준비 완료'}</button>`}
         <button class="btn ghost" data-a="mLeave">${isHost ? '방 삭제' : '나가기'}</button></div></div>

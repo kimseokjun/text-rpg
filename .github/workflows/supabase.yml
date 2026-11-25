@@ -1,0 +1,30 @@
+name: Deploy server (Supabase)
+on:
+  push:
+    branches: [main]
+    paths: ['supabase/**', '.github/workflows/supabase.yml']
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Check secrets
+        run: |
+          test -n "$SUPABASE_ACCESS_TOKEN" || (echo "::error::SUPABASE_ACCESS_TOKEN secret 없음" && exit 1)
+          test -n "$SUPABASE_DB_PASSWORD" || (echo "::error::SUPABASE_DB_PASSWORD secret 없음" && exit 1)
+          test -n "$PROJECT_REF" || (echo "::error::SUPABASE_PROJECT_REF variable 없음" && exit 1)
+      - run: supabase link --project-ref "$PROJECT_REF" -p "$SUPABASE_DB_PASSWORD"
+      - run: supabase db push -p "$SUPABASE_DB_PASSWORD" --include-all
+      - name: Push auth config
+        run: yes | supabase config push --project-ref "$PROJECT_REF" || echo "::warning::config push 실패 — 대시보드에서 이메일 확인 끄기 필요"
+      - name: Deploy functions
+        run: |
+          if [ -d supabase/functions ] && [ "$(ls -A supabase/functions 2>/dev/null)" ]; then supabase functions deploy --project-ref "$PROJECT_REF" --use-api; else echo "함수 없음"; fi

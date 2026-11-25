@@ -1,4 +1,5 @@
-import { migrate, type GameState } from './game';
+import { migrate, statePower, type GameState } from './game';
+import { CLOUD, initSession, loadCloud, saveCloud, session } from '../net/cloud';
 
 /**
  * 저장: 아티팩트 db(계정별 비공개 문서)가 있으면 거기에, 항상 localStorage에도.
@@ -11,6 +12,7 @@ let writing = false;
 let pending: GameState | null = null;
 
 export async function initRemote(): Promise<void> {
+  if (CLOUD) { try { await initSession(); } catch { /* 오프라인 */ } return; }
   try {
     const c = (window as any).claude;
     if (!c?.use) return;
@@ -25,9 +27,19 @@ export async function initRemote(): Promise<void> {
   }
 }
 
-export const remoteReady = () => !!docRef;
+export const remoteReady = () => (CLOUD ? !!session : !!docRef);
 
 export async function loadGame(): Promise<GameState | null> {
+  if (CLOUD) {
+    if (!session) return null;
+    let cloud: GameState | null = null;
+    try { const c = await loadCloud(); if (c) cloud = migrate(JSON.parse(c.json)); } catch { /* 무시 */ }
+    let local: GameState | null = null;
+    try { const raw = localStorage.getItem(`${LS_KEY}-${session.user.id}`) ?? (cloud ? null : localStorage.getItem(LS_KEY)); if (raw) local = migrate(JSON.parse(raw)); } catch { /* 무시 */ }
+    const pick = cloud && local ? (local.day > cloud.day ? local : cloud) : cloud ?? local;
+    if (pick && pick !== cloud) saveGame(pick); // 첫 로그인: 기존 기기 세이브를 서버로 옮김
+    return pick;
+  }
   let remote: GameState | null = null;
   if (docRef) {
     try {
@@ -45,8 +57,17 @@ export async function loadGame(): Promise<GameState | null> {
   return remote ?? local;
 }
 
+let cloudTimer = 0;
+export let cloudStatus: 'idle' | 'saving' | 'saved' | 'error' = 'idle';
 export function saveGame(s: GameState) {
   const json = JSON.stringify(s);
+  if (CLOUD) {
+    if (!session) return;
+    try { localStorage.setItem(`${LS_KEY}-${session.user.id}`, json); } catch { /* 무시 */ }
+    clearTimeout(cloudTimer);
+    cloudTimer = window.setTimeout(async () => { cloudStatus = 'saving'; cloudStatus = (await saveCloud(JSON.parse(json), s.day, statePower(s))) ? 'saved' : 'error'; }, 1200);
+    return;
+  }
   try { localStorage.setItem(LS_KEY, json); } catch { /* 무시 */ }
   if (!docRef) return;
   pending = s;
@@ -73,6 +94,6 @@ export function importSave(code: string): GameState | null {
 }
 
 export async function wipeSave() {
-  try { localStorage.removeItem(LS_KEY); } catch { /* 무시 */ }
+  try { localStorage.removeItem(CLOUD && session ? `${LS_KEY}-${session.user.id}` : LS_KEY); } catch { /* 무시 */ }
   if (docRef) { try { await docRef.delete(); } catch { /* 무시 */ } }
 }

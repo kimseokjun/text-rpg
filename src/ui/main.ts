@@ -23,6 +23,8 @@ import { QUESTS, rewardText } from '../data/quests';
 import { TOWER_UNLOCK, isTowerBoss, towerBoss, towerGimmick, towerReward } from '../data/tower';
 import * as G from '../state/game';
 import { exportSave, importSave, initRemote, loadGame, remoteReady, saveGame, wipeSave } from '../state/save';
+import * as Cloud from '../net/cloud';
+import { CLOUD } from '../net/cloud';
 import { townScene } from './art';
 import { charSprite } from './pixel';
 import { equipKind, equipSprite, itemSprite, monsterSprite, petSprite } from './sprites';
@@ -143,19 +145,49 @@ function optText(o: { key: string; kind: string; value: number }) {
 const SLOT_NAME: Record<EquipSlot, string> = { weapon: '무기', armor: '방어구', accessory: '장신구' };
 
 // ───────── 화면들 ─────────
+let authMode: 'login' | 'signup' = 'login';
+let authBusy = false;
+let authErr = '';
+let authIdVal = '';
+function authForm() {
+  return `<form class="panel grid authf" data-form="auth" autocomplete="on">
+    <div class="tabs" role="group" aria-label="로그인 방식"><button type="button" class="${authMode === 'login' ? 'on' : ''}" data-a="authMode" data-v="login">로그인</button><button type="button" class="${authMode === 'signup' ? 'on' : ''}" data-a="authMode" data-v="signup">회원가입</button></div>
+    <div class="field"><label for="authId">아이디</label><input id="authId" name="username" autocomplete="username" maxlength="12" placeholder="2~12자 (한글·영문·숫자·_)" value="${esc(authIdVal)}" required></div>
+    <div class="field"><label for="authPw">비밀번호</label><input id="authPw" name="password" type="password" autocomplete="${authMode === 'login' ? 'current-password' : 'new-password'}" minlength="6" placeholder="6자 이상" required></div>
+    ${authMode === 'signup' ? '<div class="field"><label for="authPw2">비밀번호 확인</label><input id="authPw2" type="password" autocomplete="new-password" minlength="6" required></div>' : ''}
+    ${authErr ? `<p class="small" style="color:var(--bad);margin:0">${esc(authErr)}</p>` : ''}
+    <button class="btn" type="submit" ${authBusy ? 'disabled' : ''}>${authBusy ? '잠시만요…' : authMode === 'login' ? '로그인' : '가입하고 시작'}</button>
+    <p class="small mute" style="margin:0">계정에 저장되어 어느 기기에서든 이어할 수 있어요. 비밀번호 찾기는 아직 없으니 잘 기억해 두세요.</p>
+  </form>`;
+}
+async function submitAuth() {
+  const id = (document.getElementById('authId') as HTMLInputElement)?.value ?? '';
+  const pw = (document.getElementById('authPw') as HTMLInputElement)?.value ?? '';
+  const pw2 = (document.getElementById('authPw2') as HTMLInputElement | null)?.value;
+  authIdVal = id;
+  if (authMode === 'signup' && pw !== pw2) { authErr = '비밀번호 확인이 달라요'; render(); return; }
+  authBusy = true; authErr = ''; render();
+  const err = authMode === 'login' ? await Cloud.signIn(id, pw) : await Cloud.signUp(id, pw);
+  authBusy = false;
+  if (err) { authErr = err; render(); return; }
+  lastSave = await loadGame();
+  render();
+  toast(authMode === 'login' ? `${Cloud.username}님 어서 오세요` : '가입 완료!');
+}
 function viewTitle() {
   return `<div class="title">
     <div class="scene">${townScene()}</div>
     <div class="tbox">
       <h1>지하묘지의 용병단</h1>
       <p class="mute">마을 지하의 봉인된 묘지에서 마물이 올라오기 시작했다. 길드에서 용병을 모아 파티를 꾸리고, 던전 깊은 곳의 진실을 밝혀내자.</p>
+      ${CLOUD && !Cloud.session ? authForm() : `${CLOUD ? `<p class="small">접속 중: <b>${esc(Cloud.username)}</b> <button class="btn ghost sm" data-a="logout">로그아웃</button></p>` : ''}
       ${lastSave ? `<button class="btn" data-a="continue">이어하기 · ${esc(lastSave.heroName)} ${lastSave.day}일차</button>` : ''}
       <div class="panel grid">
         <div class="field"><label for="heroName">주인공 이름</label><input type="text" id="heroName" maxlength="8" placeholder="용사" value="킹"></div>
         <button class="btn ${lastSave ? 'ghost' : ''}" data-a="newGame">새 게임 시작</button>
         <button class="btn ghost sm" data-a="openSave">세이브 코드로 불러오기</button>
       </div>
-      <p class="small mute">${remoteReady() ? '진행 상황은 계정에 자동 저장됩니다.' : '진행 상황은 이 브라우저에 자동 저장됩니다.'}</p>
+      <p class="small mute">${remoteReady() ? '진행 상황은 계정에 자동 저장됩니다.' : '진행 상황은 이 브라우저에 자동 저장됩니다.'}</p>`}
     </div>
   </div>`;
 }
@@ -1455,6 +1487,8 @@ app.addEventListener('click', (ev) => {
       commit(d.a === 'bulkSell' ? G.bulkSell(s!, f) : G.bulkDismantle(s!, f)); break;
     }
     case 'towerGo': startTowerRun(); break;
+    case 'authMode': authMode = d.v as 'login' | 'signup'; authErr = ''; render(); break;
+    case 'logout': Cloud.signOut().then(() => { S = null; lastSave = null; screen = 'title'; render(); }); break;
     case 'claimQuest': commit(G.claimQuest(s!)); break;
     case 'whFilter': whFilter = d.v as WhFilter; render(); break;
     case 'whOpen': whOpen = whOpen === d.e ? null : d.e!; render(); break;
@@ -1498,6 +1532,10 @@ app.addEventListener('click', (ev) => {
   }
 });
 
+app.addEventListener('submit', (ev) => {
+  const f = ev.target as HTMLElement;
+  if (f.dataset.form === 'auth') { ev.preventDefault(); if (!authBusy) submitAuth(); }
+});
 app.addEventListener('change', (ev) => {
   const el = ev.target as HTMLElement;
   const key = el.dataset.g as keyof ExpeditionSettings | undefined;

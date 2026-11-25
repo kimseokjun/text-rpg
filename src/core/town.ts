@@ -12,7 +12,7 @@ export const GRADE_RATE: Record<Grade, number> = { 1: 54, 2: 30, 3: 12, 4: 3, 5:
 export interface Candidate { mercId: string; level: number; price: number }
 
 /** 길드 레벨이 오르면 상위 등급 확률 소폭 상승 */
-function gradeWeights(guildLevel: number): Record<Grade, number> {
+export function gradeWeights(guildLevel: number): Record<Grade, number> {
   const b = (guildLevel - 1) * 0.5;
   return { 1: Math.max(30, 54 - b * 3), 2: 30, 3: 12 + b * 1.5, 4: 3 + b, 5: 0.4 + b * 0.2 };
 }

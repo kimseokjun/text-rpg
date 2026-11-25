@@ -36,6 +36,7 @@ export interface GameState {
   /** 세트 재료 */
   shards: number;
   coreMerged?: boolean;
+  codex?: string[];
   cnt?: Record<string, number>;
   questIdx?: number;
   tower?: { best: number; claimed: number };
@@ -127,6 +128,7 @@ export function hireSlot(s: GameState, i: number): Result {
   s.gold -= r.cost!;
   if (r.kind === 'hired') {
     s.roster.push(r.character);
+    if (r.character.mercId) { s.codex ??= []; if (!s.codex.includes(r.character.mercId)) s.codex.push(r.character.mercId); }
     if (s.party.length < PARTY_MAX) s.party.push(r.character.uid);
     news(s, `${r.character.name}을(를) 고용했다.`);
   } else news(s, r.message);
@@ -863,6 +865,7 @@ export function migrate(raw: any): GameState | null {
   s.stoneStock ??= STONE_STOCK;
   s.refineStones ??= 0;
   s.pets ??= []; s.activePet ??= null; s.shards ??= 0; s.cores ??= 0; autoMergePets(s);
+  s.codex ??= []; for (const c of s.roster) if (c.mercId && !s.codex.includes(c.mercId)) s.codex.push(c.mercId);
   // 재화 통합: 어둠의 파편 → 군단장의 핵 (옛 핵 1개 = 새 핵 10개, 파편 1개 = 핵 1개)
   if (!s.coreMerged) { s.cores = s.cores * 10 + s.shards; s.shards = 0; s.coreMerged = true; } s.scales ??= 0; s.daily ??= { date: '', used: {}, cleared: {} }; s.raid ??= { week: 0, date: '', used: 0, dmg: {}, claimed: {}, everKilled: {}, best: 0 };
   s.boardLocks ??= s.board.map(() => false);
@@ -949,3 +952,6 @@ export function claimQuest(s: GameState): Result {
   s.questIdx = (s.questIdx ?? 0) + 1;
   return { ok: true, msg: `목표 달성 보상: ${rewardText(r)}${extra}` };
 }
+
+/** 전직할 수 있는 단원 */
+export const advanceable = (s: GameState) => s.roster.filter((c) => canAdvance(c));

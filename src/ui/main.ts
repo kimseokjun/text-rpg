@@ -4,16 +4,16 @@ import { mitigation, rowOf } from '../core/combat';
 import { charPower, floorPower, hasHealer, noHealerFactor, partyPower, powerLevel } from '../core/power';
 import type { ExpeditionSettings, FloorResult } from '../core/dungeon';
 import { finalStats, expToNext, STAT_KEYS } from '../core/stats';
-import { BOARD_SIZE, enhanceCost, enhanceRate, refreshSlotCost, rosterLimit } from '../core/town';
+import { gradeWeights, BOARD_SIZE, enhanceCost, enhanceRate, refreshSlotCost, rosterLimit } from '../core/town';
 import { equipStats } from '../core/stats';
-import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Row, type TargetPref, type UnitSnap, type BaseJob, type BattleEvent, type JobId, type Character, type Equip, type EquipSlot, type Rarity, type StatKey } from '../core/types';
+import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Row, type TargetPref, type UnitSnap, type BaseJob, type BattleEvent, type JobId, type Character, type Equip, type EquipSlot, type Rarity, type StatKey } from '../core/types';
 import { raidWeek, MILESTONE_SCALES, RAID_DIFF, RAID_DIFFS, RAID_DIFF_NAME, RAID_LIMIT, RAID_ROUNDS, nextResetText, raidForm, raidMaxHp, type RaidDiff } from '../data/raid';
 import { DAILIES, DAILY_BY_ID, DAILY_LIMIT, DAILY_STAGES, dailyReward } from '../data/daily';
 import { CRAFT_COST, RAID_CRAFT_COST, RAID_SET, SETS, SET_BASES, SET_BY_ID, SET_DROP_CHANCE, SET_RARITY, SHARD_CHANCE } from '../data/sets';
 import { PET_KINDS, EGG_ODDS, EGG_PRICE, PET_BY_ID, PET_GRADE_NAME, PET_GRADE_PCT, PET_MAX_STARS, petEffectText, petSellPrice, type Pet } from '../data/pets';
 import { EQUIP_BASES, EQUIP_BY_ID, MAX_POTIONS, OPTION_SLOTS, POTIONS, REFINE_CHANCE, tierOfFloor } from '../data/items';
 import { ADVANCE_AT, JOBS, advanceOptions } from '../data/jobs';
-import { MERC_BY_ID } from '../data/mercenaries';
+import { MERCENARIES, MERC_BY_ID } from '../data/mercenaries';
 import { floorLevel, rewardScale } from '../data/monsters';
 import { MAX_FLOOR, MONSTERS, PART1_FLOOR, REGIONS, ZONES, floorName, floorTip, localFloor, regionOf, zoneOf } from '../data/monsters';
 import { BLESS_CHANCE, DROP_CHANCE, MAX_REPEAT, STONE_CHANCE, rarityWeights } from '../core/dungeon';
@@ -33,7 +33,7 @@ import { townScene } from './art';
 import { charSprite } from './pixel';
 import { equipKind, equipSprite, itemSprite, monsterSprite, petSprite } from './sprites';
 
-type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi';
+type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex';
 
 let S: G.GameState | null = null;
 let screen: Screen = 'title';
@@ -179,7 +179,8 @@ function topbar() {
 function charCard(c: Character, opts: { act?: string; inParty?: boolean } = {}) {
   const merc = c.mercId ? MERC_BY_ID[c.mercId] : null;
   const traits = [...c.traitIds, ...(c.uniqueTraitId ? [c.uniqueTraitId] : [])].map((t) => traitTag(t, false)).join('');
-  return `<button class="card ${opts.inParty ? 'inparty' : ''}" data-a="${opts.act ?? 'openChar'}" data-uid="${esc(c.uid)}">
+  return `<button class="card ${opts.inParty ? 'inparty' : ''} ${canAdvance(c) ? 'canadv' : ''}" data-a="${opts.act ?? 'openChar'}" data-uid="${esc(c.uid)}">
+    ${canAdvance(c) ? '<span class="advbadge" title="전직할 수 있어요">⚡ 전직!</span>' : ''}
     <div class="ico">${avatar(c)}</div>
     <div class="cinfo">
       <div class="cname">${esc(c.name)} ${stars(c.grade)}${c.awakening ? `<span class="small g5">각성 ${c.awakening}</span>` : ''}</div>
@@ -203,7 +204,7 @@ const traitTag = (id: string, focusable = true) => {
 
 /** 마을 건물 묶음: 건물 안 탭으로 이동 */
 const HUBS: { id: string; name: string; tabs: [string, string][] }[] = [
-  { id: 'guild', name: '모험가 길드', tabs: [['guild', '용병 모집'], ['training', '훈련소'], ['temple', '신전']] },
+  { id: 'guild', name: '모험가 길드', tabs: [['guild', '용병 모집'], ['codex', '용병 도감'], ['training', '훈련소'], ['temple', '신전']] },
   { id: 'smith', name: '대장간', tabs: [['smith', '강화'], ['refinery', '제련'], ['forge', '제작']] },
   { id: 'adv', name: '모험', tabs: [['gate', '던전'], ['tower', '무한 탑'], ['daily', '일일'], ['raid', '레이드']] },
 ];
@@ -326,6 +327,7 @@ function viewTown() {
   return `<div class="wrap">
     <div class="scene">${townScene()}</div>
     ${questPanel()}
+    ${(() => { const a = G.advanceable(s); return a.length ? `<button class="advnote" data-a="openChar" data-uid="${esc(a[0].uid)}"><b>⚡ 전직할 수 있어요!</b> <span>${a.slice(0, 4).map((c) => esc(c.name)).join(', ')}${a.length > 4 ? ` 외 ${a.length - 4}명` : ''}</span><span class="small mute">눌러서 전직하기 →</span></button>` : ''; })()}
     <nav class="signs">${signs.map(([to, n, d, c]) => `<button class="sign ${c ?? ''}" data-a="go" data-to="${to}"><span class="sico">${SIGN_ICON[to]?.() ?? ''}</span><b>${n}</b><span>${d}</span></button>`).join('')}</nav>
     <div class="cols">
       <section class="grid"><div class="row"><h2>출전 파티</h2><span class="mute">${party.length}/${G.PARTY_MAX} · 전투력 <b class="cp">${fmt(G.statePower(s))}</b></span><button class="btn sm" data-a="go" data-to="party" style="margin-left:auto">파티 편성</button></div>
@@ -1086,6 +1088,35 @@ async function finishMulti() {
   commit();
 }
 
+let codexGrade: Grade | 0 = 0;
+function viewCodex() {
+  const s = S!;
+  const seen = new Set(s.codex ?? []);
+  const have = new Set(s.roster.map((c) => c.mercId).filter(Boolean));
+  const w = gradeWeights(s.guildLevel);
+  const tot = Object.values(w).reduce((a, b) => a + b, 0);
+  const list = MERCENARIES.filter((m) => !codexGrade || m.grade === codexGrade).sort((a, b) => b.grade - a.grade);
+  const byGrade = ([5, 4, 3, 2, 1] as Grade[]).map((g) => ({ g, n: MERCENARIES.filter((m) => m.grade === g).length, got: MERCENARIES.filter((m) => m.grade === g && seen.has(m.id)).length }));
+  const cards = list.map((m) => {
+    const st = have.has(m.id) ? 'have' : seen.has(m.id) ? 'seen' : 'none';
+    const tr = [...m.traits, ...(m.unique ? [m.unique] : [])];
+    return `<div class="codex r${m.grade}b ${st}">
+      <div class="row" style="gap:10px;align-items:center"><div class="ico">${charSprite(m.job, m.name, 1, { size: 44 })}</div>
+        <div style="flex:1;min-width:0"><b class="g${m.grade}">${esc(m.name)}</b> ${stars(m.grade)}<div class="small mute">${GRADE_NAME[m.grade]} ${esc(JOBS[m.job].name)} · ${esc(m.desc)}</div></div>
+        <span class="tag ${st === 'none' ? 'mute' : ''}">${st === 'have' ? '보유 중' : st === 'seen' ? '만난 적 있음' : '미발견'}</span></div>
+      <div class="tags" style="margin-top:6px">${tr.map((t) => traitTag(t, false)).join('')}</div>
+      ${m.unique ? `<div class="small" style="margin-top:4px"><b class="g5">고유 · ${esc(m.unique)}</b> <span class="mute">${esc(TRAITS[m.unique]?.desc ?? '')}</span></div>` : ''}
+    </div>`;
+  }).join('');
+  return `<div class="wrap">${backBtn()}
+    <h2>용병 도감</h2>
+    <p class="mute">길드 모집판에 나타날 수 있는 모든 용병이에요. 같은 용병이 또 나오면 고용 대신 <b>각성</b>(별 추가)에 쓸 수 있어요. 길드 레벨이 오르면 높은 등급이 더 자주 나와요.</p>
+    <div class="sum" style="margin:10px 0">${byGrade.map((x) => `<div><span class="small g${x.g}">${GRADE_NAME[x.g]} · 모집 확률 ${((w[x.g] / tot) * 100).toFixed(1)}%</span><b>${x.got}/${x.n}</b></div>`).join('')}</div>
+    <div class="tabs" role="group" aria-label="등급">${([0, 5, 4, 3, 2, 1] as (Grade | 0)[]).map((g) => `<button class="${codexGrade === g ? 'on' : ''}" data-a="codexGrade" data-v="${g}">${g ? GRADE_NAME[g as Grade] : '전체'}</button>`).join('')}</div>
+    <div class="codexgrid">${cards}</div>
+  </div>`;
+}
+
 function viewTower() {
   const s = S!;
   if (!G.towerOpen(s)) return `<div class="wrap">${backBtn()}<h2>무한 탑</h2><p class="mute">마왕숲 ${TOWER_UNLOCK}층을 클리어하면 열려요.</p></div>`;
@@ -1717,7 +1748,7 @@ function renderNow() {
   }
   const body = !S || screen === 'title' ? viewTitle()
     : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
-    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : viewResult();
+    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : viewResult();
   app.innerHTML = (screen === 'title' ? '' : topbar()) + body;
   document.querySelector('.hubtabs .on')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
   renderModal();
@@ -1884,6 +1915,7 @@ app.addEventListener('click', (ev) => {
     case 'mInvite': if (myRoom && roomSt) { Cloud.sendInvite(d.v!, myRoom, roomSt.room.floor); toast('초대를 보냈어요'); } break;
     case 'mInviteJoin': (async () => { invitePending = null; renderInvite(); const e = await Cloud.joinRoom(d.v!); if (e) { toast(e, true); return; } screen = 'multi'; await enterRoom(d.v!); render(); })(); break;
     case 'mInviteNo': invitePending = null; renderInvite(); break;
+    case 'codexGrade': codexGrade = Number(d.v) as Grade | 0; render(); break;
     case 'claimQuest': commit(G.claimQuest(s!)); break;
     case 'whFilter': whFilter = d.v as WhFilter; render(); break;
     case 'whOpen': whOpen = whOpen === d.e ? null : d.e!; render(); break;

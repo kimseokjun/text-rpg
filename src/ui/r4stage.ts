@@ -1,6 +1,7 @@
 /** 4인 레이드 전투 무대: 눈 내리는 밤 숲 배경, 좌측 파티 · 우측 보스, 스킬 이펙트 */
 import type { BattleEvent } from '../core/types';
 import type { R4State, R4Unit } from '../core/raid4battle';
+import { AREA, SELF, fxFor, type FxSpec } from './skillfx';
 
 export interface StageHelpers {
   icon: (u: R4Unit, size: number) => string;
@@ -236,6 +237,175 @@ function cast(actor: HTMLElement, kind: Kind) {
   d.animate([{ transform: 'translate(-50%,-50%) scale(.4)', opacity: 0.9 }, { transform: 'translate(-50%,-50%) scale(1.1)', opacity: 0 }], { duration: 500 }).onfinish = () => d.remove();
 }
 
+// ── 스킬별 이펙트 재료 ──
+function colored(d: HTMLElement, s: FxSpec) { d.style.setProperty('--c1', s.c1); d.style.setProperty('--c2', s.c2); return d; }
+const anim = (d: HTMLElement, kf: Keyframe[], ms: number, easing = 'ease-out') => d.animate(kf, { duration: ms, easing }).finished.then(() => d.remove()).catch(() => d.remove());
+function ring(s: FxSpec, to: HTMLElement, size = 1) {
+  const c = center(to), d = colored(fxEl('sk-ring', c.x, c.y), s);
+  void anim(d, [{ transform: 'translate(-50%,-50%) scale(.2)', opacity: 1 }, { transform: `translate(-50%,-50%) scale(${1.6 * size})`, opacity: 0 }], 600);
+}
+function sparkles(s: FxSpec, to: HTMLElement, n = 8) {
+  const c = center(to);
+  for (let i = 0; i < n; i++) {
+    const d = colored(fxEl('sk-spark', c.x + (Math.random() * 50 - 25), c.y + 20 - Math.random() * 20), s);
+    void anim(d, [{ transform: 'translate(-50%,0) scale(1)', opacity: 1 }, { transform: `translate(-50%,-${50 + Math.random() * 40}px) scale(.3)`, opacity: 0 }], 700 + Math.random() * 400);
+  }
+}
+function iconPop(to: HTMLElement, icon: string) {
+  const c = center(to), d = fxEl('sk-icon', c.x, c.y - 30, icon);
+  void anim(d, [{ transform: 'translate(-50%,0) scale(.3)', opacity: 0 }, { transform: 'translate(-50%,-14px) scale(1.3)', opacity: 1, offset: 0.3 }, { transform: 'translate(-50%,-26px) scale(1)', opacity: 0 }], 900);
+}
+async function streak(s: FxSpec, from: HTMLElement, to: HTMLElement, thick = 4, ms = 160) {
+  const a = center(from), b = center(to);
+  const len = Math.hypot(b.x - a.x, b.y - a.y), ang = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+  const d = colored(fxEl('sk-streak', a.x, a.y), s);
+  d.style.width = `${len}px`; d.style.height = `${thick}px`; d.style.transform = `rotate(${ang}deg)`;
+  await d.animate([{ transform: `rotate(${ang}deg) scaleX(0)`, opacity: 1 }, { transform: `rotate(${ang}deg) scaleX(1)`, opacity: 1, offset: 0.6 }, { transform: `rotate(${ang}deg) scaleX(1)`, opacity: 0 }], { duration: ms * 2 }).finished.catch(() => {});
+  d.remove();
+}
+async function orb(s: FxSpec, from: HTMLElement, to: HTMLElement, cls = 'sk-orb', ms = 300) {
+  const a = center(from), b = center(to);
+  const d = colored(fxEl(`${cls} ${s.big ? 'big' : ''}`, a.x, a.y), s);
+  d.style.setProperty('--ang', `${Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI}deg`);
+  await d.animate([{ left: `${a.x}px`, top: `${a.y - 10}px` }, { left: `${(a.x + b.x) / 2}px`, top: `${Math.min(a.y, b.y) - 40}px`, offset: 0.5 }, { left: `${b.x}px`, top: `${b.y}px` }], { duration: ms, easing: 'ease-in' }).finished.catch(() => {});
+  d.remove();
+}
+async function fall(s: FxSpec, to: HTMLElement, cls: string, ms = 320) {
+  const c = center(to);
+  const d = colored(fxEl(`${cls} ${s.big ? 'big' : ''}`, c.x + 60, c.y - 220), s);
+  await d.animate([{ left: `${c.x + 60}px`, top: `${c.y - 220}px`, opacity: 0.6 }, { left: `${c.x}px`, top: `${c.y}px`, opacity: 1 }], { duration: ms, easing: 'ease-in' }).finished.catch(() => {});
+  d.remove();
+}
+function boom(s: FxSpec, to: HTMLElement, scale = 1) {
+  const c = center(to), d = colored(fxEl('sk-boom', c.x, c.y), s);
+  void anim(d, [{ transform: 'translate(-50%,-50%) scale(.2)', opacity: 1 }, { transform: `translate(-50%,-50%) scale(${1.4 * scale})`, opacity: 0.9, offset: 0.4 }, { transform: `translate(-50%,-50%) scale(${1.8 * scale})`, opacity: 0 }], 550);
+}
+function shards(s: FxSpec, to: HTMLElement, n = 7) {
+  const c = center(to);
+  for (let i = 0; i < n; i++) {
+    const ang = (i / n) * Math.PI * 2, r = 40 + Math.random() * 25;
+    const d = colored(fxEl('sk-shard', c.x, c.y), s);
+    d.style.rotate = `${(ang * 180) / Math.PI}deg`;
+    void anim(d, [{ transform: 'translate(-50%,-50%)', opacity: 1 }, { transform: `translate(calc(-50% + ${Math.cos(ang) * r}px), calc(-50% + ${Math.sin(ang) * r}px))`, opacity: 0 }], 500);
+  }
+}
+function cloud(s: FxSpec, to: HTMLElement) {
+  const c = center(to), d = colored(fxEl('sk-cloud', c.x, c.y + 6), s);
+  void anim(d, [{ transform: 'translate(-50%,-50%) scale(.3)', opacity: 0 }, { transform: 'translate(-50%,-50%) scale(1.1)', opacity: 0.85, offset: 0.35 }, { transform: 'translate(-50%,-60%) scale(1.4)', opacity: 0 }], 1000);
+}
+function dome(s: FxSpec, to: HTMLElement) {
+  const c = center(to), d = colored(fxEl('sk-dome', c.x, c.y + 10), s);
+  void anim(d, [{ transform: 'translate(-50%,-60%) scale(.2)', opacity: 0 }, { transform: 'translate(-50%,-60%) scale(1.05)', opacity: 0.9, offset: 0.3 }, { transform: 'translate(-50%,-60%) scale(1)', opacity: 0.6, offset: 0.8 }, { transform: 'translate(-50%,-60%) scale(1.1)', opacity: 0 }], 1100);
+}
+function auraCol(s: FxSpec, to: HTMLElement) {
+  const c = center(to), d = colored(fxEl('sk-aura', c.x, c.y + 30), s);
+  void anim(d, [{ transform: 'translate(-50%,-100%) scaleY(.1)', opacity: 0 }, { transform: 'translate(-50%,-100%) scaleY(1)', opacity: 0.9, offset: 0.35 }, { transform: 'translate(-50%,-110%) scaleY(1.1)', opacity: 0 }], 900);
+  sparkles(s, to, 5);
+}
+async function crack(s: FxSpec, from: HTMLElement, tos: HTMLElement[]) {
+  const a = center(from);
+  const far = tos.map(center).reduce((m, p) => (Math.abs(p.x - a.x) > Math.abs(m.x - a.x) ? p : m), a);
+  const y = Math.max(a.y, far.y) + 34, len = Math.abs(far.x - a.x) + 40, left = Math.min(a.x, far.x) - 20;
+  const d = colored(fxEl('sk-crack', far.x < a.x ? left + len : left, y), s);
+  d.style.width = `${len}px`; d.style.transformOrigin = far.x < a.x ? 'right center' : 'left center'; if (far.x < a.x) d.style.left = `${left}px`;
+  await d.animate([{ transform: 'scaleX(0)', opacity: 1 }, { transform: 'scaleX(1)', opacity: 1, offset: 0.7 }, { transform: 'scaleX(1)', opacity: 0 }], { duration: 520, easing: 'ease-out' }).finished.catch(() => {});
+  d.remove();
+}
+async function chainLine(s: FxSpec, from: HTMLElement, tos: HTMLElement[]) {
+  const pts = [from, ...tos].map(center);
+  const zig = (a: { x: number; y: number }, b: { x: number; y: number }) => { let p = `${a.x},${a.y}`; for (let i = 1; i < 6; i++) { const f = i / 6; p += ` ${a.x + (b.x - a.x) * f + (Math.random() * 16 - 8)},${a.y + (b.y - a.y) * f + (Math.random() * 16 - 8)}`; } return `${p} ${b.x},${b.y}`; };
+  const r = host!.getBoundingClientRect();
+  const d = fxEl('sk-chain', 0, 0, `<svg width="${r.width}" height="${r.height}"><polyline points="${pts.slice(1).map((b, i) => zig(pts[i], b)).join(' ')}" fill="none" stroke="${s.c2}" stroke-width="4"/><polyline points="${pts.slice(1).map((b, i) => zig(pts[i], b)).join(' ')}" fill="none" stroke="${s.c1}" stroke-width="2"/></svg>`);
+  await d.animate([{ opacity: 1 }, { opacity: 0.3 }, { opacity: 1 }, { opacity: 0 }], { duration: 450 }).finished.catch(() => {});
+  d.remove();
+}
+function cone(s: FxSpec, from: HTMLElement, toLeft: boolean) {
+  const a = center(from);
+  const d = colored(fxEl(`sk-cone ${toLeft ? 'left' : ''}`, a.x, a.y), s);
+  return anim(d, [{ transform: `translate(${toLeft ? '-100%' : '0'},-50%) scaleX(.1)`, opacity: 0.95 }, { transform: `translate(${toLeft ? '-100%' : '0'},-50%) scaleX(1)`, opacity: 0.85, offset: 0.55 }, { transform: `translate(${toLeft ? '-100%' : '0'},-50%) scaleX(1.05)`, opacity: 0 }], 750);
+}
+function spinArc(s: FxSpec, actor: HTMLElement) {
+  const c = center(actor), d = colored(fxEl('sk-spin', c.x, c.y), s);
+  return anim(d, [{ transform: 'translate(-50%,-50%) rotate(0) scale(.6)', opacity: 1 }, { transform: 'translate(-50%,-50%) rotate(540deg) scale(1.3)', opacity: 0 }], 520, 'ease-in-out');
+}
+function snowfall(s: FxSpec) {
+  const r = host!.getBoundingClientRect();
+  for (let i = 0; i < 26; i++) {
+    const d = colored(fxEl('sk-snow', r.width * (0.05 + Math.random() * 0.5), -10), s);
+    void anim(d, [{ transform: 'translate(0,0)', opacity: 1 }, { transform: `translate(-${60 + Math.random() * 80}px,${r.height * (0.6 + Math.random() * 0.3)}px)`, opacity: 0 }], 700 + Math.random() * 500, 'linear');
+  }
+}
+function trapSnap(s: FxSpec, to: HTMLElement) {
+  const c = center(to), d = colored(fxEl('sk-trap', c.x, c.y + 30, '<i></i><i></i>'), s);
+  void anim(d, [{ transform: 'translate(-50%,-50%) scale(1.4)', opacity: 0 }, { transform: 'translate(-50%,-50%) scale(1)', opacity: 1, offset: 0.4 }, { transform: 'translate(-50%,-50%) scale(1)', opacity: 0 }], 800);
+}
+function runeCircle(s: FxSpec, to: HTMLElement) {
+  const c = center(to), d = colored(fxEl('sk-rune', c.x, c.y), s);
+  void anim(d, [{ transform: 'translate(-50%,-50%) rotate(0) scale(.4)', opacity: 0 }, { transform: 'translate(-50%,-50%) rotate(120deg) scale(1)', opacity: 1, offset: 0.4 }, { transform: 'translate(-50%,-50%) rotate(240deg) scale(.9)', opacity: 0 }], 900);
+}
+const sideOf = (el: HTMLElement) => [...host!.querySelectorAll<HTMLElement>(el.classList.contains('boss') || el.classList.contains('add') ? '.r4unit.boss:not(.dead),.r4unit.add:not(.dead)' : '.r4unit:not(.boss):not(.add):not(.dead)')];
+/** 시전 직후: 자기·아군 대상 스킬 (버프·보호막·소환·도발) */
+async function selfFx(s: FxSpec, actor: HTMLElement, fast: boolean) {
+  const allies = sideOf(actor);
+  switch (s.style) {
+    case 'aura': for (const a of (s.big ? allies : allies)) auraCol(s, a); if (s.icon) iconPop(actor, s.icon); break;
+    case 'barrier': for (const a of allies) dome(s, a); if (s.icon) iconPop(actor, s.icon); break;
+    case 'summon': ring(s, actor, 1.4); sparkles(s, actor, 10); if (s.icon) { iconPop(actor, s.icon); setTimeout(() => iconPop(actor, s.icon!), 180); } break;
+    case 'taunt': ring(s, actor, 1.6); iconPop(actor, s.icon ?? '❗'); actor.querySelector('.r4spr')?.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.15)' }, { transform: 'scale(1)' }], { duration: 300 }); break;
+  }
+  if (!fast) await sleep(320);
+}
+/** 범위 스킬: 대상 전체에 한 번에 연출 */
+async function areaFx(s: FxSpec, actor: HTMLElement, tos: HTMLElement[], fast: boolean) {
+  switch (s.style) {
+    case 'spin': await spinArc(s, actor); break;
+    case 'quake': await crack(s, actor, tos); break;
+    case 'bolt': await Promise.all(tos.map((t, i) => sleep(i * 60).then(() => fall(s, t, 'sk-bolt', 140)))); break;
+    case 'chain': await chainLine(s, actor, tos); break;
+    case 'meteor': await Promise.all(tos.map((t, i) => sleep(i * 90).then(() => fall(s, t, 'sk-meteor', 380)))); host!.animate([{ transform: 'translate(0,0)' }, { transform: 'translate(6px,-4px)' }, { transform: 'translate(-6px,4px)' }, { transform: 'translate(0,0)' }], { duration: 300 }); break;
+    case 'starfall': { const all: Promise<void>[] = []; for (const t of tos) for (let k = 0; k < 3; k++) all.push(sleep(k * 110 + Math.random() * 80).then(() => fall(s, t, 'sk-star', 260))); await Promise.all(all); break; }
+    case 'nova': { const a = center(tos[0] ?? actor); const d = colored(fxEl('sk-nova', a.x, a.y), s); await d.animate([{ transform: 'translate(-50%,-50%) scale(.1)', opacity: 1 }, { transform: 'translate(-50%,-50%) scale(3.2)', opacity: 0 }], { duration: 550 }).finished.catch(() => {}); d.remove(); break; }
+    case 'breath': { const toLeft = center(tos[0] ?? actor).x < center(actor).x; await cone(s, actor, toLeft); break; }
+    case 'blizzard': snowfall(s); await sleep(fast ? 0 : 450); break;
+  }
+}
+/** 단일 대상 스킬: 시전자 → 대상 이동 */
+async function travelFx(s: FxSpec, actor: HTMLElement, to: HTMLElement) {
+  switch (s.style) {
+    case 'slash': case 'dark': case 'drain': await lunge(actor, to); break;
+    case 'orb': await orb(s, actor, to); break;
+    case 'shard': await orb(s, actor, to, 'sk-lance', 240); break;
+    case 'arrow': await streak(s, actor, to, s.big ? 6 : 3, s.big ? 200 : 130); break;
+    case 'volley': await Promise.all([0, 1, 2, 3].map((i) => sleep(i * 70).then(() => streak(s, actor, to, 2, 110)))); break;
+    case 'skyArrow': await fall(s, to, 'sk-skyarrow', 220); break;
+    case 'poison': await orb(s, actor, to, 'sk-orb small', 260); break;
+    case 'hammer': await fall(s, to, 'sk-hammer', 300); break;
+    case 'seal': case 'trap': break;
+    default: if (actor !== to) await orb(s, actor, to);
+  }
+}
+/** 맞은 자리 */
+function impactFx(s: FxSpec, to: HTMLElement, crit: boolean) {
+  switch (s.style) {
+    case 'slash': case 'dark': case 'spin': { const c = center(to), d = colored(fxEl(`sk-slash ${s.big ? 'big' : ''}`, c.x, c.y), s); void anim(d, [{ transform: 'translate(-50%,-50%) rotate(-35deg) scaleX(0)', opacity: 1 }, { transform: 'translate(-50%,-50%) rotate(-35deg) scaleX(1)', opacity: 1, offset: 0.5 }, { transform: 'translate(-50%,-50%) rotate(-35deg) scaleX(1)', opacity: 0 }], 320); if (s.big || crit) { const e2 = colored(fxEl(`sk-slash ${s.big ? 'big' : ''}`, c.x, c.y), s); void anim(e2, [{ transform: 'translate(-50%,-50%) rotate(35deg) scaleX(0)', opacity: 1 }, { transform: 'translate(-50%,-50%) rotate(35deg) scaleX(1)', opacity: 1, offset: 0.5 }, { transform: 'translate(-50%,-50%) rotate(35deg) scaleX(1)', opacity: 0 }], 380); } break; }
+    case 'orb': case 'meteor': case 'hammer': case 'nova': boom(s, to, s.big ? 1.3 : 1); break;
+    case 'shard': case 'blizzard': shards(s, to, s.big ? 10 : 7); boom(s, to, 0.7); break;
+    case 'bolt': case 'chain': boom(s, to, 0.8); break;
+    case 'arrow': case 'volley': case 'skyArrow': boom(s, to, 0.6); if (s.icon) iconPop(to, s.icon); break;
+    case 'starfall': boom(s, to, 0.6); sparkles(s, to, 4); break;
+    case 'quake': boom(s, to, 0.9); to.querySelector('.r4spr')?.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-14px)' }, { transform: 'translateY(0)' }], { duration: 320 }); break;
+    case 'poison': cloud(s, to); break;
+    case 'breath': boom(s, to, 0.9); break;
+    case 'drain': boom(s, to, 0.8); break;
+    case 'seal': runeCircle(s, to); if (s.icon) iconPop(to, s.icon); break;
+    case 'trap': trapSnap(s, to); break;
+    default: boom(s, to);
+  }
+  if (s.icon && (s.style === 'slash')) iconPop(to, s.icon);
+}
+/** 흡혈: 대상 → 시전자로 붉은 흐름 */
+function drainBack(s: FxSpec, from: HTMLElement, to: HTMLElement) { void orb(s, from, to, 'sk-orb small', 380); }
+
 let queue: Promise<void> = Promise.resolve();
 /** 기록을 순서대로 연출 (차례마다 받은 이벤트) */
 export function playEvents(events: BattleEvent[], fast = false): Promise<void> {
@@ -244,7 +414,7 @@ export function playEvents(events: BattleEvent[], fast = false): Promise<void> {
 }
 async function run(events: BattleEvent[], fast: boolean) {
   if (!host || !stageMounted()) return;
-  let actor: HTMLElement | null = null, kind: Kind = 'slash', hitOnce = false, aoe = 0;
+  let actor: HTMLElement | null = null, kind: Kind = 'slash', hitOnce = false, aoe = 0, spec: FxSpec | null = null, areaDone = false, targets: HTMLElement[] = [];
   const gap = fast ? 60 : 1;
   for (let i = 0; i < events.length; i++) {
     const e = events[i];
@@ -252,13 +422,19 @@ async function run(events: BattleEvent[], fast: boolean) {
     switch (e.t) {
       case 'skill': case 'attack': {
         actor = elOf.get(e.actor) ?? null;
-        kind = e.t === 'skill' ? kindOf(e.skill, actor ?? host) : actor?.classList.contains('boss') ? 'dark' : 'slash';
-        hitOnce = false;
-        aoe = events.slice(i + 1).filter((x, j, arr) => x.t === 'damage' && arr.slice(0, j).every((y) => y.t !== 'skill' && y.t !== 'attack')).length;
+        const boss = !!actor?.classList.contains('boss');
+        kind = e.t === 'skill' ? kindOf(e.skill, actor ?? host) : boss ? 'dark' : 'slash';
+        spec = e.t === 'skill' ? fxFor(e.skill, boss) : null;
+        hitOnce = false; areaDone = false;
+        const until = events.findIndex((x, j) => j > i && (x.t === 'skill' || x.t === 'attack'));
+        const seg = events.slice(i + 1, until < 0 ? undefined : until);
+        aoe = seg.filter((x) => x.t === 'damage').length;
+        targets = [...new Set(seg.filter((x) => x.t === 'damage').map((x) => elOf.get((x as { to: string }).to)).filter(Boolean) as HTMLElement[])];
         if (actor) {
-          if (e.t === 'skill') { cast(actor, kind); showSkillName(actor, e.skill, kind); }
-          if (actor.classList.contains('boss') && aoe >= 3) bossFlash();
-          if (!fast) await sleep(e.t === 'skill' ? 260 : 80);
+          if (e.t === 'skill') { if (spec) { const c = center(actor); const r = colored(fxEl('castring', c.x, c.y + 26), spec); r.style.setProperty('--c2', spec.c2); void anim(r, [{ transform: 'translate(-50%,-50%) scale(.4)', opacity: 0.9 }, { transform: 'translate(-50%,-50%) scale(1.1)', opacity: 0 }], 500); } else cast(actor, kind); showSkillName(actor, e.skill, kind, spec?.c2); }
+          if (boss && aoe >= 3) bossFlash();
+          if (spec && SELF[spec.style]) await selfFx(spec, actor, fast);
+          else if (!fast) await sleep(e.t === 'skill' ? 260 : 80);
         }
         break;
       }
@@ -266,13 +442,23 @@ async function run(events: BattleEvent[], fast: boolean) {
         const t = elOf.get(e.to);
         if (!t) break;
         const healing = e.t === 'heal';
-        const k: Kind = healing ? 'holy' : kind;
-        if (actor && !healing && !hitOnce) {
-          if (k === 'slash' || k === 'dark') await lunge(actor, t);
-          else if (actor !== t) await projectile(k, actor, t);
+        if (spec && actor && !healing) {
+          if (AREA[spec.style]) { if (!areaDone) { areaDone = true; await areaFx(spec, actor, targets.length ? targets : [t], fast); } }
+          else if (!hitOnce) await travelFx(spec, actor, t);
+          impactFx(spec, t, e.t === 'damage' && e.crit);
+          if (spec.style === 'drain' && !hitOnce) drainBack(spec, t, actor);
+        } else if (healing && spec && (spec.style === 'heal' || spec.style === 'drain' || SELF[spec.style])) {
+          if (spec.style === 'heal') { ring(spec, t, spec.big ? 1.2 : 0.8); sparkles(spec, t, spec.big ? 10 : 6); if (spec.icon && !hitOnce) iconPop(actor ?? t, spec.icon); }
+          else sparkles({ ...spec, c2: '#4ae07a' }, t, 5);
+        } else {
+          const k: Kind = healing ? 'holy' : kind;
+          if (actor && !healing && !hitOnce) {
+            if (k === 'slash' || k === 'dark') await lunge(actor, t);
+            else if (actor !== t) await projectile(k, actor, t);
+          }
+          burst(k, t, e.t === 'damage' && e.crit);
         }
         hitOnce = true;
-        burst(k, t, e.t === 'damage' && e.crit);
         if (e.t === 'damage') { shake(t, e.crit); floatText(t, `${e.crit ? '💥' : ''}${H!.fmt(e.amount)}`, e.crit ? 'crit' : t.classList.contains('boss') ? 'dmg' : 'hurt'); }
         else floatText(t, `+${H!.fmt(e.amount)}`, 'heal');
         setBar(t, e.hpLeft, e.maxHp);
@@ -281,7 +467,12 @@ async function run(events: BattleEvent[], fast: boolean) {
       }
       case 'evade': { const t = elOf.get(e.to); if (t) floatText(t, 'MISS', 'miss'); if (!fast) await sleep(150); break; }
       case 'dot': { const t = elOf.get(e.to); if (t) { floatText(t, H!.fmt(e.amount), e.status === 'poison' ? 'poison' : 'burn'); setBar(t, e.hpLeft, e.maxHp); } if (!fast) await sleep(120); break; }
-      case 'status': { const t = elOf.get(e.to); if (t && e.label) floatText(t, e.label, 'stat'); else if (/전체/.test(e.to)) for (const [, el] of elOf) if (!el.classList.contains('boss') === /아군/.test(e.to)) burst('buff', el); break; }
+      case 'status': {
+        if (spec && actor && (spec.style === 'seal' || spec.style === 'trap' || spec.style === 'poison') && e.status !== 'buff' && !hitOnce) {
+          const foes = /전체/.test(e.to) ? [...host!.querySelectorAll<HTMLElement>('.r4unit:not(.dead)')].filter((x) => sideOf(x)[0] && !sideOf(actor!).includes(x)) : [elOf.get(e.to)].filter(Boolean) as HTMLElement[];
+          if (foes.length) { if (spec.style === 'poison' && foes.length === 1) await travelFx(spec, actor, foes[0]); for (const f of foes) impactFx(spec, f, false); hitOnce = true; if (!fast) await sleep(250); }
+        }
+        const t = elOf.get(e.to); if (t && e.label) floatText(t, e.label, 'stat'); else if (/전체/.test(e.to)) for (const [, el] of elOf) if (!el.classList.contains('boss') === /아군/.test(e.to)) burst('buff', el); break; }
       case 'death': { const t = elOf.get(e.who); if (t) { t.classList.add('dead'); t.querySelector('.r4spr')?.animate([{ transform: 'rotate(0)', opacity: 1 }, { transform: 'rotate(-80deg) translateY(10px)', opacity: 0.4 }], { duration: 500, fill: 'forwards' }); } if (!fast) await sleep(300); break; }
       case 'special': { const t = elOf.get(e.who); if (t) { floatText(t, '✦', 'stat'); burst(t.classList.contains('boss') ? 'dark' : 'holy', t, true); if (t.classList.contains('boss')) bossFlash(); } if (/다시 일어선다/.test(e.text)) for (const [n, el] of elOf) if (e.text.includes(n)) { el.classList.remove('dead'); el.querySelector('.r4spr')?.getAnimations().forEach((a) => a.cancel()); } if (!fast) await sleep(220); break; }
       case 'stunned': { const t = elOf.get(e.who); if (t) floatText(t, '기절', 'stat'); break; }
@@ -356,9 +547,9 @@ async function raidFx(e: Extract<BattleEvent, { t: 'raid' }>, fast: boolean) {
     case 'dodge': { bigText('❄ 절대영도!', 'ice', 1400); screenTint('#bfe8ffcc', 700, 0.8); await wait(900); break; }
   }
 }
-function showSkillName(actor: HTMLElement, name: string, kind: Kind) {
+function showSkillName(actor: HTMLElement, name: string, kind: Kind, color?: string) {
   const c = center(actor);
   const d = fxEl('skname', c.x, c.y - 58, H!.esc(name));
-  d.style.setProperty('--c2', COLORS[kind][1]);
+  d.style.setProperty('--c2', color ?? COLORS[kind][1]);
   d.animate([{ opacity: 0, transform: 'translate(-50%,6px)' }, { opacity: 1, transform: 'translate(-50%,0)', offset: 0.15 }, { opacity: 1, offset: 0.75 }, { opacity: 0, transform: 'translate(-50%,-6px)' }], { duration: 1100 }).onfinish = () => d.remove();
 }

@@ -1,0 +1,46 @@
+name: Admin · 재료 지급
+on:
+  workflow_dispatch:
+    inputs:
+      username: { description: '받을 아이디', required: true }
+      gold: { description: '골드', default: '0' }
+      stones: { description: '강화석', default: '0' }
+      blessings: { description: '축복 주문서', default: '0' }
+      refineStones: { description: '제련석', default: '0' }
+      cores: { description: '군단장의 핵', default: '0' }
+      scales: { description: '벨리알의 파편', default: '0' }
+jobs:
+  gift:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 세이브에 지급
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          NAME: ${{ inputs.username }}
+          GOLD: ${{ inputs.gold }}
+          STONES: ${{ inputs.stones }}
+          BLESS: ${{ inputs.blessings }}
+          REFINE: ${{ inputs.refineStones }}
+          CORES: ${{ inputs.cores }}
+          SCALES: ${{ inputs.scales }}
+        run: |
+          for v in "$GOLD" "$STONES" "$BLESS" "$REFINE" "$CORES" "$SCALES"; do [[ "$v" =~ ^[0-9]+$ ]] || { echo "::error::숫자만 넣을 수 있어요"; exit 1; }; done
+          ESC=$(printf "%s" "$NAME" | sed "s/'/''/g")
+          add() { echo "jsonb_set(%s, '{$1}', to_jsonb(coalesce((%s->>'$1')::bigint, 0) + $2))"; }
+          Q="update public.saves s set
+              data = jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(data,
+                '{gold}', to_jsonb(coalesce((data->>'gold')::bigint,0) + $GOLD)),
+                '{stones}', to_jsonb(coalesce((data->>'stones')::bigint,0) + $STONES)),
+                '{blessings}', to_jsonb(coalesce((data->>'blessings')::bigint,0) + $BLESS)),
+                '{refineStones}', to_jsonb(coalesce((data->>'refineStones')::bigint,0) + $REFINE)),
+                '{cores}', to_jsonb(coalesce((data->>'cores')::bigint,0) + $CORES)),
+                '{scales}', to_jsonb(coalesce((data->>'scales')::bigint,0) + $SCALES)),
+                '{day}', to_jsonb(coalesce((data->>'day')::int,0) + 1)),
+              day = s.day + 1, updated_at = now()
+            from public.profiles p where p.id = s.user_id and lower(p.username) = lower('$ESC')
+            returning p.username, (s.data->>'gold')::bigint as gold, s.day"
+          BODY=$(jq -n --arg q "$Q" '{query: $q}')
+          curl -sS -X POST "https://api.supabase.com/v1/projects/$REF/database/query" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$BODY" | tee out.json
+          echo
+          if [ "$(jq 'length' out.json 2>/dev/null)" = "0" ]; then echo "::error::아이디가 없거나 서버 세이브가 없어요"; exit 1; fi

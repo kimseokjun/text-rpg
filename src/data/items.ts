@@ -101,6 +101,43 @@ export function rollOption(pick: () => Modifier, tier: number, exclude: string[]
   for (let i = 0; i < 6 && exclude.includes(o.key); i++) o = pick();
   return { ...o, value: Math.round(o.value * optionScale(tier) * 10) / 10 };
 }
+// ───────── 잠재 · 에디셔널 등급 ─────────
+export const POT_NAME = ['', '레어', '에픽', '유니크', '레전드리'];
+/** 줄 등급별 수치 배율 (레어 = 기존 옵션 수치) */
+export const POT_MULT = [0, 1, 1.4, 1.85, 2.4];
+/** 제련 1회당 다음 등급으로 오를 확률 %, 천장(회) */
+export const POT_UP = [0, 15, 5, 1.5];
+export const POT_PITY = [0, 20, 50, 120];
+/** 에디셔널은 잠재의 절반 수치 */
+export const ADD_MULT = 0.5;
+/** 유니크부터 / 레전드리 전용 옵션 */
+export const UNIQUE_POOL: Modifier[] = [
+  { key: 'critDmg', kind: 'flat', value: 0.05 },
+  { key: 'dmgTaken', kind: 'flat', value: -2 },
+  { key: 'mpCost', kind: 'pct', value: -5 },
+];
+export const LEGEND_POOL: Modifier[] = [
+  { key: 'physDmg', kind: 'pct', value: 4 },
+  { key: 'evade', kind: 'flat', value: 2 },
+];
+const poolOf = (g: number) => (g >= 4 ? [...OPTION_POOL, ...UNIQUE_POOL, ...LEGEND_POOL] : g >= 3 ? [...OPTION_POOL, ...UNIQUE_POOL] : OPTION_POOL);
+/** 잠재 한 줄: 첫 줄은 현재 등급, 나머지는 40% 확률로 같은 등급 · 아니면 한 등급 아래 */
+export function rollLine(rng: { pick<T>(a: T[]): T; chance(p: number): boolean }, tier: number, grade: number, idx: number, exclude: string[], add = false): Modifier {
+  const g = idx === 0 || grade <= 1 || rng.chance(40) ? grade : grade - 1;
+  const pool = poolOf(g);
+  let o = rng.pick(pool);
+  for (let i = 0; i < 8 && exclude.includes(o.key); i++) o = rng.pick(pool);
+  const v = o.value * optionScale(tier) * POT_MULT[g] * (add ? ADD_MULT : 1);
+  return { ...o, value: Math.abs(v) < 1 ? Math.round(v * 100) / 100 : Math.round(v * 10) / 10, g };
+}
+export function rollLines(rng: { pick<T>(a: T[]): T; chance(p: number): boolean }, tier: number, grade: number, n: number, add = false): Modifier[] {
+  const out: Modifier[] = [];
+  for (let i = 0; i < n; i++) out.push(rollLine(rng, tier, grade, i, out.map((o) => o.key), add));
+  return out;
+}
+/** 고대 룬석 비용: 1 + 고정한 칸당 1 */
+export const addRuneCost = (locks: number) => 1 + locks;
+
 /** 제련 비용: 제련석 1 + 고정한 칸당 2, 골드는 티어 × 등급 비례 */
 export const refineStoneCost = (locks: number) => 1 + 2 * locks;
 export const refineGoldCost = (tier: number, rarity: number) => 1500 * tier * rarity;

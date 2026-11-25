@@ -27,6 +27,8 @@ export type ExtraKey =
 export type ModKey = StatKey | ExtraKey;
 
 export interface Modifier {
+  /** 잠재 줄 등급 (제련 옵션) */
+  g?: number;
   key: ModKey;
   kind: 'flat' | 'pct';
   value: number;
@@ -140,6 +142,14 @@ export interface Equip {
   options: Modifier[];
   /** 제련 고정된 옵션 칸 */
   locked?: number[];
+  /** 잠재 등급 1 레어 · 2 에픽 · 3 유니크 · 4 레전드리 (없으면 레어) */
+  pot?: number;
+  potPity?: number;
+  /** 에디셔널 잠재 (고대 룬석) */
+  add?: Modifier[];
+  addG?: number;
+  addPity?: number;
+  addLocked?: number[];
 }
 
 // ───────── 캐릭터 ─────────

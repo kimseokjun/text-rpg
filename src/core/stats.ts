@@ -73,7 +73,7 @@ export function collectMods(c: Character): CharMods {
     t?.mods?.forEach((m) => push(m, traitMult));
     if (t?.passive) res.passives.push(t.passive);
   }
-  for (const e of Object.values(c.equipment)) e?.options.forEach((m) => push(m));
+  for (const e of Object.values(c.equipment)) { e?.options.forEach((m) => push(m)); e?.add?.forEach((m) => push(m)); }
   // 세트 효과
   const sets: Record<string, number> = {};
   for (const e of Object.values(c.equipment)) { const st = e && EQUIP_BY_ID[e.baseId]?.set; if (st) sets[st] = (sets[st] ?? 0) + 1; }

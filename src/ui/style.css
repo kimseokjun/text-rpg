@@ -496,3 +496,9 @@ svg.px{image-rendering:pixelated;flex:none}
 .czstar{color:#ffd970;letter-spacing:2px}
 .dchat{margin-top:10px;padding:10px}.dchat .roomlog{max-height:120px}
 .dopts{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}.dopt{text-align:left;background:#140c22;border:1px solid var(--line);border-radius:10px;padding:10px;color:inherit;cursor:pointer;display:flex;flex-direction:column;gap:4px}.dopt:hover{border-color:#d08cff}
+
+.pl.p1{color:#6aaeff}.pl.p2{color:#c08aff}.pl.p3{color:#ffd23a}.pl.p4{color:#7dff7a}
+.pb{display:inline-block;font-size:11px;font-weight:700;padding:0 6px;border-radius:6px;border:1px solid currentColor;line-height:17px;vertical-align:1px}
+.pb.p1{color:#6aaeff}.pb.p2{color:#c08aff}.pb.p3{color:#ffd23a}.pb.p4{color:#7dff7a;box-shadow:0 0 8px #7dff7a55}
+.refine.addi{border-top:1px dashed var(--line);padding-top:8px;margin-top:6px}
+.phead{align-items:center;margin-bottom:4px}

@@ -31,9 +31,10 @@ export const DAILY_STAGES = 10;
 /** 한국 시간 날짜 (YYYY-MM-DD) */
 export const kstDate = (now = Date.now()) => new Date(now + 9 * 3600 * 1000).toISOString().slice(0, 10);
 
-export interface DailyLoot { gold: number; exp: number; stones: number; blessings: number; refineStones: number; shards: number; cores: number }
+export interface DailyLoot { gold: number; exp: number; stones: number; blessings: number; refineStones: number; shards: number; cores: number; runes: number }
 export function dailyReward(d: DailyDef, stage: number, scale: number): DailyLoot {
-  const z: DailyLoot = { gold: 0, exp: 0, stones: 0, blessings: 0, refineStones: 0, shards: 0, cores: 0 };
+  // 고대 룬석: 모든 일일 던전 공통 (단계가 높을수록 많이)
+  const z: DailyLoot = { gold: 0, exp: 0, stones: 0, blessings: 0, refineStones: 0, shards: 0, cores: 0, runes: 1 + Math.floor(stage / 2) };
   switch (d.reward) {
     case 'gold': z.gold = Math.round(1800 * scale); break;
     case 'refine': z.refineStones = 3 + 2 * stage; z.gold = Math.round(150 * scale); break;

@@ -6,12 +6,12 @@ import type { ExpeditionSettings, FloorResult } from '../core/dungeon';
 import { finalStats, expToNext, STAT_KEYS } from '../core/stats';
 import { gradeWeights, BOARD_SIZE, enhanceCost, enhanceRate, refreshSlotCost, rosterLimit } from '../core/town';
 import { equipStats } from '../core/stats';
-import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Row, type TargetPref, type UnitSnap, type BaseJob, type BattleEvent, type JobId, type Character, type Equip, type EquipSlot, type Rarity, type StatKey } from '../core/types';
+import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Row, type TargetPref, type UnitSnap, type BaseJob, type BattleEvent, type JobId, type Character, type Equip, type EquipSlot, type Rarity, type StatKey, type Modifier } from '../core/types';
 import { raidWeek, MILESTONE_SCALES, RAID_DIFF, RAID_DIFFS, RAID_DIFF_NAME, RAID_LIMIT, RAID_ROUNDS, nextResetText, raidForm, raidMaxHp, type RaidDiff } from '../data/raid';
 import { DAILIES, DAILY_BY_ID, DAILY_LIMIT, DAILY_STAGES, dailyReward } from '../data/daily';
 import { CRAFT_COST, RAID_CRAFT_COST, RAID_SET, SETS, SET_BASES, SET_BY_ID, SET_DROP_CHANCE, SET_RARITY, SHARD_CHANCE } from '../data/sets';
 import { PET_KINDS, EGG_ODDS, EGG_PRICE, PET_BY_ID, PET_GRADE_NAME, PET_GRADE_PCT, PET_MAX_STARS, petEffectText, petSellPrice, type Pet } from '../data/pets';
-import { EQUIP_BASES, EQUIP_BY_ID, MAX_POTIONS, OPTION_SLOTS, POTIONS, REFINE_CHANCE, tierOfFloor } from '../data/items';
+import { EQUIP_BASES, EQUIP_BY_ID, MAX_POTIONS, OPTION_SLOTS, POTIONS, REFINE_CHANCE, tierOfFloor, POT_NAME, POT_UP, POT_PITY } from '../data/items';
 import { ADVANCE_AT, JOBS, advanceOptions } from '../data/jobs';
 import { MERCENARIES, MERC_BY_ID } from '../data/mercenaries';
 import { floorLevel, rewardScale } from '../data/monsters';
@@ -277,14 +277,24 @@ const potionIcon = (id: string, size = 30) => itemSprite('potion', { size, color
 function equipLine(e: Equip) {
   const b = EQUIP_BY_ID[e.baseId];
   const st = Object.entries(equipStats(e)).map(([k, v]) => `${STAT_LABEL[k as StatKey]} +${Math.round(v as number)}`).join(', ');
-  const opt = e.options.map(optText).join(', ');
+  const opt = potSummary(e);
   return `<span class="eico r${e.rarity}e ${b.set ? 'setico' : ''}">${equipIcon(e)}</span><span class="iname r${e.rarity}">${esc(b.name)}${e.enhance ? ` +${e.enhance}` : ''}</span>${b.set ? ` <span class="settag">${esc(SET_BY_ID[b.set].name)} 세트</span>` : ''} <span class="small mute">${RARITY_NAME[e.rarity]}${b.jobs ? ` · ${b.jobs.map((j) => JOBS[j].name).join('/')}` : ''}</span><div class="istat">${st}${opt ? ` · ${opt}` : ''}</div>`;
 }
 const STAT_LABEL: Record<StatKey, string> = { hp: 'HP', mp: 'MP', atk: '공격', mag: '마력', def: '방어', res: '마저', agi: '민첩', crit: '치명' };
-const MOD_LABEL: Record<string, string> = { ...STAT_LABEL, healPower: '회복량', skillDmg: '스킬 데미지', physDmg: '물리 피해', normalDmg: '일반 공격', bossDmg: '보스 피해', resPierce: '마저 무시', defPierce: '방어 무시', magTaken: '받는 마법 피해' };
+const MOD_LABEL: Record<string, string> = { ...STAT_LABEL, dmgTaken: '받는 피해', mpCost: 'MP 소모', evade: '회피', healPower: '회복량', skillDmg: '스킬 데미지', physDmg: '물리 피해', normalDmg: '일반 공격', bossDmg: '보스 피해', resPierce: '마저 무시', defPierce: '방어 무시', magTaken: '받는 마법 피해' };
 function optText(o: { key: string; kind: string; value: number }) {
-  const unit = o.kind === 'pct' || o.key === 'resPierce' || o.key === 'defPierce' ? '%' : o.key === 'crit' ? '%p' : '';
+  if (o.key === 'critDmg') return `치명 배율 +${Math.round(o.value * 100)}%p`;
+  const unit = o.kind === 'pct' || o.key === 'resPierce' || o.key === 'defPierce' || o.key === 'dmgTaken' ? '%' : o.key === 'crit' || o.key === 'evade' ? '%p' : '';
   return `${MOD_LABEL[o.key] ?? o.key} ${o.value >= 0 ? '+' : ''}${o.value}${unit}`;
+}
+/** 잠재 줄: 줄 등급 색으로 */
+const potLine = (o: Modifier, def: number) => `<span class="pl p${o.g ?? def}">${esc(optText(o))}</span>`;
+const potBadge = (g: number, add = false) => `<span class="pb p${g}">${add ? '에디 ' : ''}${POT_NAME[g]}</span>`;
+function potSummary(e: Equip) {
+  const parts: string[] = [];
+  if (e.options.length) parts.push(`${potBadge(e.pot ?? 1)} ${e.options.map((o) => potLine(o, e.pot ?? 1)).join(', ')}`);
+  if (e.add?.length) parts.push(`${potBadge(e.addG ?? 1, true)} ${e.add.map((o) => potLine(o, e.addG ?? 1)).join(', ')}`);
+  return parts.join(' · ');
 }
 const SLOT_NAME: Record<EquipSlot, string> = { weapon: '무기', armor: '방어구', accessory: '장신구' };
 
@@ -374,7 +384,7 @@ function viewTown() {
   const signs: [string, string, string, string?][] = [
     ['gate', '모험', `${s.maxFloor ? `최고 ${esc(floorName(s.maxFloor))}` : '마왕숲 1층부터'} · 일일 ${dailyLeft}회${raidTxt ? ` · ${raidTxt}` : ''}`, 'gate'],
     ['guild', '모험가 길드', `모집·훈련소·신전 · 단원 ${s.roster.length}/${rosterLimit(s.guildLevel)}`],
-    ['smith', '대장간', `강화·제련·제작 · 강화석 ${s.stones} · 제련석 ${s.refineStones}`],
+    ['smith', '대장간', `강화·제련·제작 · 강화석 ${s.stones} · 제련석 ${s.refineStones} · 룬석 ${s.runes ?? 0}`],
     ['cards', '카드 보관함', `신비 카드 ${Object.keys(s.cards ?? {}).length}/${CARDS.length}${s.cardPacks ? ` · 팩 ${s.cardPacks}개` : ''}`],
     ['pets', '펫 우리', G.activePet(s) ? `${PET_BY_ID[G.activePet(s)!.kind].name} 동행 · ${s.pets.length}마리` : `펫 알 ${fmt(EGG_PRICE)}G`],
     ['shop', '잡화점', `물약 ${Object.values(s.potions).reduce((a, b) => a + b, 0)}개 보유`],
@@ -528,21 +538,32 @@ let smithView: GroupView = 'party';
 
 const SLOTS: EquipSlot[] = ['weapon', 'armor', 'accessory'];
 
-/** 제련 칸: 옵션 3칸 + 고정 토글 + 제련 버튼 */
-function refineCtl(e: Equip) {
+/** 제련 칸: 잠재 3줄(제련석) + 에디셔널 3줄(고대 룬석), 고정 토글 */
+function potBlock(e: Equip, add: boolean) {
   const s = S!;
-  const locked = new Set(e.locked ?? []);
-  const cost = G.refineCost(e);
-  const cells = Array.from({ length: OPTION_SLOTS }, (_, i) => {
-    const o = e.options[i];
+  const lines = (add ? e.add : e.options) ?? [];
+  const g = (add ? e.addG : e.pot) ?? 1;
+  const opened = !add || !!e.addG;
+  const locked = new Set((add ? e.addLocked : e.locked) ?? []);
+  const pity = (add ? e.addPity : e.potPity) ?? 0;
+  const cost = add ? G.addCost(e) : G.refineCost(e);
+  const have = add ? (s.runes ?? 0) : s.refineStones;
+  const need = add ? (cost as { runes: number }).runes : (cost as { stones: number }).stones;
+  const can = have >= need && s.gold >= cost.gold;
+  const head = `<div class="row phead" style="justify-content:space-between;gap:6px"><span>${add ? '<b class="small">에디셔널 잠재</b> ' : '<b class="small">잠재능력</b> '}${opened ? potBadge(g) : '<span class="small mute">미개방</span>'}</span>
+    <span class="small mute">${opened && g < 4 ? `등급업 ${POT_UP[g]}% · 천장 ${pity}/${POT_PITY[g]}` : opened ? '최고 등급' : ''}</span></div>`;
+  const cells = opened ? Array.from({ length: OPTION_SLOTS }, (_, i) => {
+    const o = lines[i];
     if (!o) return `<div class="optcell empty"><span class="small mute">빈 칸</span></div>`;
     const on = locked.has(i);
-    return `<div class="optcell ${on ? 'locked' : ''}"><span class="small">${esc(optText(o))}</span><button class="lockbtn ${on ? 'on' : ''}" data-a="optLock" data-e="${esc(e.uid)}" data-i="${i}" aria-pressed="${on}" aria-label="${on ? '고정 해제' : '고정'}" title="${on ? '고정 해제' : '고정하면 제련석 +2'}">${LOCK_SVG(on)}</button></div>`;
-  }).join('');
-  const can = s.refineStones >= cost.stones && s.gold >= cost.gold;
-  return `<div class="refine"><div class="opts">${cells}</div>
-    <div class="row" style="gap:6px;justify-content:space-between"><span class="small mute">제련석 ${cost.stones} · ${fmt(cost.gold)}G${locked.size ? ` · 고정 ${locked.size}칸` : ''}</span>
-    <button class="btn sm" data-a="refine" data-e="${esc(e.uid)}" ${can ? '' : 'disabled'}>제련</button></div></div>`;
+    return `<div class="optcell ${on ? 'locked' : ''}"><span class="small">${potLine(o, g)}</span><button class="lockbtn ${on ? 'on' : ''}" data-a="${add ? 'addLock' : 'optLock'}" data-e="${esc(e.uid)}" data-i="${i}" aria-pressed="${on}" aria-label="${on ? '고정 해제' : '고정'}" title="${on ? '고정 해제' : add ? '고정하면 룬석 +1' : '고정하면 제련석 +2'}">${LOCK_SVG(on)}</button></div>`;
+  }).join('') : '';
+  return `<div class="refine ${add ? 'addi' : ''}">${head}${cells ? `<div class="opts">${cells}</div>` : ''}
+    <div class="row" style="gap:6px;justify-content:space-between"><span class="small mute">${add ? '고대 룬석' : '제련석'} ${need} · ${fmt(cost.gold)}G${locked.size && opened ? ` · 고정 ${locked.size}칸` : ''}</span>
+    <button class="btn sm ${add ? 'ghost' : ''}" data-a="${add ? 'refineAdd' : 'refine'}" data-e="${esc(e.uid)}" ${can ? '' : 'disabled'}>${add ? (opened ? '에디셔널 재설정' : '에디셔널 개방') : '제련'}</button></div></div>`;
+}
+function refineCtl(e: Equip) {
+  return potBlock(e, false) + potBlock(e, true);
 }
 /** 강화 정보 한 줄 + 버튼 */
 function enhanceCtl(e: Equip) {
@@ -700,8 +721,9 @@ function viewRefinery() {
     : (refineView === 'party' ? G.partyChars(s) : orderedRoster(s)).map((c) => equipGroup(c, 'refine')).join('');
   return `<div class="wrap">${backBtn()}
     <h2>제련소</h2>
-    <p class="small mute">제련석으로 장비 옵션 3칸을 새로 새겨요. 마음에 드는 옵션은 자물쇠로 고정하면 그대로 남고, 고정한 칸마다 제련석이 2개씩 더 들어요. 깊은 층 장비일수록 옵션 수치가 높아요.<br>
-    제련석은 던전에서만 나와요: 일반 몬스터 ${REFINE_CHANCE.normal}% · 엘리트 ${REFINE_CHANCE.elite}% · 보스 ${REFINE_CHANCE.boss}%. 보유 <b>${s.refineStones}</b>개</p>
+    <p class="small mute"><b>잠재능력</b>은 제련석으로, <b>에디셔널 잠재</b>는 고대 룬석으로 3줄을 새로 새겨요. 새길 때마다 확률로 등급이 올라가고(${potBadge(1)}→${potBadge(2)}→${potBadge(3)}→${potBadge(4)}), 천장에 닿으면 확정이에요. 등급이 높을수록 수치가 크고, 유니크부터 전용 옵션이 붙어요. 첫 줄은 현재 등급, 2·3번째 줄은 가끔 한 등급 아래로 나와요. 에디셔널 수치는 잠재의 절반이에요.<br>
+    제련석: 던전 (일반 ${REFINE_CHANCE.normal}% · 엘리트 ${REFINE_CHANCE.elite}% · 보스 ${REFINE_CHANCE.boss}%) · 보유 <b>${s.refineStones}</b>개<br>
+    고대 룬석: 일일 던전 · 무한 탑 첫 돌파 · 월드보스 · 보유 <b>${s.runes ?? 0}</b>개</p>
     <div class="tabs" role="group" aria-label="보기">${tabs.map(([v, n]) => `<button class="${refineView === v ? 'on' : ''}" data-a="refineView" data-v="${v}">${n}</button>`).join('')}</div>
     <div class="groups">${body}</div>
   </div>`;
@@ -988,7 +1010,7 @@ async function wbClaim(season: number) {
   if (r?.error) { toast(r.error, true); return; }
   const extra = G.grantReward(S!, r.reward);
   saveGame(S!);
-  toast(`${r.rank}위 / ${r.total}명 (${r.reward.label}) 보상: 핵 ${r.reward.cores} · 제련석 ${r.reward.refineStones} · ${fmt(r.reward.gold)}G${extra}`);
+  toast(`${r.rank}위 / ${r.total}명 (${r.reward.label}) 보상: 핵 ${r.reward.cores} · 제련석 ${r.reward.refineStones}${r.reward.runes ? ` · 룬석 ${r.reward.runes}` : ''} · ${fmt(r.reward.gold)}G${extra}`);
   await loadWB(true); render();
 }
 
@@ -1393,7 +1415,7 @@ function viewTower() {
     const g = towerGimmick(t), boss = isTowerBoss(t), r = towerReward(t);
     const bname = boss ? MONSTERS[towerBoss(t).id].name : '';
     return `<div class="trow ${boss ? 'boss' : ''} ${t === next ? 'next' : ''}"><b class="tf">${t}층</b><div class="tg"><span>${g.icon} <b>${esc(g.name)}</b>${boss ? ` · <span class="r5">보스 ${esc(bname)}</span>` : ''}</span><span class="small mute">${esc(g.desc)} — ${esc(g.tip)}</span></div>
-      <span class="small tr">${fmt(r.gold)}G · 핵 ${r.cores}${r.refineStones ? ` · 제련석 ${r.refineStones}` : ''}${r.egg ? ` · ${r.egg === 5 ? '전설' : '영웅'} 이상 알` : ''}</span></div>`;
+      <span class="small tr">${fmt(r.gold)}G · 핵 ${r.cores}${r.refineStones ? ` · 제련석 ${r.refineStones}` : ''}${r.runes ? ` · 룬석 ${r.runes}` : ''}${r.egg ? ` · ${r.egg === 5 ? '전설' : '영웅'} 이상 알` : ''}</span></div>`;
   }).join('');
   return `<div class="wrap">${backBtn()}
     <h2>무한 탑</h2>
@@ -1416,7 +1438,7 @@ function viewDaily() {
     const st = Math.min(dailyStage[d.id] ?? Math.min(maxOpen, cleared + 1), maxOpen);
     const f = d.stageFloor(st), need = floorPower(f);
     const r = dailyReward(d, st, rewardScale(f));
-    const rw = [r.gold && `골드 ${fmt(r.gold)}`, r.exp && `경험치 ${fmt(r.exp)} (파티 나눔)`, r.stones && `강화석 ${r.stones}`, r.blessings && `축복 ${r.blessings}`, r.refineStones && `제련석 ${r.refineStones}`, r.cores && `군단장의 핵 ${r.cores}`].filter(Boolean).join(' · ');
+    const rw = [r.gold && `골드 ${fmt(r.gold)}`, r.exp && `경험치 ${fmt(r.exp)} (파티 나눔)`, r.stones && `강화석 ${r.stones}`, r.blessings && `축복 ${r.blessings}`, r.refineStones && `제련석 ${r.refineStones}`, r.cores && `군단장의 핵 ${r.cores}`, r.runes && `고대 룬석 ${r.runes}`].filter(Boolean).join(' · ');
     const left = G.dailyLeft(s, d.id);
     const lv = powerLevel(power, f, hasHealer(G.partyChars(s)));
     return `<div class="panel daily">
@@ -1594,7 +1616,7 @@ function viewStorage() {
     const bs = EQUIP_BY_ID[e.baseId];
     const on = whOpen === e.uid;
     const st = Object.entries(equipStats(e)).map(([k, v]) => `${STAT_LABEL[k as StatKey]} +${Math.round(v as number)}`).join(' · ');
-    const opts = e.options.map(optText);
+    const opts = potSummary(e);
     const set = bs.set ? SET_BY_ID[bs.set] : null;
     return `<div class="wrow r${e.rarity}b ${owner ? 'worn' : ''} ${on ? 'on' : ''}">
       <button class="whead" data-a="whOpen" data-e="${esc(e.uid)}" aria-expanded="${on}">
@@ -1605,7 +1627,7 @@ function viewStorage() {
       </button>
       ${on ? `<div class="wbody">
         <p class="small" style="margin:0">${st || '기본 능력치 없음'}</p>
-        ${opts.length ? `<p class="small" style="margin:0"><b>옵션</b> ${opts.join(' · ')}</p>` : ''}
+        ${opts ? `<p class="small" style="margin:0"><b>잠재</b> ${opts}</p>` : ''}
         ${bs.jobs ? `<p class="small mute" style="margin:0">전용: ${bs.jobs.map((j) => JOBS[j].name).join('/')}</p>` : ''}
         ${set ? `<p class="small mute" style="margin:0">${esc(set.name)} 세트 효과는 캐릭터 정보에서 확인</p>` : ''}
         <div class="row" style="gap:6px">${owner ? `<button class="btn ghost sm" data-a="unequip" data-uid="${esc(owner.uid)}" data-slot="${bs.slot}">${esc(owner.name)}에게서 해제</button>`
@@ -1620,6 +1642,7 @@ function viewStorage() {
       <div><span class="small mute">강화석</span><b>${s.stones}</b></div>
       <div><span class="small mute">축복 주문서</span><b>${s.blessings}</b></div>
       <div><span class="small mute">제련석</span><b>${s.refineStones}</b></div>
+      <div><span class="small mute">고대 룬석</span><b>${s.runes ?? 0}</b></div>
       <div><span class="small mute">군단장의 핵</span><b>${s.cores}</b></div>
       <div><span class="small mute">벨리알의 파편</span><b>${s.scales}</b></div>
       ${pots}
@@ -1860,6 +1883,7 @@ function viewResult() {
       <div><span class="small mute">축복 주문서</span><b>+${r.blessings}</b></div>
       <div><span class="small mute">제련석</span><b>+${r.refineStones ?? 0}</b></div>
       ${r.cores ? `<div><span class="small mute">군단장의 핵</span><b>+${r.cores}</b></div>` : ''}
+      ${r.runes ? `<div><span class="small mute">고대 룬석</span><b>+${r.runes}</b></div>` : ''}
       ${(r as { cardPacks?: number }).cardPacks ? `<div><span class="small mute">신비 카드 팩</span><b style="color:var(--gold)">+${(r as { cardPacks?: number }).cardPacks}</b></div>` : ''}
     </div>
     ${r.levelUps.length ? `<div class="panel"><h3>레벨 업</h3><p>${r.levelUps.map((l) => `${esc(l.name)} Lv.${l.to}`).join(' · ')}</p></div>` : ''}
@@ -2150,6 +2174,8 @@ app.addEventListener('click', (ev) => {
     case 'petSellLow': commit(G.sellPetsUpTo(s!, 2)); break;
     case 'petSell': petSel = null; commit(G.sellPet(s!, d.id!)); break;
     case 'optLock': commit(G.toggleOptionLock(s!, d.e!, Number(d.i))); break;
+    case 'addLock': commit(G.toggleAddLock(s!, d.e!, Number(d.i))); break;
+    case 'refineAdd': commit(G.refineAdd(s!, d.e!)); break;
     case 'refineView': refineView = d.v as GroupView; render(); break;
     case 'partyIn': commit(G.togglePartyMember(s!, d.uid!)); break;
     case 'partyOut': commit(G.togglePartyMember(s!, d.uid!)); break;

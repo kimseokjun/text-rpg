@@ -37,10 +37,10 @@ export function wbReward(rank: number, total: number) {
   const pct = total ? rank / total : 1;
   const tier = rank === 1 ? 0 : pct <= 0.1 ? 1 : pct <= 0.3 ? 2 : pct <= 0.6 ? 3 : 4;
   return [
-    { label: '1위', cores: 300, refineStones: 40, gold: 500000, egg: 5 },
-    { label: '상위 10%', cores: 200, refineStones: 25, gold: 300000, egg: 4 },
-    { label: '상위 30%', cores: 140, refineStones: 15, gold: 200000 },
-    { label: '상위 60%', cores: 90, refineStones: 10, gold: 120000 },
-    { label: '참여', cores: 50, refineStones: 5, gold: 60000 },
+    { label: '1위', cores: 300, refineStones: 40, runes: 30, gold: 500000, egg: 5 },
+    { label: '상위 10%', cores: 200, refineStones: 25, runes: 20, gold: 300000, egg: 4 },
+    { label: '상위 30%', cores: 140, refineStones: 15, runes: 15, gold: 200000 },
+    { label: '상위 60%', cores: 90, refineStones: 10, runes: 10, gold: 120000 },
+    { label: '참여', cores: 50, refineStones: 5, runes: 5, gold: 60000 },
   ][tier];
 }

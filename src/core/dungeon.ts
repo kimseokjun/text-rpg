@@ -1,4 +1,4 @@
-import { EQUIP_BASES, OPTION_POOL, POTIONS, REFINE_CHANCE, rollOption, tierOfFloor } from '../data/items';
+import { EQUIP_BASES, OPTION_POOL, POTIONS, REFINE_CHANCE, rollLines, rollOption, tierOfFloor } from '../data/items';
 import { DAILY_BY_ID, DAILY_TUNE, dailyReward } from '../data/daily';
 import { RAID_DIFF, RAID_ROUNDS, raidForm, type RaidDiff } from '../data/raid';
 import { CORE_CHANCE, RAID_SET, SET_BASES, SET_DROP_CHANCE, SET_RARITY, SHARD_CHANCE } from '../data/sets';
@@ -56,7 +56,7 @@ export const RIFT_FLOORS = 10;
 export const RIFT_TUNE = { normal: 0.6, elite: 0.5, boss: 0.8 };
 /** 구역별 보정 (src/cli/rifttune.ts) */
 export const RIFT_ZONE_K: Record<string, number> = {catacomb:  1.74,  mine:  0.67,  frost:  0.68,  nest:  0.63,  rift:  0.55,  wall:  0.9,  library:  0.85,  temple:  0.43,  swamp:  0.67,  lava:  0.7,  sunken:  0.8,  core:  0.59,  blood:  0.62,  throne:  0.6};
-export interface Loot { gold: number; exp: number; stones: number; blessings: number; refineStones: number; shards: number; cores: number; cardPacks?: number; equips: Equip[] }
+export interface Loot { gold: number; exp: number; stones: number; blessings: number; refineStones: number; shards: number; cores: number; cardPacks?: number; runes?: number; equips: Equip[] }
 
 export interface FloorResult { floor: number; win: boolean; log: BattleEvent[]; story?: string }
 
@@ -152,7 +152,7 @@ export class Expedition {
     if (this.daily) {
       const r = dailyReward(this.daily, this.settings.daily!.stage, rewardScale(f));
       this.loot.gold += Math.round(r.gold * this.goldMult); this.loot.exp += r.exp; this.loot.stones += r.stones; this.loot.blessings += r.blessings;
-      this.loot.refineStones += r.refineStones; this.loot.shards += r.shards; this.loot.cores += r.cores;
+      this.loot.refineStones += r.refineStones; this.loot.shards += r.shards; this.loot.cores += r.cores; this.loot.runes = (this.loot.runes ?? 0) + r.runes;
     }
     if (this.isBossFloor()) {
       const boss = MONSTERS[zone.boss.id];
@@ -379,9 +379,8 @@ export const BLESS_CHANCE = (floor: number) => ({ elite: 8, bossCount: 1 + Math.
 export function rollSetEquip(rng: Rng, setId?: string, baseId?: string): Equip {
   const base = baseId ? EQUIP_BASES.find((b) => b.id === baseId)! : rng.pick(SET_BASES.filter((b) => (setId ? b.set === setId : b.set !== RAID_SET)));
   const r = rng.weighted([4, 5] as Rarity[], (x) => SET_RARITY[x as 4 | 5]);
-  const options: Modifier[] = [];
-  for (let i = 0; i < r - 2; i++) options.push(rollOption(() => rng.pick(OPTION_POOL), base.tier, options.map((o) => o.key)));
-  return { uid: newUid('e'), baseId: base.id, rarity: r, enhance: 0, failStack: 0, options };
+  const pot = r === 5 ? 2 : 1;
+  return { uid: newUid('e'), baseId: base.id, rarity: r, enhance: 0, failStack: 0, options: rollLines(rng, base.tier, pot, r - 2), pot };
 }
 export function rollEquip(rng: Rng, floor: number, minRarity: Rarity = 1): Equip {
   const tier = tierOfFloor(floor);
@@ -391,8 +390,6 @@ export function rollEquip(rng: Rng, floor: number, minRarity: Rarity = 1): Equip
   const w = rarityWeights(floor);
   let r = (rng.weighted([1, 2, 3, 4, 5] as Rarity[], (x) => w[x - 1]));
   if (r < minRarity) r = minRarity;
-  const options: Modifier[] = [];
-  const optCount = r >= 3 ? r - 2 : 0;
-  for (let i = 0; i < optCount; i++) options.push(rollOption(() => rng.pick(OPTION_POOL), tier, options.map((o) => o.key)));
-  return { uid: newUid('e'), baseId: base.id, rarity: r, enhance: 0, failStack: 0, options };
+  const pot = r === 5 ? 2 : 1;
+  return { uid: newUid('e'), baseId: base.id, rarity: r, enhance: 0, failStack: 0, options: r >= 3 ? rollLines(rng, tier, pot, r - 2) : [], ...(r >= 3 ? { pot } : {}) };
 }

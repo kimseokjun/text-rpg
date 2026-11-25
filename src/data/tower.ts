@@ -38,13 +38,14 @@ export const TOWER_BOSS_MULT = [1.2, 0.215, 0.145, 0.19];
 export const TOWER_BOSS_DECAY = [0.3, 1, 0.6, 0.6];
 export const towerBossMult = (t: number) => TOWER_BOSS_MULT[(t / 10 - 1) % castle.length] * Math.pow(TOWER_BOSS_DECAY[(t / 10 - 1) % castle.length], Math.floor((t / 10 - 1) / castle.length));
 
-export interface TowerReward { gold: number; cores: number; refineStones: number; egg?: 4 | 5 }
+export interface TowerReward { gold: number; cores: number; refineStones: number; runes: number; egg?: 4 | 5 }
 export function towerReward(t: number): TowerReward {
   const boss = isTowerBoss(t);
   return {
     gold: Math.round(1500 * Math.pow(t, 1.1)) * (boss ? 3 : 1),
     cores: boss ? 10 + t : 2 + Math.floor(t / 5),
     refineStones: boss ? 3 + Math.floor(t / 10) * 2 : t % 5 === 0 ? 1 : 0,
+    runes: boss ? 3 + Math.floor(t / 10) : t % 5 === 0 ? 1 : 0,
     egg: t % 25 === 0 ? (t >= 50 ? 5 : 4) : undefined,
   };
 }

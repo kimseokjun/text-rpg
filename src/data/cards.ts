@@ -41,7 +41,7 @@ export const SET_BY_ID: Record<string, CardSet> = Object.fromEntries(CARD_SETS.m
 export const CARD_BASE: Record<Grade, number> = { 1: 2, 2: 3, 3: 4.5, 4: 6.5, 5: 9 };
 export const MAX_AWAKEN = 5;
 /** 각성 1~5단계에 필요한 같은 카드 수 */
-export const AWAKEN_COST = [1, 1, 2, 2, 3];
+export const AWAKEN_COST = [1, 2, 3, 4, 5];
 
 export interface CardDef { id: string; no: number; name: string; title: string; set: string; grade: Grade; stat: ModKey; look: { hair: string; outfit: string; eye: string; bg: string; acc: 'crown' | 'hat' | 'horns' | 'tiara' | 'helm' | 'none' } }
 type Row = [string, string, Grade, ModKey, string, string, string, string, CardDef['look']['acc']];

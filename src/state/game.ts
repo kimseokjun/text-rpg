@@ -1042,7 +1042,7 @@ export const advanceable = (s: GameState) => s.roster.filter((c) => canAdvance(c
 export function openCardPacks(s: GameState, n: number): Result & { got?: { id: string; isNew: boolean }[] } {
   const have = s.cardPacks ?? 0;
   n = Math.min(n, have);
-  if (n <= 0) return fail('카드 팩이 없어요. 균열(멀티)에서 얻을 수 있어요');
+  if (n <= 0) return fail('카드 팩이 없어요. 균열(멀티)이나 잡화점에서 얻을 수 있어요');
   s.cards ??= {};
   const r = rngOf(s);
   const got: { id: string; isNew: boolean }[] = [];

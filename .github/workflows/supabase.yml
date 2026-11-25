@@ -22,7 +22,8 @@ jobs:
           test -n "$SUPABASE_DB_PASSWORD" || (echo "::error::SUPABASE_DB_PASSWORD secret 없음" && exit 1)
           test -n "$PROJECT_REF" || (echo "::error::SUPABASE_PROJECT_REF variable 없음" && exit 1)
       - run: supabase link --project-ref "$PROJECT_REF" -p "$SUPABASE_DB_PASSWORD"
-      - run: supabase db push -p "$SUPABASE_DB_PASSWORD" --include-all
+      - name: DB migrations
+        run: supabase db push --remote --include-all --yes -p "$SUPABASE_DB_PASSWORD" || supabase db push --linked --include-all -p "$SUPABASE_DB_PASSWORD"
       - name: Push auth config
         run: yes | supabase config push --project-ref "$PROJECT_REF" || echo "::warning::config push 실패 — 대시보드에서 이메일 확인 끄기 필요"
       - name: Deploy functions

@@ -25,7 +25,7 @@ import { slotsFor } from '../server/multi';
 import { Expedition } from '../core/dungeon';
 import { Rng } from '../core/rng';
 import { CARDS, CARD_BY_ID, CARD_SETS, DECK_SIZE, MAX_AWAKEN, PACK_ODDS, SET_BY_ID as CARD_SET_BY_ID, cardEffectText, cardMods } from '../data/cards';
-import { cardHtml } from './cardart';
+import { CARD_IMAGES, cardHtml } from './cardart';
 import { TOWER_UNLOCK, isTowerBoss, towerBoss, towerGimmick, towerReward } from '../data/tower';
 import * as G from '../state/game';
 import { exportSave, importSave, initRemote, loadGame, remoteReady, saveGame, saveGameNow, wipeSave } from '../state/save';
@@ -1322,6 +1322,7 @@ const evRow = (e: Cloud.EventRow) => `<div class="evr"><span class="ct">${ymd(e.
 let cardTab: 'deck' | 'all' | 'open' = 'deck';
 let cardSet = 'all';
 let cardSel: string | null = null;
+let cardZoom: string | null = null;
 function viewCards() {
   const s = S!;
   const owned = s.cards ?? {};
@@ -1330,7 +1331,7 @@ function viewCards() {
   const tabs: [typeof cardTab, string][] = [['deck', `덱 ${deck.length}/${DECK_SIZE}`], ['all', `컬렉션 ${Object.keys(owned).length}/${CARDS.length}`], ['open', `팩 열기${s.cardPacks ? ` (${s.cardPacks})` : ''}`]];
   const sel = cardSel ? CARD_BY_ID[cardSel] : null;
   const so = sel ? owned[sel.id] : null;
-  const detail = sel ? `<div class="cdetail g${sel.grade}">${cardHtml(sel.id, { awaken: so?.awaken ?? 0, locked: !so, size: 120 })}
+  const detail = sel ? `<div class="cdetail g${sel.grade}">${so ? `<button class="czbtn" data-a="cardZoom" data-v="${sel.id}" aria-label="크게 보기">${cardHtml(sel.id, { awaken: so.awaken, size: 120 })}<span class="czhint">🔍 크게 보기</span></button>` : cardHtml(sel.id, { locked: true, size: 120 })}
       <div style="flex:1;min-width:0"><b class="g${sel.grade}">${['', '일반', '고급', '희귀', '영웅', '전설'][sel.grade]} · ${esc(sel.name)}</b><div class="small mute">${esc(sel.title)} · ${esc(CARD_SET_BY_ID[sel.set].name)}</div>
         ${so ? `<p class="small" style="margin:6px 0">효과: <b>${esc(cardEffectText(sel, so.awaken))}</b>${so.awaken < MAX_AWAKEN ? ` <span class="mute">→ 각성 시 ${esc(cardEffectText(sel, so.awaken + 1))}</span>` : ''}</p>
           <p class="small mute" style="margin:0 0 8px">각성 ${so.awaken}/${MAX_AWAKEN} · 여분 ${so.count - 1}장${so.awaken < MAX_AWAKEN ? ` · 다음 각성에 ${G.awakenNeed(so)}장 필요` : ''}</p>
@@ -1364,7 +1365,18 @@ function viewCards() {
     <div class="tabs" role="group" aria-label="카드">${tabs.map(([k, n]) => `<button class="${cardTab === k ? 'on' : ''}" data-a="cardTab" data-v="${k}">${n}</button>`).join('')}</div>
     ${detail}
     ${body}
+    ${zoomHtml(owned)}
   </div>`;
+}
+
+function zoomHtml(owned: Record<string, { awaken: number }>) {
+  const c = cardZoom ? CARD_BY_ID[cardZoom] : null;
+  if (!c || !owned[c.id]) return '';
+  const aw = owned[c.id].awaken;
+  const big = CARD_IMAGES.has(c.id)
+    ? `<figure class="czart g${c.grade}"><img src="./cards/${c.id}.webp" alt="${esc(c.name)} 일러스트"><figcaption><b>${esc(c.name)}</b> <span class="mute">${esc(c.title)}</span><span class="czstar">${'★'.repeat(aw)}${'☆'.repeat(MAX_AWAKEN - aw)}</span></figcaption></figure>`
+    : cardHtml(c.id, { awaken: aw, size: 320 });
+  return `<div class="czoom" data-a="cardZoom" data-v="" role="dialog" aria-label="${esc(c.name)} 크게 보기">${big}<span class="small mute">화면을 누르면 닫혀요</span></div>`;
 }
 
 function viewTower() {
@@ -2197,8 +2209,9 @@ app.addEventListener('click', (ev) => {
     case 'autoTries': autoTries = Number(d.v); render(); break;
     case 'autoRefresh': boardConfirm = null; curAction = 'autoRefresh'; commit(G.autoRefresh(s!, autoGrade, autoTries)); break;
     case 'autoEnh': curAction = 'autoEnh'; commit(G.autoEnhance(s!, d.e!, Number(d.v), useBlessing)); if (s && s.blessings === 0) useBlessing = false; break;
-    case 'cardTab': cardTab = d.v as typeof cardTab; cardSel = null; render(); break;
+    case 'cardTab': cardTab = d.v as typeof cardTab; cardSel = null; cardZoom = null; render(); break;
     case 'cardSetF': cardSet = d.v!; render(); break;
+    case 'cardZoom': cardZoom = d.v || null; render(); break;
     case 'cardSel': cardSel = cardSel === d.v ? null : d.v!; render(); if (cardSel) document.querySelector('.cdetail')?.scrollIntoView({ block: 'nearest' }); break;
     case 'cardDeck': curAction = 'cardDeck'; commit(G.toggleDeck(s!, d.v!)); break;
     case 'cardAwaken': curAction = 'cardAwaken'; commit(G.awakenCard(s!, d.v!)); break;

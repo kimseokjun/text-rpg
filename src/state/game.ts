@@ -1,0 +1,891 @@
+import { advanceJob, canAdvance, createHero, gainExp, levelCap, syncSkillSlots } from '../core/character';
+import { expToNext, finalStats, partyMods } from '../core/stats';
+import { COMMON_TRAITS } from '../data/traits';
+import { DEFAULT_SETTINGS, Expedition, type ExpeditionSettings, rollEquip, rollSetEquip } from '../core/dungeon';
+import { Rng } from '../core/rng';
+import { enhance as doEnhance, enhanceCost, hire as doHire, refreshSlotCost, rollBoard, rollCandidate, rosterLimit, type Candidate } from '../core/town';
+import { RARITY_NAME, TARGET_NAME, type Grade, type Character, type Equip, type EquipSlot, type JobId, type Rarity, type Row, type TargetPref } from '../core/types';
+import { EQUIP_BASES, EQUIP_BY_ID, OPTION_POOL, OPTION_SLOTS, POTIONS, MAX_POTIONS, RARITY_MULT, TIER_INFO, refineGoldCost, refineStoneCost, rollOption } from '../data/items';
+import { MAX_FLOOR, MONSTERS, floorName, regionOf } from '../data/monsters';
+import { CRAFT_COST, RAID_CRAFT_COST, RAID_SET } from '../data/sets';
+import { DAILY_BY_ID, DAILY_LIMIT, dailyReward, kstDate, type DailyDef } from '../data/daily';
+import { rewardScale } from '../data/monsters';
+import { MILESTONES, MILESTONE_SCALES, RAID_DIFF, RAID_DIFF_NAME, RAID_LIMIT, attemptReward, raidMaxHp, raidWeek, type RaidDiff } from '../data/raid';
+import { EGG_PRICE, PET_BY_ID, PET_GRADE_NAME, PET_MAX_STARS, hatch, petMods, petSellPrice, type Pet } from '../data/pets';
+import { charPower, partyPower } from '../core/power';
+import { JOBS } from '../data/jobs';
+import { QUESTS, rewardText, type QuestView } from '../data/quests';
+import { TOWER_UNLOCK, towerGimmick, towerReward } from '../data/tower';
+import { rowOf } from '../core/combat';
+import { diagnose, type Report } from '../core/report';
+
+export const SAVE_VERSION = 1;
+
+export interface GameState {
+  v: number;
+  heroName: string;
+  gold: number;
+  stones: number;
+  blessings: number;
+  refineStones: number;
+  pets: Pet[];
+  /** 일일 던전: 날짜(KST)별 사용 횟수, 클리어한 최고 단계 */
+  daily: { date: string; used: Record<string, number>; cleared: Record<string, number> };
+  /** 개인 레이드: 주차·형태별 누적 피해, 하루 도전 횟수, 받은 구간 보상 */
+  raid: { week: number; date: string; used: number; dmg: Partial<Record<RaidDiff, number>>; claimed: Partial<Record<RaidDiff, number[]>>; everKilled: Partial<Record<RaidDiff, boolean>>; best: number };
+  /** 세트 재료 */
+  shards: number;
+  coreMerged?: boolean;
+  cnt?: Record<string, number>;
+  questIdx?: number;
+  tower?: { best: number; claimed: number };
+  cores: number;
+  /** 레이드 재료: 벨리알의 파편 */
+  scales: number;
+  activePet: string | null;
+  roster: Character[];
+  party: string[];               // 출전 uid (최대 4, 주인공 포함 권장)
+  board: (Candidate | null)[];
+  boardLocks: boolean[];         // 모집판 잠금 (전체 교체에서 제외)
+  guildLevel: number;
+  inventory: Equip[];
+  potions: Record<string, number>;
+  maxFloor: number;              // 도달한 최고 층
+  bossesKilled: string[];
+  settings: ExpeditionSettings;
+  news: string[];
+  seed: number;
+  day: number;
+  deals: { equip: Equip; price: number }[];  // 잡화점 오늘의 특가
+  stoneStock: number;                        // 오늘 남은 강화석 판매량
+}
+
+export const PARTY_MAX = 4;
+
+export const STONE_STOCK = 20;
+
+export function newGame(heroName: string): GameState {
+  const hero = createHero(heroName || '용사');
+  const rng = new Rng(Date.now());
+  hero.equipment.weapon = { uid: 'start_w', baseId: 'w_sword1', rarity: 1, enhance: 0, failStack: 0, options: [] };
+  hero.equipment.armor = { uid: 'start_a', baseId: 'a_cloth1', rarity: 1, enhance: 0, failStack: 0, options: [] };
+  return {
+    v: SAVE_VERSION, heroName: hero.name, gold: 400, stones: 2, blessings: 0, refineStones: 0, pets: [], activePet: null, shards: 0, cores: 0, scales: 0, coreMerged: true, daily: { date: '', used: {}, cleared: {} }, raid: { week: 0, date: '', used: 0, dmg: {}, claimed: {}, everKilled: {}, best: 0 },
+    roster: [hero], party: [hero.uid], board: rollBoard(rng, 1, 1, [hero]), boardLocks: [false, false, false, false, false], guildLevel: 1,
+    inventory: [], potions: { p_str: 1 }, maxFloor: 0, bossesKilled: [],
+    settings: { ...DEFAULT_SETTINGS }, news: ['마을 지하 묘지에서 마물이 올라오기 시작했다. 길드에서 동료를 모아 던전으로 향하자.'],
+    seed: Math.floor(rng.next() * 1e9), day: 1, deals: [], stoneStock: STONE_STOCK,
+  };
+}
+
+/** 매 행동마다 다른 시드 */
+export function rngOf(s: GameState) { return new Rng(s.seed++); }
+const news = (s: GameState, msg: string) => { s.news.unshift(msg); s.news.length = Math.min(s.news.length, 30); };
+
+export const hero = (s: GameState) => s.roster.find((c) => c.isHero);
+/** 길드 기준 레벨: 단원 중 최고 레벨 (모집 레벨·새로고침 비용 기준) */
+export const leadLevel = (s: GameState) => Math.max(1, ...s.roster.map((c) => c.level));
+export const byUid = (s: GameState, uid: string) => s.roster.find((c) => c.uid === uid);
+export const partyChars = (s: GameState) => s.party.map((u) => byUid(s, u)).filter(Boolean) as Character[];
+/** 시작 가능한 층: 1 ~ (클리어한 최고 층 + 1) */
+export const maxStartFloor = (s: GameState) => Math.min(MAX_FLOOR, s.maxFloor + 1);
+
+export type Result = { ok: true; msg?: string } | { ok: false; msg: string };
+const fail = (msg: string): Result => ({ ok: false, msg });
+
+// ───────── 길드 ─────────
+export function refreshSlot(s: GameState, i: number): Result {
+  const cost = refreshSlotCost(leadLevel(s));
+  if (s.gold < cost) return fail('골드가 부족합니다');
+  s.gold -= cost;
+  s.board[i] = rollCandidate(rngOf(s), leadLevel(s), s.guildLevel, s.roster);
+  return { ok: true };
+}
+
+export function toggleLock(s: GameState, i: number) {
+  s.boardLocks[i] = !s.boardLocks[i];
+}
+
+/** 잠기지 않은 칸만 한 번에 교체 */
+export const refreshAllCost = (s: GameState) => refreshSlotCost(leadLevel(s)) * s.board.filter((_, i) => !s.boardLocks[i]).length;
+export function refreshAll(s: GameState): Result {
+  const n = s.board.filter((_, i) => !s.boardLocks[i]).length;
+  if (!n) return fail('모든 칸이 잠겨 있어요');
+  const cost = refreshAllCost(s);
+  if (s.gold < cost) return fail('골드가 부족합니다');
+  s.gold -= cost;
+  const r = rngOf(s);
+  s.board = s.board.map((c, i) => (s.boardLocks[i] ? c : rollCandidate(r, leadLevel(s), s.guildLevel, s.roster)));
+  return { ok: true, msg: `${n}칸 교체` };
+}
+
+export function hireSlot(s: GameState, i: number): Result {
+  const cand = s.board[i];
+  if (!cand) return fail('빈 자리입니다');
+  const r = doHire(cand, s.roster, s.gold, s.guildLevel, rngOf(s));
+  if (!r.ok) return fail(r.reason);
+  s.gold -= r.cost!;
+  if (r.kind === 'hired') {
+    s.roster.push(r.character);
+    if (s.party.length < PARTY_MAX) s.party.push(r.character.uid);
+    news(s, `${r.character.name}을(를) 고용했다.`);
+  } else news(s, r.message);
+  // 고용한 칸에는 바로 새 지원자 (무료), 잠금 해제
+  s.board[i] = rollCandidate(rngOf(s), leadLevel(s), s.guildLevel, s.roster);
+  s.boardLocks[i] = false;
+  return { ok: true, msg: r.kind === 'hired' ? `${r.character.name} 합류!` : r.message };
+}
+
+export function dismiss(s: GameState, uid: string): Result {
+  const c = byUid(s, uid);
+  if (!c) return fail('단원을 찾을 수 없습니다');
+  if (s.roster.length <= 1) return fail('마지막 단원은 방출할 수 없습니다');
+  for (const e of Object.values(c.equipment)) if (e) s.inventory.push(e);
+  s.roster = s.roster.filter((x) => x.uid !== uid);
+  s.party = s.party.filter((x) => x !== uid);
+  news(s, `${c.name}이(가) 길드를 떠났다.`);
+  return { ok: true };
+}
+
+export function togglePartyMember(s: GameState, uid: string): Result {
+  if (s.party.includes(uid)) {
+    if (s.party.length === 1) return fail('최소 1명은 출전해야 합니다');
+    s.party = s.party.filter((x) => x !== uid);
+    return { ok: true };
+  }
+  if (s.party.length >= PARTY_MAX) return fail(`파티는 최대 ${PARTY_MAX}명입니다`);
+  s.party.push(uid);
+  return { ok: true };
+}
+
+// ───────── 일일 던전 ─────────
+export function dailyState(s: GameState) {
+  const today = kstDate();
+  if (s.daily.date !== today) s.daily = { date: today, used: {}, cleared: s.daily.cleared ?? {} };
+  return s.daily;
+}
+export const dailyLeft = (s: GameState, id: string) => DAILY_LIMIT - (dailyState(s).used[id] ?? 0);
+export const dailyOpen = (s: GameState, d: DailyDef) => s.maxFloor >= d.unlockFloor;
+export const stageOpen = (s: GameState, d: DailyDef, k: number) => dailyOpen(s, d) && s.maxFloor >= d.stageUnlock(k);
+export const bump = (s: GameState, k: string, n = 1) => { s.cnt ??= {}; s.cnt[k] = (s.cnt[k] ?? 0) + n; };
+export function startDaily(s: GameState, id: string, stage: number, potions: string[]): Expedition | string {
+  const d = DAILY_BY_ID[id];
+  if (!d || !stageOpen(s, d, stage)) return '아직 열리지 않은 단계예요';
+  if (dailyLeft(s, id) <= 0) return '오늘 입장 횟수를 다 썼어요 (자정에 초기화)';
+  const ok = canDepart(s);
+  if (!ok.ok) return ok.msg;
+  const pots = potions.filter((p) => (s.potions[p] ?? 0) > 0).slice(0, MAX_POTIONS);
+  for (const p of pots) s.potions[p]--;
+  const f = d.stageFloor(stage);
+  bump(s, 'daily');
+  return new Expedition(partyChars(s), { ...DEFAULT_SETTINGS, startFloor: f, targetFloor: f, mode: 'advance', auto: true, retreatHpPct: 0, potions: pots, petMods: petPartyMods(s), daily: { id, stage } }, rngOf(s));
+}
+/** 소탕: 클리어한 단계는 전투 없이 보상 */
+export function sweepDaily(s: GameState, id: string, stage: number): Result {
+  const d = DAILY_BY_ID[id];
+  const st = dailyState(s);
+  if ((st.cleared[id] ?? 0) < stage) return fail('한 번 클리어한 단계만 소탕할 수 있어요');
+  if (dailyLeft(s, id) <= 0) return fail('오늘 입장 횟수를 다 썼어요 (자정에 초기화)');
+  st.used[id] = (st.used[id] ?? 0) + 1;
+  const goldMult = 1 + (fromCharacterExtra(s)?.goldGain ?? 0) / 100;
+  const r = dailyReward(d, stage, rewardScale(d.stageFloor(stage)));
+  s.gold += Math.round(r.gold * goldMult); s.stones += r.stones; s.blessings += r.blessings; s.refineStones += r.refineStones; s.shards += r.shards; s.cores += r.cores;
+  const ups: string[] = [];
+  if (r.exp) {
+    const party = partyChars(s), each = r.exp / Math.max(1, party.length);
+    for (const c of party) { const lv = c.level; gainExp(c, each); syncSkillSlots(c); if (c.level > lv) ups.push(`${c.name} Lv.${c.level}`); }
+  }
+  const parts = [r.gold && `골드 ${r.gold.toLocaleString('ko-KR')}`, r.exp && `경험치 ${r.exp.toLocaleString('ko-KR')}`, r.stones && `강화석 ${r.stones}`, r.blessings && `축복 ${r.blessings}`, r.refineStones && `제련석 ${r.refineStones}`, r.cores && `핵 ${r.cores}`].filter(Boolean);
+  news(s, `${d.name} ${stage}단계 소탕: ${parts.join(', ')}`);
+  bump(s, 'daily');
+  return { ok: true, msg: `소탕 완료! ${parts.join(' · ')}${ups.length ? ` · ${ups.join(', ')}` : ''}` };
+}
+const fromCharacterExtra = (s: GameState) => { const p = partyChars(s); return p.length ? finalStats(p[0], partyMods(p)).extra : null; };
+
+// ───────── 개인 레이드 ─────────
+export function raidState(s: GameState) {
+  const w = raidWeek(), today = kstDate();
+  if (s.raid.week !== w) s.raid = { ...s.raid, week: w, dmg: {}, claimed: {}, best: 0 };
+  if (s.raid.date !== today) s.raid = { ...s.raid, date: today, used: 0 };
+  return s.raid;
+}
+export const raidLeft = (s: GameState) => RAID_LIMIT - raidState(s).used;
+export function raidOpen(s: GameState, diff: RaidDiff): boolean {
+  if (s.maxFloor < 50) return false;
+  if (diff === 'hard') return !!s.raid.everKilled.normal;
+  if (diff === 'hell') return !!s.raid.everKilled.hard;
+  return true;
+}
+export const raidHpLeft = (s: GameState, diff: RaidDiff) => Math.max(0, raidMaxHp(diff) - (raidState(s).dmg[diff] ?? 0));
+export function startRaid(s: GameState, diff: RaidDiff, potions: string[]): Expedition | string {
+  if (!raidOpen(s, diff)) return diff === 'normal' ? '마왕숲 50층을 클리어하면 열려요' : `${RAID_DIFF_NAME[diff === 'hell' ? 'hard' : 'normal']} 난이도를 처치하면 열려요`;
+  if (raidLeft(s) <= 0) return '오늘 도전 횟수를 다 썼어요 (자정에 초기화)';
+  const hpLeft = raidHpLeft(s, diff);
+  if (hpLeft <= 0) return '이번 주 벨리알은 이미 쓰러뜨렸어요. 다음 주 월요일에 새 형태로 돌아와요';
+  const ok = canDepart(s);
+  if (!ok.ok) return ok.msg;
+  const pots = potions.filter((p) => (s.potions[p] ?? 0) > 0).slice(0, MAX_POTIONS);
+  for (const p of pots) s.potions[p]--;
+  const f = RAID_DIFF[diff].floor;
+  bump(s, 'raid');
+  return new Expedition(partyChars(s), { ...DEFAULT_SETTINGS, startFloor: f, targetFloor: f, mode: 'advance', auto: true, retreatHpPct: 0, potions: pots, petMods: petPartyMods(s), raid: { diff, week: raidWeek(), hpLeft, maxHp: raidMaxHp(diff) } }, rngOf(s));
+}
+/** 레이드 결과 반영: 도전 보상 + 구간(25/50/75/처치) 보상 */
+function applyRaid(s: GameState, ex: Expedition): string[] {
+  const r = ex.settings.raid!;
+  const st = raidState(s);
+  st.used++;
+  const diff = r.diff, m = RAID_DIFF[diff].mult, max = r.maxHp;
+  const before = st.dmg[diff] ?? 0;
+  const after = Math.min(max, before + ex.raidDealt);
+  st.dmg[diff] = after;
+  st.best = Math.max(st.best, ex.raidDealt);
+  const lines: string[] = [];
+  const ar = attemptReward(diff, ex.raidDealt / max);
+  s.gold += ar.gold; s.refineStones += ar.refineStones; s.scales += ar.scales;
+  lines.push(`도전 보상: 골드 ${ar.gold.toLocaleString('ko-KR')} · 제련석 ${ar.refineStones} · 벨리알의 파편 ${ar.scales}`);
+  const claimed = new Set(st.claimed[diff] ?? []);
+  const rng = rngOf(s);
+  for (const ms of MILESTONES) {
+    if (claimed.has(ms) || (after / max) * 100 < ms) continue;
+    claimed.add(ms);
+    const sc = MILESTONE_SCALES[ms] * m; s.scales += sc;
+    if (ms === 25) { s.refineStones += 10 * m; lines.push(`25% 달성: 제련석 ${10 * m} · 벨리알의 파편 ${sc}`); }
+    if (ms === 50) { s.cores += 70 * m; lines.push(`50% 달성: 군단장의 핵 ${70 * m} · 벨리알의 파편 ${sc}`); }
+    if (ms === 75) { const egg = addPet(s, hatch(rng, RAID_DIFF[diff].eggMin)); lines.push(`75% 달성: 펫 알 → ${PET_GRADE_NAME[egg.grade]} ${PET_BY_ID[egg.kind].name} · 벨리알의 파편 ${sc}`); }
+    if (ms === 100) {
+      const e = rollSetEquip(rng); e.rarity = 5;
+      s.inventory.push(e); s.cores += 5 * m; s.gold += 100000 * m;
+      st.everKilled = { ...st.everKilled, [diff]: true };
+      lines.push(`처치 보상: 전설 ${EQUIP_BY_ID[e.baseId].name} · 군단장의 핵 ${5 * m} · 골드 ${(100000 * m).toLocaleString('ko-KR')} · 벨리알의 파편 ${sc}`);
+    }
+  }
+  st.claimed[diff] = [...claimed];
+  news(s, `레이드(${RAID_DIFF_NAME[diff]}): 벨리알에게 ${ex.raidDealt.toLocaleString('ko-KR')} 피해${ex.raidKilled ? ' — 처치!' : ''}`);
+  return lines;
+}
+
+// ───────── 제작소 (세트 장비) ─────────
+export function craftSet(s: GameState, baseId: string): Result {
+  const b = EQUIP_BY_ID[baseId];
+  if (!b?.set) return fail('제작할 수 없는 장비예요');
+  if (b.set === RAID_SET) {
+    const rc = RAID_CRAFT_COST[b.slot];
+    if (s.scales < rc.scales) return fail(`벨리알의 파편이 부족해요 (${rc.scales}개 필요)`);
+    if (s.gold < rc.gold) return fail('골드가 부족합니다');
+    s.scales -= rc.scales; s.gold -= rc.gold;
+    const e = rollSetEquip(rngOf(s), b.set, b.id);
+    s.inventory.push(e);
+    bump(s, 'craft');
+  return { ok: true, msg: `${RARITY_NAME[e.rarity]} ${b.name} 완성! (가방에 들어갔어요)` };
+  }
+  const c = CRAFT_COST[b.slot];
+  if (s.cores < c.cores) return fail(`군단장의 핵이 부족해요 (${c.cores}개 필요)`);
+  if (s.gold < c.gold) return fail('골드가 부족합니다');
+  s.cores -= c.cores; s.gold -= c.gold;
+  const e = rollSetEquip(rngOf(s), b.set, b.id);
+  s.inventory.push(e);
+  bump(s, 'craft');
+  return { ok: true, msg: `${RARITY_NAME[e.rarity]} ${b.name} 완성! (가방에 들어갔어요)` };
+}
+
+// ───────── 펫 우리 ─────────
+export const activePet = (s: GameState) => s.pets.find((p) => p.uid === s.activePet);
+export const petPartyMods = (s: GameState) => petMods(activePet(s));
+/** 펫 효과까지 넣은 파티 전투력 */
+export const statePower = (s: GameState) => partyPower(partyChars(s), petPartyMods(s));
+function addPet(s: GameState, p: Omit<Pet, 'uid'>): Pet {
+  const pet = { ...p, uid: `p${s.seed}_${s.day}_${s.pets.length}_${Math.floor(rngOf(s).next() * 1e6)}` };
+  s.pets.push(pet);
+  if (!s.activePet) s.activePet = pet.uid;
+  return pet;
+}
+export function buyEggs(s: GameState, n: number): Result {
+  const cost = EGG_PRICE * n;
+  if (s.gold < cost) return fail('골드가 부족합니다');
+  s.gold -= cost;
+  const r = rngOf(s);
+  const got = Array.from({ length: n }, () => addPet(s, hatch(r)));
+  const best = got.reduce((a, b) => (b.grade > a.grade ? b : a));
+  return { ok: true, msg: n === 1 ? `${PET_GRADE_NAME[best.grade]} ${PET_BY_ID[best.kind].name} 부화!` : `알 ${n}개 부화! 최고 등급: ${PET_GRADE_NAME[best.grade]} ${PET_BY_ID[best.kind].name}` };
+}
+export function setActivePet(s: GameState, uid: string): Result {
+  const p = s.pets.find((x) => x.uid === uid);
+  if (!p) return fail('펫을 찾을 수 없습니다');
+  s.activePet = uid;
+  return { ok: true, msg: `${PET_BY_ID[p.kind].name}을(를) 데려갑니다` };
+}
+/** 같은 종류·등급 펫을 먹여 +1성 */
+export function mergePet(s: GameState, uid: string): Result {
+  const p = s.pets.find((x) => x.uid === uid);
+  if (!p) return fail('펫을 찾을 수 없습니다');
+  if (p.stars >= PET_MAX_STARS) return fail('이미 최대 성급이에요');
+  const food = s.pets.filter((x) => x.uid !== uid && x.kind === p.kind && x.grade === p.grade && x.uid !== s.activePet).sort((a, b) => a.stars - b.stars)[0];
+  if (!food) return fail('같은 종류·등급의 펫이 하나 더 필요해요');
+  s.pets = s.pets.filter((x) => x !== food);
+  p.stars = Math.min(PET_MAX_STARS, p.stars + 1 + food.stars);
+  return { ok: true, msg: `${PET_BY_ID[p.kind].name} ★${p.stars}!` };
+}
+export function sellPet(s: GameState, uid: string): Result {
+  const p = s.pets.find((x) => x.uid === uid);
+  if (!p) return fail('펫을 찾을 수 없습니다');
+  if (s.activePet === uid) return fail('데려가는 펫은 팔 수 없어요');
+  s.pets = s.pets.filter((x) => x !== p);
+  s.gold += petSellPrice(p);
+  return { ok: true, msg: `${fmtG(petSellPrice(p))}G에 보냈어요` };
+}
+const fmtG = (n: number) => n.toLocaleString('ko-KR');
+
+export function setRow(s: GameState, uid: string, row: Row): Result {
+  const c = byUid(s, uid);
+  if (!c) return fail('단원을 찾을 수 없습니다');
+  c.row = row;
+  return { ok: true };
+}
+export function setTarget(s: GameState, uid: string, t: TargetPref): Result {
+  const c = byUid(s, uid);
+  if (!c) return fail('단원을 찾을 수 없습니다');
+  c.target = t;
+  return { ok: true, msg: `${c.name}: ${TARGET_NAME[t]}` };
+}
+
+export const guildUpgradeCost = (lv: number) => 1500 * lv * lv;
+export function upgradeGuild(s: GameState): Result {
+  const cost = guildUpgradeCost(s.guildLevel);
+  if (s.gold < cost) return fail('골드가 부족합니다');
+  s.gold -= cost;
+  s.guildLevel++;
+  news(s, `길드가 ${s.guildLevel}레벨이 되었다. 보유 인원 ${rosterLimit(s.guildLevel)}명.`);
+  return { ok: true };
+}
+
+export function advance(s: GameState, uid: string, to: JobId): Result {
+  const c = byUid(s, uid);
+  if (!c || !canAdvance(c)) return fail('전직 조건이 안 됩니다');
+  advanceJob(c, to);
+  news(s, `${c.name}이(가) ${JOBS[to].name}(으)로 전직했다!`);
+  return { ok: true, msg: `${JOBS[to].name} 전직!` };
+}
+
+export function moveSkill(s: GameState, uid: string, idx: number, dir: -1 | 1) {
+  const c = byUid(s, uid);
+  if (!c) return;
+  const j = idx + dir;
+  if (j < 0 || j >= c.skillSlots.length) return;
+  [c.skillSlots[idx], c.skillSlots[j]] = [c.skillSlots[j], c.skillSlots[idx]];
+}
+
+// ───────── 장비 ─────────
+export function canWear(c: Character, e: Equip) {
+  const b = EQUIP_BY_ID[e.baseId];
+  return !b.jobs || b.jobs.includes(JOBS[c.jobId].base);
+}
+
+export function equip(s: GameState, uid: string, equipUid: string): Result {
+  const c = byUid(s, uid);
+  const idx = s.inventory.findIndex((e) => e.uid === equipUid);
+  if (!c || idx < 0) return fail('장비를 찾을 수 없습니다');
+  const e = s.inventory[idx];
+  if (!canWear(c, e)) return fail('이 직업은 착용할 수 없습니다');
+  const slot = EQUIP_BY_ID[e.baseId].slot;
+  s.inventory.splice(idx, 1);
+  const old = c.equipment[slot];
+  if (old) s.inventory.push(old);
+  c.equipment[slot] = e;
+  return { ok: true };
+}
+
+export function unequip(s: GameState, uid: string, slot: EquipSlot): Result {
+  const c = byUid(s, uid);
+  const e = c?.equipment[slot];
+  if (!c || !e) return fail('장비가 없습니다');
+  delete c.equipment[slot];
+  s.inventory.push(e);
+  return { ok: true };
+}
+
+/** 창고에서 바로 장착: 다른 사람이 끼고 있으면 벗겨서 옮김 */
+export function equipTo(s: GameState, equipUid: string, uid: string): Result {
+  const f = findEquip(s, equipUid);
+  const c = byUid(s, uid);
+  if (!f || !c) return fail('장비를 찾을 수 없습니다');
+  if (!canWear(c, f.e)) return fail(`${c.name}은(는) 착용할 수 없습니다`);
+  if (f.owner === c) return { ok: true };
+  if (f.owner) unequip(s, f.owner.uid, EQUIP_BY_ID[f.e.baseId].slot);
+  const r = equip(s, uid, equipUid);
+  return r.ok ? { ok: true, msg: `${c.name}에게 장착` } : r;
+}
+
+// ───────── 자동 장착 (가방 장비만 사용, 다른 단원 장비는 건드리지 않음) ─────────
+const EQ_SLOTS: EquipSlot[] = ['weapon', 'armor', 'accessory'];
+const SLOT_KO: Record<EquipSlot, string> = { weapon: '무기', armor: '방어구', accessory: '장신구' };
+
+/** 한 칸에 가방 장비 중 전투력이 가장 오르는 것 (없으면 null) */
+function bestBagItem(s: GameState, c: Character, slot: EquipSlot): { item: Equip; gain: number } | null {
+  const cur = c.equipment[slot];
+  const base = charPower(c);
+  let best: { item: Equip; gain: number } | null = null;
+  for (const e of s.inventory) {
+    if (EQUIP_BY_ID[e.baseId].slot !== slot || !canWear(c, e)) continue;
+    c.equipment[slot] = e;
+    const gain = charPower(c) - base;
+    if (gain > 0 && (!best || gain > best.gain)) best = { item: e, gain };
+  }
+  if (cur) c.equipment[slot] = cur; else delete c.equipment[slot];
+  return best;
+}
+
+export function autoEquip(s: GameState, uid: string): Result {
+  const c = byUid(s, uid);
+  if (!c) return fail('캐릭터를 찾을 수 없습니다');
+  const before = charPower(c);
+  const changed: string[] = [];
+  for (const slot of EQ_SLOTS) {
+    const b = bestBagItem(s, c, slot);
+    if (!b) continue;
+    equip(s, uid, b.item.uid);
+    changed.push(SLOT_KO[slot]);
+  }
+  if (!changed.length) return { ok: true, msg: '이미 가방 장비 중 최적이에요' };
+  return { ok: true, msg: `${c.name} 전투력 ${before.toLocaleString('ko-KR')} → ${charPower(c).toLocaleString('ko-KR')} (${changed.join('·')} 교체)` };
+}
+
+/** 파티 전체: 전투력이 가장 크게 오르는 교체부터 하나씩 반복 */
+export function autoEquipParty(s: GameState): Result {
+  const party = partyChars(s);
+  const before = partyPower(party);
+  let swaps = 0;
+  for (let guard = 0; guard < 50; guard++) {
+    let pick: { c: Character; item: Equip; gain: number } | null = null;
+    for (const c of party) for (const slot of EQ_SLOTS) {
+      const b = bestBagItem(s, c, slot);
+      if (b && (!pick || b.gain > pick.gain)) pick = { c, item: b.item, gain: b.gain };
+    }
+    if (!pick) break;
+    equip(s, pick.c.uid, pick.item.uid);
+    swaps++;
+  }
+  if (!swaps) return { ok: true, msg: '이미 가방 장비 중 최적이에요' };
+  const after = partyPower(party);
+  return { ok: true, msg: `파티 전투력 ${before.toLocaleString('ko-KR')} → ${after.toLocaleString('ko-KR')} (${swaps}개 교체)` };
+}
+
+/** 장비 전체 해제: 한 명 */
+export function unequipAll(s: GameState, uid: string): Result {
+  const c = byUid(s, uid);
+  if (!c) return fail('캐릭터를 찾을 수 없습니다');
+  const n = Object.values(c.equipment).filter(Boolean).length;
+  if (!n) return fail('끼고 있는 장비가 없어요');
+  for (const sl of EQ_SLOTS) if (c.equipment[sl]) unequip(s, uid, sl);
+  return { ok: true, msg: `${c.name} 장비 ${n}개를 가방에 넣었어요` };
+}
+/** 장비 전체 해제: 출전 파티 전원 */
+export function unequipParty(s: GameState): Result {
+  let n = 0;
+  for (const c of partyChars(s)) for (const sl of EQ_SLOTS) if (c.equipment[sl]) { unequip(s, c.uid, sl); n++; }
+  return n ? { ok: true, msg: `파티 장비 ${n}개를 가방에 넣었어요` } : fail('파티가 끼고 있는 장비가 없어요');
+}
+
+/** 장착 중이거나 가방에 있는 장비 찾기 */
+export function findEquip(s: GameState, equipUid: string): { e: Equip; owner?: Character } | null {
+  const inv = s.inventory.find((e) => e.uid === equipUid);
+  if (inv) return { e: inv };
+  for (const c of s.roster) for (const e of Object.values(c.equipment)) if (e?.uid === equipUid) return { e, owner: c };
+  return null;
+}
+
+export function enhanceEquip(s: GameState, equipUid: string, useBlessing: boolean): Result & { success?: boolean } {
+  const f = findEquip(s, equipUid);
+  if (!f) return fail('장비를 찾을 수 없습니다');
+  if (f.e.enhance >= 15) return fail('이미 최대 강화입니다');
+  const cost = enhanceCost(f.e.enhance + 1);
+  if (s.stones < cost.stone) return fail('강화석이 부족합니다');
+  if (s.gold < cost.gold) return fail('골드가 부족합니다');
+  if (useBlessing && s.blessings < 1) return fail('축복 주문서가 없습니다');
+  s.stones -= cost.stone;
+  s.gold -= cost.gold;
+  if (useBlessing) s.blessings--;
+  const r = doEnhance(f.e, rngOf(s), useBlessing);
+  return r.success
+    ? { ok: true, success: true, msg: `+${f.e.enhance} 강화 성공!` }
+    : { ok: true, success: false, msg: `강화 실패… (다음 성공률 +${f.e.failStack * 5}%p)` };
+}
+
+export const dismantleValue = (e: Equip) => e.rarity + Math.floor(e.enhance / 3);
+export function dismantle(s: GameState, equipUid: string): Result {
+  const idx = s.inventory.findIndex((e) => e.uid === equipUid);
+  if (idx < 0) return fail('가방에 있는 장비만 분해할 수 있습니다');
+  const v = dismantleValue(s.inventory[idx]);
+  s.inventory.splice(idx, 1);
+  s.stones += v;
+  return { ok: true, msg: `강화석 ${v}개 획득` };
+}
+
+// ───────── 상점 ─────────
+export const equipPrice = (tier: number, rarity: Rarity) => Math.round(160 * tier * tier * RARITY_MULT[rarity] ** 2);
+export const sellPrice = (e: Equip) => Math.round(equipPrice(EQUIP_BY_ID[e.baseId].tier, e.rarity) * 0.3 * (1 + e.enhance * 0.1));
+export const shopTier = (s: GameState) => Math.max(...TIER_INFO.filter((t) => !t.shopAfter || s.bossesKilled.includes(t.shopAfter)).map((t) => t.tier));
+
+export function shopList(s: GameState) {
+  const t = shopTier(s);
+  return EQUIP_BASES.filter((b) => b.tier <= t).flatMap((b) =>
+    ([1, 2] as Rarity[]).map((r) => ({ baseId: b.id, rarity: r, price: equipPrice(b.tier, r) })));
+}
+
+export function buyEquip(s: GameState, baseId: string, rarity: Rarity): Result {
+  const b = EQUIP_BY_ID[baseId];
+  const price = equipPrice(b.tier, rarity);
+  if (s.gold < price) return fail('골드가 부족합니다');
+  s.gold -= price;
+  s.inventory.push({ uid: `e_${s.seed++}`, baseId, rarity, enhance: 0, failStack: 0, options: [] });
+  return { ok: true, msg: `${b.name} 구매` };
+}
+
+export function sellEquip(s: GameState, equipUid: string): Result {
+  const idx = s.inventory.findIndex((e) => e.uid === equipUid);
+  if (idx < 0) return fail('가방에 없는 장비입니다');
+  const p = sellPrice(s.inventory[idx]);
+  s.inventory.splice(idx, 1);
+  s.gold += p;
+  return { ok: true, msg: `${p}G에 판매` };
+}
+
+// ───────── 골드 사용처 ─────────
+/** 탐험에서 돌아올 때마다: 특가 3칸 갱신, 강화석 재고 채움 */
+export function refreshDaily(s: GameState) {
+  const r = rngOf(s);
+  const tier = shopTier(s);
+  s.deals = Array.from({ length: 3 }, () => {
+    const floor = Math.max(1, TIER_INFO[tier - 1].floors[1]);
+    const e = rollEquip(r, floor, r.chance(30) ? 4 : 3);
+    return { equip: e, price: Math.round(equipPrice(EQUIP_BY_ID[e.baseId].tier, e.rarity) * 1.1) };
+  });
+  s.stoneStock = STONE_STOCK;
+}
+export function buyDeal(s: GameState, i: number): Result {
+  const d = s.deals[i];
+  if (!d) return fail('이미 팔린 상품입니다');
+  if (s.gold < d.price) return fail('골드가 부족합니다');
+  s.gold -= d.price;
+  s.inventory.push(d.equip);
+  s.deals.splice(i, 1);
+  return { ok: true, msg: `${EQUIP_BY_ID[d.equip.baseId].name} 구매` };
+}
+
+export const stonePrice = (s: GameState) => 80 + 40 * shopTier(s) * shopTier(s);
+export function buyStones(s: GameState, n: number): Result {
+  const k = Math.min(n, s.stoneStock);
+  if (k <= 0) return fail('오늘 강화석은 다 팔렸어요. 탐험에서 돌아오면 다시 들어와요');
+  const cost = stonePrice(s) * k;
+  if (s.gold < cost) return fail('골드가 부족합니다');
+  s.gold -= cost; s.stones += k; s.stoneStock -= k;
+  return { ok: true, msg: `강화석 ${k}개 구매` };
+}
+
+/** 훈련소: 골드로 1레벨 올리기 (직업 상한까지) */
+export const trainCost = (c: Character) => Math.round(expToNext(c.level) * 1.5);
+export function canTrain(s: GameState, c: Character): string | null {
+  if (c.level >= levelCap(c)) return c.level >= 80 ? '최고 레벨이에요' : '전직해야 더 성장할 수 있어요';
+  return null;
+}
+export function train(s: GameState, uid: string): Result {
+  const c = byUid(s, uid);
+  if (!c) return fail('단원을 찾을 수 없습니다');
+  const no = canTrain(s, c);
+  if (no) return fail(no);
+  const cost = trainCost(c);
+  if (s.gold < cost) return fail('골드가 부족합니다');
+  s.gold -= cost;
+  c.level++;
+  c.exp = 0;
+  syncSkillSlots(c);
+  return { ok: true, msg: `${c.name} Lv.${c.level} 달성!` };
+}
+
+/** 신전: 특성 하나 재설정 (고유 특성은 불가) */
+export const rerollTraitCost = (c: Character) => Math.round(300 * c.grade * (1 + c.level / 10));
+export function rerollTrait(s: GameState, uid: string, idx: number): Result {
+  const c = byUid(s, uid);
+  if (!c || !c.traitIds[idx]) return fail('특성을 찾을 수 없습니다');
+  const cost = rerollTraitCost(c);
+  if (s.gold < cost) return fail('골드가 부족합니다');
+  const pool = COMMON_TRAITS.filter((t) => !c.traitIds.includes(t));
+  s.gold -= cost;
+  const old = c.traitIds[idx];
+  c.traitIds[idx] = rngOf(s).pick(pool);
+  return { ok: true, msg: `${old} → ${c.traitIds[idx]}` };
+}
+
+/** 재련: 희귀 이상 장비의 추가 옵션 다시 굴리기 */
+/** 제련소: 고정하지 않은 옵션 칸(최대 3칸)을 다시 새김 */
+export const refineCost = (e: Equip) => ({
+  stones: refineStoneCost((e.locked ?? []).filter((i) => e.options[i]).length),
+  gold: refineGoldCost(EQUIP_BY_ID[e.baseId].tier, e.rarity),
+});
+export function toggleOptionLock(s: GameState, equipUid: string, idx: number): Result {
+  const f = findEquip(s, equipUid);
+  if (!f || !f.e.options[idx]) return fail('옵션을 찾을 수 없습니다');
+  const l = new Set(f.e.locked ?? []);
+  if (l.has(idx)) l.delete(idx);
+  else {
+    if (l.size >= OPTION_SLOTS - 1) return fail('최소 한 칸은 비워둬야 제련할 수 있어요');
+    l.add(idx);
+  }
+  f.e.locked = [...l].sort();
+  return { ok: true };
+}
+export function refine(s: GameState, equipUid: string): Result {
+  const f = findEquip(s, equipUid);
+  if (!f) return fail('장비를 찾을 수 없습니다');
+  const cost = refineCost(f.e);
+  if (s.refineStones < cost.stones) return fail(`제련석이 부족합니다 (${cost.stones}개 필요)`);
+  if (s.gold < cost.gold) return fail('골드가 부족합니다');
+  s.refineStones -= cost.stones;
+  s.gold -= cost.gold;
+  const r = rngOf(s);
+  const tier = EQUIP_BY_ID[f.e.baseId].tier;
+  const locked = new Set((f.e.locked ?? []).filter((i) => f.e.options[i]));
+  const next: typeof f.e.options = [];
+  for (let i = 0; i < OPTION_SLOTS; i++) {
+    if (locked.has(i)) { next.push(f.e.options[i]); continue; }
+    next.push(rollOption(() => r.pick(OPTION_POOL), tier, [...next.map((o) => o.key), ...[...locked].map((j) => f.e.options[j].key)]));
+  }
+  f.e.options = next;
+  bump(s, 'refine');
+  return { ok: true, msg: `제련 완료! 제련석 -${cost.stones}` };
+}
+
+/** 탐험 보험료: 시작 층에 비례 */
+export const insuranceCost = (floor: number) => 60 + 60 * floor;
+
+// ───────── 일괄 판매·분해 (가방 장비만, 장착 중 제외) ─────────
+export interface BulkFilter { rarities: Rarity[]; keepEnhanced: boolean }
+export const bulkTargets = (s: GameState, f: BulkFilter) =>
+  s.inventory.filter((e) => f.rarities.includes(e.rarity) && !(f.keepEnhanced && e.enhance > 0));
+
+export function bulkSell(s: GameState, f: BulkFilter): Result {
+  const list = bulkTargets(s, f);
+  if (!list.length) return fail('조건에 맞는 장비가 없습니다');
+  const gold = list.reduce((sum, e) => sum + sellPrice(e), 0);
+  const ids = new Set(list.map((e) => e.uid));
+  s.inventory = s.inventory.filter((e) => !ids.has(e.uid));
+  s.gold += gold;
+  return { ok: true, msg: `${list.length}개 판매 · +${gold.toLocaleString('ko-KR')}G` };
+}
+
+export function bulkDismantle(s: GameState, f: BulkFilter): Result {
+  const list = bulkTargets(s, f);
+  if (!list.length) return fail('조건에 맞는 장비가 없습니다');
+  const stones = list.reduce((sum, e) => sum + dismantleValue(e), 0);
+  const ids = new Set(list.map((e) => e.uid));
+  s.inventory = s.inventory.filter((e) => !ids.has(e.uid));
+  s.stones += stones;
+  return { ok: true, msg: `${list.length}개 분해 · 강화석 +${stones}` };
+}
+
+export const potionsAvailable = (s: GameState) => POTIONS.filter((p) => s.maxFloor >= p.unlockFloor);
+export function buyPotion(s: GameState, id: string, n = 1): Result {
+  const p = POTIONS.find((x) => x.id === id)!;
+  n = Math.max(1, Math.floor(n));
+  if (s.gold < p.price * n) return fail('골드가 부족합니다');
+  s.gold -= p.price * n;
+  s.potions[id] = (s.potions[id] ?? 0) + n;
+  bump(s, 'potionBuy', n);
+  return { ok: true, msg: `${p.name} ${n}개 구매` };
+}
+export const blessingPrice = 1200;
+export function buyBlessing(s: GameState, n = 1): Result {
+  n = Math.max(1, Math.floor(n));
+  if (s.gold < blessingPrice * n) return fail('골드가 부족합니다');
+  s.gold -= blessingPrice * n;
+  s.blessings += n;
+  return { ok: true, msg: `축복 주문서 ${n}장 구매` };
+}
+
+// ───────── 던전 ─────────
+export function canDepart(s: GameState): Result {
+  const p = partyChars(s);
+  if (!p.length) return fail('파티가 비었습니다');
+  return { ok: true };
+}
+
+export function startExpedition(s: GameState, settings: ExpeditionSettings): Expedition | string {
+  const ok = canDepart(s);
+  if (!ok.ok) return ok.msg;
+  const region = regionOf(settings.startFloor);
+  if (settings.mode === 'repeat' && !region.repeat) return `${region.name}에서는 한 층 반복을 할 수 없어요`;
+  const regionEnd = region.floors?.[1] ?? MAX_FLOOR;
+  settings = { ...settings, targetFloor: Math.min(settings.targetFloor, regionEnd) };
+  if (settings.insured) {
+    const cost = insuranceCost(settings.startFloor);
+    if (s.gold < cost) return '보험료가 부족합니다';
+    s.gold -= cost;
+  }
+  const potions = settings.potions.filter((id) => (s.potions[id] ?? 0) > 0).slice(0, MAX_POTIONS);
+  for (const id of potions) s.potions[id]--;
+  s.settings = { ...settings, potions: [] };
+  if (settings.startFloor > maxStartFloor(s)) settings.startFloor = maxStartFloor(s);
+  // 낮은 층 보상 감소는 같은 지역 기록 기준
+  return new Expedition(partyChars(s), { ...settings, potions, bestFloor: Math.min(s.maxFloor, regionEnd), petMods: petPartyMods(s) }, rngOf(s));
+}
+
+export interface ExpeditionSummary {
+  reason: string;
+  floor: number;
+  repeat: boolean;
+  runs: number;
+  insured: boolean;
+  gold: number; exp: number; stones: number; blessings: number; refineStones: number; shards: number; cores: number;
+  report?: Report;
+  towerLines?: string[];
+  diag?: string[];
+  lost?: boolean;
+  daily?: string;
+  dailyRef?: { id: string; stage: number; won: boolean };
+  raidLines?: string[];
+  equips: Equip[];
+  levelUps: { name: string; to: number }[];
+  bosses: string[];
+  newMaxFloor: boolean;
+}
+
+const REASON: Record<string, string> = {
+  wipe: '파티 전멸… 간신히 마을로 돌아왔다', lowHp: 'HP가 낮아 귀환했다', down: '쓰러진 동료가 있어 귀환했다',
+  target: '목표 층에 도달해 귀환했다', bossAhead: '보스 앞에서 귀환했다', cleared: '던전 최하층을 정복했다!', regionEnd: '이 지역의 끝까지 정복했다!', manual: '귀환했다',
+};
+
+export function finishExpedition(s: GameState, ex: Expedition): ExpeditionSummary {
+  if (!ex.finished) ex.finish('manual');
+  const before = Object.fromEntries(ex.chars.map((c) => [c.uid, c.level]));
+  ex.applyExp();
+  const levelUps = ex.chars.filter((c) => c.level > before[c.uid]).map((c) => ({ name: c.name, to: c.level }));
+  for (const c of ex.chars) syncSkillSlots(c);
+  s.gold += ex.loot.gold;
+  s.stones += ex.loot.stones;
+  s.blessings += ex.loot.blessings;
+  s.refineStones += ex.loot.refineStones;
+  s.shards += ex.loot.shards;
+  s.cores += ex.loot.cores;
+  s.inventory.push(...ex.loot.equips);
+  const raidLines = ex.settings.raid ? applyRaid(s, ex) : undefined;
+  const dly = ex.settings.daily;
+  const won = ex.stopReason !== 'wipe';
+  if (dly && won) {
+    const st = dailyState(s);
+    st.used[dly.id] = (st.used[dly.id] ?? 0) + 1;
+    st.cleared[dly.id] = Math.max(st.cleared[dly.id] ?? 0, dly.stage);
+  }
+  const towerLines = ex.settings.tower ? applyTower(s, ex) : undefined;
+  const reached = dly || ex.settings.raid || ex.settings.tower ? 0 : ex.reachedFloor();
+  const newMax = reached > s.maxFloor;
+  s.maxFloor = Math.max(s.maxFloor, reached);
+  const bosses = ex.bossesKilled.filter((b) => !s.bossesKilled.includes(b));
+  for (const b of bosses) {
+    s.bossesKilled.push(b);
+    // 보스 첫 처치 보상
+    const bonus = rollEquip(rngOf(s), ex.floor, 3);
+    s.inventory.push(bonus);
+    ex.loot.equips.push(bonus);
+    s.gold += 1000 * (b === 'velas' ? 5 : 1);
+    const egg = addPet(s, hatch(rngOf(s), ex.floor > 50 ? 3 : 1));
+    news(s, `${MONSTERS[b].name} 첫 처치! 보너스 장비와 펫 알을 받았다. (${PET_GRADE_NAME[egg.grade]} ${PET_BY_ID[egg.kind].name})`);
+  }
+  s.day++;
+  refreshDaily(s);
+  if (ex.settings.raid || ex.settings.tower) { /* applyRaid·applyTower에서 소식 기록 */ }
+  else if (dly) news(s, `${s.day - 1}일차: ${DAILY_BY_ID[dly.id].name} ${dly.stage}단계 ${won ? '클리어' : '실패 (입장 횟수는 그대로)'}.`);
+  else news(s, ex.repeating
+    ? `${s.day - 1}일차 탐험: ${floorName(ex.floor)} ${ex.floorsCleared}회 반복, 골드 ${ex.loot.gold} 획득.`
+    : `${s.day - 1}일차 탐험: ${floorName(ex.floor)}까지, 골드 ${ex.loot.gold} 획득.`);
+  for (const l of levelUps) news(s, `${l.name} Lv.${l.to} 달성!`);
+  return {
+    reason: ex.settings.tower ? (ex.stopReason === 'wipe' ? `무한 탑 ${ex.floor}층에서 막혔다${ex.towerCleared ? ` (${ex.towerCleared}층까지 돌파)` : ''}` : `무한 탑 ${ex.towerCleared}층까지 돌파하고 귀환`) : ex.settings.raid ? (ex.raidKilled ? '군단장 벨리알 처치!' : `벨리알에게 ${ex.raidDealt.toLocaleString('ko-KR')} 피해 (${((ex.raidDealt / ex.settings.raid.maxHp) * 100).toFixed(1)}%)`) : dly ? (won ? `${DAILY_BY_ID[dly.id].name} ${dly.stage}단계 클리어!` : '파티 전멸… 입장 횟수는 차감되지 않았다') : ex.repeating && ex.stopReason === 'target' ? '반복 파밍을 마치고 귀환했다' : REASON[ex.stopReason ?? 'manual'],
+    towerLines,
+    daily: ex.settings.tower ? `무한 탑 · 최고 기록 ${s.tower?.best ?? 0}층` : ex.settings.raid ? `레이드 · ${RAID_DIFF_NAME[ex.settings.raid.diff]}` : dly ? `${DAILY_BY_ID[dly.id].name} ${dly.stage}단계` : undefined,
+    report: ex.report,
+    lost: ex.settings.raid ? !ex.raidKilled && ex.stopReason === 'wipe' : !won,
+    diag: diagnose(ex.report, ex.settings.raid ? ex.raidKilled : won, {
+      hasHealer: ex.chars.some((c) => JOBS[c.jobId].base === 'priest'), healerName: ex.chars.find((c) => JOBS[c.jobId].base === 'priest')?.name,
+      rows: Object.fromEntries(ex.chars.map((c) => [c.uid, rowOf(c)])), prefs: Object.fromEntries(ex.chars.map((c) => [c.uid, c.target ?? 'auto'])),
+      tankIds: ex.chars.filter((c) => JOBS[c.jobId].base === 'warrior').map((c) => c.uid) }),
+    dailyRef: dly && !ex.settings.raid ? { id: dly.id, stage: dly.stage, won: !!won } : undefined,
+    raidLines,
+    insured: !!ex.settings.insured,
+    floor: ex.floor, repeat: ex.repeating, runs: ex.floorsCleared, gold: ex.loot.gold, exp: ex.loot.exp,
+    stones: ex.loot.stones, blessings: ex.loot.blessings, refineStones: ex.loot.refineStones, shards: ex.loot.shards, cores: ex.loot.cores, equips: ex.loot.equips, levelUps,
+    bosses: ex.bossesKilled, newMaxFloor: newMax,
+  };
+}
+
+/** 오래된 세이브 보정 */
+export function migrate(raw: any): GameState | null {
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.roster)) return null;
+  const s = raw as GameState;
+  s.settings = { ...DEFAULT_SETTINGS, ...(s.settings ?? {}) };
+  if (s.settings.startFloor > Math.min(MAX_FLOOR, s.maxFloor + 1)) s.settings.startFloor = 1;
+  s.potions ??= {}; delete (s as any).hp;
+  s.stoneStock ??= STONE_STOCK;
+  s.refineStones ??= 0;
+  s.pets ??= []; s.activePet ??= null; s.shards ??= 0; s.cores ??= 0;
+  // 재화 통합: 어둠의 파편 → 군단장의 핵 (옛 핵 1개 = 새 핵 10개, 파편 1개 = 핵 1개)
+  if (!s.coreMerged) { s.cores = s.cores * 10 + s.shards; s.shards = 0; s.coreMerged = true; } s.scales ??= 0; s.daily ??= { date: '', used: {}, cleared: {} }; s.raid ??= { week: 0, date: '', used: 0, dmg: {}, claimed: {}, everKilled: {}, best: 0 };
+  s.boardLocks ??= s.board.map(() => false);
+  if (!s.deals) { s.deals = []; refreshDaily(s); } s.news ??= []; s.bossesKilled ??= [];
+  for (const c of s.roster) syncSkillSlots(c);
+  return s;
+}
+
+// ───────── 무한 탑 ─────────
+export const towerState = (s: GameState) => (s.tower ??= { best: 0, claimed: 0 });
+export const towerOpen = (s: GameState) => s.maxFloor >= TOWER_UNLOCK;
+export function startTower(s: GameState): Expedition | string {
+  if (!towerOpen(s)) return `마왕숲 ${TOWER_UNLOCK}층을 클리어하면 열려요`;
+  const ok = canDepart(s);
+  if (!ok.ok) return ok.msg;
+  const t = towerState(s).best + 1;
+  bump(s, 'tower');
+  return new Expedition(partyChars(s), { ...DEFAULT_SETTINGS, startFloor: t, targetFloor: 1e9, mode: 'advance', auto: true, retreatHpPct: 0, retreatOnDown: false, stopBeforeBoss: false, insured: true, potions: [], petMods: petPartyMods(s), tower: true }, rngOf(s));
+}
+function applyTower(s: GameState, ex: Expedition): string[] {
+  const st = towerState(s), lines: string[] = [];
+  const from = st.best + 1, to = ex.towerCleared;
+  let gold = 0, cores = 0, refine = 0;
+  for (let t = from; t <= to; t++) {
+    const r = towerReward(t);
+    gold += r.gold; cores += r.cores; refine += r.refineStones;
+    if (r.egg) { const p = addPet(s, hatch(rngOf(s), r.egg)); lines.push(`${t}층 돌파 보상: ${PET_GRADE_NAME[p.grade]} ${PET_BY_ID[p.kind].name} 부화!`); }
+  }
+  if (to >= from) {
+    s.gold += gold; s.cores += cores; s.refineStones += refine;
+    lines.unshift(`처음 돌파한 층 ${to - from + 1}개 보상: 골드 ${gold.toLocaleString('ko-KR')} · 군단장의 핵 ${cores}${refine ? ` · 제련석 ${refine}` : ''}`);
+    st.best = to;
+    news(s, `무한 탑 ${to}층 돌파! (최고 기록)`);
+  } else {
+    lines.push(`최고 기록 ${st.best}층을 넘지 못했어요. ${ex.floor}층 ${towerGimmick(ex.floor).name} 기믹을 확인하고 세팅을 바꿔보세요.`);
+    news(s, `무한 탑 ${ex.floor}층 도전 실패.`);
+  }
+  return lines;
+}
+
+// ───────── 가이드 퀘스트 ─────────
+export function questView(s: GameState): QuestView {
+  const eq = allEquipsOf(s);
+  return {
+    maxFloor: s.maxFloor, partySize: s.party.length, maxEnh: eq.reduce((a, e) => Math.max(a, e.enhance), 0),
+    maxTier: s.roster.reduce((a, c) => Math.max(a, JOBS[c.jobId].tier), 1), potions: Object.values(s.potions).reduce((a, b) => a + b, 0) + (s.cnt?.potionBuy ?? 0),
+    pets: s.pets.length, cnt: s.cnt ?? {}, towerBest: s.tower?.best ?? 0,
+  };
+}
+const allEquipsOf = (s: GameState) => [...s.inventory, ...s.roster.flatMap((c) => Object.values(c.equipment).filter(Boolean) as Equip[])];
+export const currentQuest = (s: GameState) => QUESTS[s.questIdx ?? 0];
+export function claimQuest(s: GameState): Result {
+  const q = currentQuest(s);
+  if (!q) return fail('모든 목표를 달성했어요');
+  if (!q.done(questView(s))) return fail('아직 달성하지 않았어요');
+  const r = q.reward;
+  s.gold += r.gold ?? 0; s.stones += r.stones ?? 0; s.blessings += r.blessings ?? 0; s.refineStones += r.refineStones ?? 0; s.cores += r.cores ?? 0;
+  let extra = '';
+  if (r.egg) { const p = addPet(s, hatch(rngOf(s), r.egg as Grade)); extra = ` · ${PET_GRADE_NAME[p.grade]} ${PET_BY_ID[p.kind].name} 부화!`; }
+  s.questIdx = (s.questIdx ?? 0) + 1;
+  return { ok: true, msg: `목표 달성 보상: ${rewardText(r)}${extra}` };
+}

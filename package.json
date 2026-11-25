@@ -1,0 +1,20 @@
+{
+  "name": "text-rpg",
+  "version": "0.1.0",
+  "description": "중세 판타지 파티 편성형 텍스트 RPG",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "typecheck": "tsc",
+    "sim": "tsx src/cli/sim.ts",
+    "sim:log": "tsx src/cli/sim.ts log",
+    "smoke": "tsx src/cli/smoke.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  },
+  "type": "module"
+}

@@ -1,0 +1,1541 @@
+import './style.css';
+import { canAdvance, levelCap } from '../core/character';
+import { mitigation, rowOf } from '../core/combat';
+import { charPower, floorPower, hasHealer, noHealerFactor, partyPower, powerLevel } from '../core/power';
+import type { Expedition, ExpeditionSettings, FloorResult } from '../core/dungeon';
+import { finalStats, expToNext, STAT_KEYS } from '../core/stats';
+import { BOARD_SIZE, enhanceCost, enhanceRate, refreshSlotCost, rosterLimit } from '../core/town';
+import { equipStats } from '../core/stats';
+import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Row, type TargetPref, type UnitSnap, type BaseJob, type BattleEvent, type JobId, type Character, type Equip, type EquipSlot, type Rarity, type StatKey } from '../core/types';
+import { MILESTONE_SCALES, RAID_DIFF, RAID_DIFFS, RAID_DIFF_NAME, RAID_LIMIT, RAID_ROUNDS, nextResetText, raidForm, raidMaxHp, type RaidDiff } from '../data/raid';
+import { DAILIES, DAILY_BY_ID, DAILY_LIMIT, DAILY_STAGES, dailyReward } from '../data/daily';
+import { CRAFT_COST, RAID_CRAFT_COST, RAID_SET, SETS, SET_BASES, SET_BY_ID, SET_DROP_CHANCE, SET_RARITY, SHARD_CHANCE } from '../data/sets';
+import { EGG_ODDS, EGG_PRICE, PET_BY_ID, PET_GRADE_NAME, PET_GRADE_PCT, PET_MAX_STARS, petEffectText, petSellPrice, type Pet } from '../data/pets';
+import { EQUIP_BASES, EQUIP_BY_ID, MAX_POTIONS, OPTION_SLOTS, POTIONS, REFINE_CHANCE, tierOfFloor } from '../data/items';
+import { ADVANCE_AT, JOBS, advanceOptions } from '../data/jobs';
+import { MERC_BY_ID } from '../data/mercenaries';
+import { floorLevel, rewardScale } from '../data/monsters';
+import { MAX_FLOOR, MONSTERS, PART1_FLOOR, REGIONS, ZONES, floorName, floorTip, localFloor, regionOf, zoneOf } from '../data/monsters';
+import { BLESS_CHANCE, DROP_CHANCE, MAX_REPEAT, STONE_CHANCE, rarityWeights } from '../core/dungeon';
+import { SKILLS, describeSkill } from '../data/skills';
+import { TRAITS } from '../data/traits';
+import { QUESTS, rewardText } from '../data/quests';
+import { TOWER_UNLOCK, isTowerBoss, towerBoss, towerGimmick, towerReward } from '../data/tower';
+import * as G from '../state/game';
+import { exportSave, importSave, initRemote, loadGame, remoteReady, saveGame, wipeSave } from '../state/save';
+import { townScene } from './art';
+import { charSprite } from './pixel';
+import { equipKind, equipSprite, itemSprite, monsterSprite, petSprite } from './sprites';
+
+type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower';
+
+let S: G.GameState | null = null;
+let screen: Screen = 'title';
+let modal: { kind: 'char'; uid: string } | { kind: 'save' } | null = null;
+let toastMsg: { text: string; bad: boolean } | null = null;
+let toastTimer = 0;
+let lastSave: G.GameState | null = null;
+let useBlessing = false;
+let confirmDismiss: string | null = null;
+let boardConfirm: { kind: 'one'; i: number } | { kind: 'all' } | null = null;
+let summary: G.ExpeditionSummary | null = null;
+let gatePotions: string[] = [];
+type PartyFilter = 'all' | 'warrior' | 'mage' | 'archer' | 'priest';
+let partyFilter: PartyFilter = 'all';
+let bulkR = new Set<Rarity>([1]);
+let bulkKeepEnh = true;
+let dropOpen = window.matchMedia?.('(min-width: 601px)').matches ?? true;
+let bulkOpen = window.matchMedia?.('(min-width: 601px)').matches ?? true;
+
+const app = document.getElementById('app')!;
+const esc = (v: unknown) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+const fmt = (n: number) => Math.round(n).toLocaleString('ko-KR');
+const stars = (g: number) => `<span class="stars g${g}">${'★'.repeat(g)}</span>`;
+const pctW = (a: number, b: number) => `${Math.max(0, Math.min(100, (a / Math.max(1, b)) * 100)).toFixed(1)}%`;
+
+function toast(text: string, bad = false) {
+  toastMsg = { text, bad };
+  clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => { toastMsg = null; renderToast(); }, 2600);
+  renderToast();
+}
+function renderToast() {
+  document.querySelector('.toast')?.remove();
+  if (toastMsg) app.insertAdjacentHTML('beforeend', `<div class="toast ${toastMsg.bad ? 'bad' : ''}" role="status">${esc(toastMsg.text)}</div>`);
+}
+function commit(r?: G.Result) {
+  if (r && !r.ok) toast(r.msg, true);
+  else if (r?.msg) toast(r.msg);
+  if (S) saveGame(S);
+  render();
+}
+
+// ───────── 공통 조각 ─────────
+function topbar() {
+  if (!S) return '';
+  return `<header class="top"><div class="wrap">
+    <h1>지하묘지의 용병단</h1>
+    <div class="res">
+      <span>파티 전투력 <b>${fmt(G.statePower(S))}</b></span>
+      <span class="g">골드 <b>${fmt(S.gold)}</b></span>
+      <span>강화석 <b>${S.stones}</b></span>
+      <span>축복 <b>${S.blessings}</b></span>
+      <span>${S.day}일차</span>
+    </div>
+  </div></header>`;
+}
+
+function charCard(c: Character, opts: { act?: string; inParty?: boolean } = {}) {
+  const merc = c.mercId ? MERC_BY_ID[c.mercId] : null;
+  const traits = [...c.traitIds, ...(c.uniqueTraitId ? [c.uniqueTraitId] : [])].map((t) => traitTag(t, false)).join('');
+  return `<button class="card ${opts.inParty ? 'inparty' : ''}" data-a="${opts.act ?? 'openChar'}" data-uid="${esc(c.uid)}">
+    <div class="ico">${avatar(c)}</div>
+    <div class="cinfo">
+      <div class="cname">${esc(c.name)} ${stars(c.grade)}${c.awakening ? `<span class="small g5">각성 ${c.awakening}</span>` : ''}</div>
+      <div class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} · <span class="cp">전투력 ${fmt(charPower(c))}</span>${c.isHero ? ' · 주인공' : merc ? ` · ${esc(merc.desc)}` : ''}</div>
+      ${traits ? `<div class="tags">${traits}</div>` : ''}
+    </div>
+  </button>`;
+}
+
+/** 툴팁: PC는 마우스를 올리면, 폰은 탭하면 설명 표시 */
+const tip = (text: string, inner: string, cls = '') => `<span class="tip ${cls}" data-tip="${esc(text)}" tabindex="0" role="button">${inner}</span>`;
+const skillTip = (id: string) => tip(describeSkill(SKILLS[id]), esc(SKILLS[id].name), 'sk');
+
+/** 특성 태그: 마우스를 올리거나(탭하면) 설명 표시 */
+const traitTag = (id: string, focusable = true) => {
+  const t = TRAITS[id];
+  const cls = t?.kind === 'legend' ? 'l' : t?.kind === 'hero' ? 'u' : '';
+  const kind = t?.kind === 'legend' ? '전설 고유 · ' : t?.kind === 'hero' ? '영웅 고유 · ' : t?.kind === 'mixed' ? '양날 · ' : '';
+  return `<span class="tag ${cls}" data-tip="${esc(kind + (t?.desc ?? ''))}"${focusable ? ' tabindex="0" role="button"' : ''}>${esc(id)}</span>`;
+};
+
+/** 마을 건물 묶음: 건물 안 탭으로 이동 */
+const HUBS: { id: string; name: string; tabs: [string, string][] }[] = [
+  { id: 'guild', name: '모험가 길드', tabs: [['guild', '용병 모집'], ['training', '훈련소'], ['temple', '신전']] },
+  { id: 'smith', name: '대장간', tabs: [['smith', '강화'], ['refinery', '제련'], ['forge', '제작']] },
+  { id: 'adv', name: '모험', tabs: [['gate', '던전'], ['tower', '무한 탑'], ['daily', '일일 던전'], ['raid', '개인 레이드']] },
+];
+const hubOf = (sc: string) => HUBS.find((h) => h.tabs.some(([t]) => t === sc));
+const hubTabs = () => {
+  const h = hubOf(screen);
+  return h ? `<div class="hubtabs" role="tablist" aria-label="${h.name}">${h.tabs.map(([t, n]) => `<button role="tab" class="${t === screen ? 'on' : ''}" aria-selected="${t === screen}" data-a="go" data-to="${t}">${n}</button>`).join('')}</div>` : '';
+};
+const backBtn = () => `<div class="back"><button class="btn ghost sm" data-a="go" data-to="town">← 마을로</button></div>${hubTabs()}`;
+
+/** 도트 아이콘 */
+const avatar = (c: Character, size = 44) => charSprite(JOBS[c.jobId].base, c.name, JOBS[c.jobId].tier, { size });
+const equipIcon = (e: Equip, size = 34) => { const b = EQUIP_BY_ID[e.baseId]; return equipSprite(equipKind(b.slot, b.jobs?.[0]), b.tier, { size, set: b.set }); };
+const POTION_COLOR: Record<string, string> = { p_str: '#d8443a', p_str2: '#ff3a2a', p_iron: '#8a94a4', p_iron2: '#c8d0dc', p_sage: '#3f7fd8', p_sage2: '#6a5aff', p_wind: '#6fcf97', p_luck: '#e8c84a', p_life: '#ff70a0', p_greed: '#d8a030' };
+const potionIcon = (id: string, size = 30) => itemSprite('potion', { size, color: POTION_COLOR[id] ?? '#d8443a' });
+function equipLine(e: Equip) {
+  const b = EQUIP_BY_ID[e.baseId];
+  const st = Object.entries(equipStats(e)).map(([k, v]) => `${STAT_LABEL[k as StatKey]} +${Math.round(v as number)}`).join(', ');
+  const opt = e.options.map(optText).join(', ');
+  return `<span class="eico r${e.rarity}e ${b.set ? 'setico' : ''}">${equipIcon(e)}</span><span class="iname r${e.rarity}">${esc(b.name)}${e.enhance ? ` +${e.enhance}` : ''}</span>${b.set ? ` <span class="settag">${esc(SET_BY_ID[b.set].name)} 세트</span>` : ''} <span class="small mute">${RARITY_NAME[e.rarity]}${b.jobs ? ` · ${b.jobs.map((j) => JOBS[j].name).join('/')}` : ''}</span><div class="istat">${st}${opt ? ` · ${opt}` : ''}</div>`;
+}
+const STAT_LABEL: Record<StatKey, string> = { hp: 'HP', mp: 'MP', atk: '공격', mag: '마력', def: '방어', res: '마저', agi: '민첩', crit: '치명' };
+const MOD_LABEL: Record<string, string> = { ...STAT_LABEL, healPower: '회복량', skillDmg: '스킬 데미지', bossDmg: '보스 피해', resPierce: '마저 무시', defPierce: '방어 무시', magTaken: '받는 마법 피해' };
+function optText(o: { key: string; kind: string; value: number }) {
+  const unit = o.kind === 'pct' || o.key === 'resPierce' || o.key === 'defPierce' ? '%' : o.key === 'crit' ? '%p' : '';
+  return `${MOD_LABEL[o.key] ?? o.key} ${o.value >= 0 ? '+' : ''}${o.value}${unit}`;
+}
+const SLOT_NAME: Record<EquipSlot, string> = { weapon: '무기', armor: '방어구', accessory: '장신구' };
+
+// ───────── 화면들 ─────────
+function viewTitle() {
+  return `<div class="title">
+    <div class="scene">${townScene()}</div>
+    <div class="tbox">
+      <h1>지하묘지의 용병단</h1>
+      <p class="mute">마을 지하의 봉인된 묘지에서 마물이 올라오기 시작했다. 길드에서 용병을 모아 파티를 꾸리고, 던전 깊은 곳의 진실을 밝혀내자.</p>
+      ${lastSave ? `<button class="btn" data-a="continue">이어하기 · ${esc(lastSave.heroName)} ${lastSave.day}일차</button>` : ''}
+      <div class="panel grid">
+        <div class="field"><label for="heroName">주인공 이름</label><input type="text" id="heroName" maxlength="8" placeholder="용사" value="킹"></div>
+        <button class="btn ${lastSave ? 'ghost' : ''}" data-a="newGame">새 게임 시작</button>
+        <button class="btn ghost sm" data-a="openSave">세이브 코드로 불러오기</button>
+      </div>
+      <p class="small mute">${remoteReady() ? '진행 상황은 계정에 자동 저장됩니다.' : '진행 상황은 이 브라우저에 자동 저장됩니다.'}</p>
+    </div>
+  </div>`;
+}
+
+const SIGN_ICON: Record<string, () => string> = {
+  guild: () => charSprite('warrior', '길드', 2, { size: 34 }),
+  smith: () => equipSprite('sword', 3, { size: 34 }),
+  refinery: () => itemSprite('refine', { size: 34 }),
+  pets: () => itemSprite('egg', { size: 34 }),
+  forge: () => equipSprite('sword', 8, { size: 34, set: 'demon' }),
+  daily: () => itemSprite('gold', { size: 34 }),
+  raid: () => monsterSprite(raidForm().monster, { size: 34, tags: ['demon'] }),
+  shop: () => potionIcon('p_str', 34),
+  storage: () => equipSprite('armor', 2, { size: 34 }),
+  training: () => equipSprite('sword', 1, { size: 34 }),
+  temple: () => equipSprite('relic', 3, { size: 34 }),
+  gate: () => monsterSprite('skeleton', { size: 34, tags: ['undead'] }),
+};
+function questPanel() {
+  const s = S!;
+  const q = G.currentQuest(s);
+  const i = s.questIdx ?? 0;
+  if (!q) return `<div class="quest done"><b>🏆 모든 목표 달성!</b> <span class="small mute">이제 무한 탑 기록과 레이드에 도전하세요.</span></div>`;
+  const ok = q.done(G.questView(s));
+  return `<div class="quest ${ok ? 'ready' : ''}"><div class="qhead"><span class="small mute">다음 목표 ${i + 1}/${QUESTS.length}</span><span class="small">보상 ${esc(rewardText(q.reward))}</span></div>
+    <div class="row" style="justify-content:space-between;gap:10px;align-items:center"><div><b>${ok ? '✔ ' : ''}${esc(q.title)}</b>${q.hint ? `<div class="small mute">${esc(q.hint)}</div>` : ''}</div>
+    <button class="btn sm ${ok ? '' : 'ghost'}" data-a="claimQuest" ${ok ? '' : 'disabled'}>${ok ? '보상 받기' : '진행 중'}</button></div></div>`;
+}
+function viewTown() {
+  const s = S!;
+  const party = G.partyChars(s);
+  const zone = s.maxFloor ? zoneOf(Math.max(1, Math.min(MAX_FLOOR, s.maxFloor))).name : '미답';
+  const raidTxt = s.maxFloor >= 50 ? `탑 ${G.towerState(s).best}층 · 레이드 ${G.raidLeft(s)}/${RAID_LIMIT}` : '';
+  const dailyLeft = DAILIES.filter((d) => G.dailyOpen(s, d)).reduce((a, d) => a + G.dailyLeft(s, d.id), 0);
+  const signs: [string, string, string, string?][] = [
+    ['gate', '모험', `${s.maxFloor ? `최고 ${esc(floorName(s.maxFloor))}` : '마왕숲 1층부터'} · 일일 ${dailyLeft}회${raidTxt ? ` · ${raidTxt}` : ''}`, 'gate'],
+    ['guild', '모험가 길드', `모집·훈련소·신전 · 단원 ${s.roster.length}/${rosterLimit(s.guildLevel)}`],
+    ['smith', '대장간', `강화·제련·제작 · 강화석 ${s.stones} · 제련석 ${s.refineStones}`],
+    ['pets', '펫 우리', G.activePet(s) ? `${PET_BY_ID[G.activePet(s)!.kind].name} 동행 · ${s.pets.length}마리` : `펫 알 ${fmt(EGG_PRICE)}G`],
+    ['shop', '잡화점', `물약 ${Object.values(s.potions).reduce((a, b) => a + b, 0)}개 보유`],
+    ['storage', '창고', `장비 ${allEquips().length}개 · 재료 보기`],
+  ];
+  return `<div class="wrap">
+    <div class="scene">${townScene()}</div>
+    ${questPanel()}
+    <nav class="signs">${signs.map(([to, n, d, c]) => `<button class="sign ${c ?? ''}" data-a="go" data-to="${to}"><span class="sico">${SIGN_ICON[to]?.() ?? ''}</span><b>${n}</b><span>${d}</span></button>`).join('')}</nav>
+    <div class="cols">
+      <section class="grid"><div class="row"><h2>출전 파티</h2><span class="mute">${party.length}/${G.PARTY_MAX} · 전투력 <b class="cp">${fmt(G.statePower(s))}</b></span><button class="btn sm" data-a="go" data-to="party" style="margin-left:auto">파티 편성</button></div>
+        <div class="cards">${party.map((c) => charCard(c, { inParty: true })).join('')}</div>
+        <p class="small mute">카드를 누르면 장비·스킬 순서·전직을 관리할 수 있어요.</p>
+      </section>
+      <section class="grid"><h2>마을 소식</h2><ul class="news">${s.news.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>
+        <div class="row"><button class="btn ghost sm" data-a="openSave">저장 관리</button></div>
+      </section>
+    </div>
+  </div>`;
+}
+
+const JOB_FILTERS: [PartyFilter, string][] = [['all', '전체'], ['warrior', '전사'], ['mage', '마법사'], ['archer', '궁수'], ['priest', '성직자']];
+
+/** 전열/후열 + 공격 대상 선택 (파티 편성·던전 입구 공용) */
+function tacticsCtl(c: Character) {
+  const row = rowOf(c), tg = c.target ?? 'auto';
+  return `<div class="tactics">
+      <div class="seg mini" role="group" aria-label="열">${(['front', 'back'] as const).map((r) => `<button class="${row === r ? 'on' : ''}" data-a="setRow" data-uid="${esc(c.uid)}" data-v="${r}" aria-pressed="${row === r}">${r === 'front' ? '전열' : '후열'}</button>`).join('')}</div>
+      <div class="seg mini" role="group" aria-label="공격 대상">${(['auto', 'boss', 'adds'] as const).map((t) => `<button class="${tg === t ? 'on' : ''}" data-a="setTarget" data-uid="${esc(c.uid)}" data-v="${t}" aria-pressed="${tg === t}">${TARGET_NAME[t]}</button>`).join('')}</div>
+    </div>`;
+}
+function pcard(c: Character, inParty: boolean, full: boolean) {
+  const s = S!;
+  const traits = [...c.traitIds, ...(c.uniqueTraitId ? [c.uniqueTraitId] : [])].map((t) => traitTag(t)).join('');
+  const act = inParty
+    ? `<button class="btn ghost sm" data-a="partyOut" data-uid="${esc(c.uid)}" ${s.party.length <= 1 ? 'disabled' : ''}>빼기</button>`
+    : `<button class="btn sm" data-a="partyIn" data-uid="${esc(c.uid)}" ${full ? 'disabled' : ''}>넣기</button>`;
+  const row = rowOf(c);
+  const tactics = inParty ? tacticsCtl(c) : '';
+  return `<div class="pcard ${inParty ? 'inparty' : ''} ${inParty ? `row-${row}` : ''}">
+    <div class="ico">${avatar(c)}</div>
+    <div class="cinfo"><div class="cname">${esc(c.name)} ${stars(c.grade)}${c.awakening ? `<span class="small g5">각성 ${c.awakening}</span>` : ''}</div>
+      <div class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} · <span class="cp">전투력 ${fmt(charPower(c))}</span></div>
+      ${traits ? `<div class="tags">${traits}</div>` : ''}${tactics}</div>
+    <div class="pact">${act}<button class="btn ghost sm" data-a="openChar" data-uid="${esc(c.uid)}">상세</button></div>
+  </div>`;
+}
+
+function viewParty() {
+  const s = S!;
+  const party = G.partyChars(s);
+  const full = party.length >= G.PARTY_MAX;
+  const ordered = [...party].sort((a, b) => (rowOf(a) === rowOf(b) ? 0 : rowOf(a) === 'front' ? -1 : 1));
+  const slots = Array.from({ length: G.PARTY_MAX }, (_, i) => ordered[i] ? pcard(ordered[i], true, full) : `<div class="pcard emptyslot"><span class="mute">빈 자리 · 아래에서 넣기</span></div>`).join('');
+  const nFront = party.filter((c) => rowOf(c) === 'front').length;
+  const bench = s.roster.filter((c) => !s.party.includes(c.uid))
+    .filter((c) => partyFilter === 'all' || JOBS[c.jobId].base === partyFilter)
+    .sort((a, b) => charPower(b) - charPower(a));
+  const healer = hasHealer(party);
+  return `<div class="wrap">${backBtn()}
+    <div class="row" style="justify-content:space-between"><h2>파티 편성</h2>
+      <span>전투력 <b class="cp">${fmt(G.statePower(s))}</b> · ${party.length}/${G.PARTY_MAX}명</span></div>
+    <p class="small ${healer ? 'mute' : ''}" style="${healer ? '' : 'color:var(--gold)'}">${healer ? '회복 담당이 있어요.' : '성직자 계열이 없어요. 보스는 회복 없이 매우 어렵습니다.'}</p>
+    <div class="row" style="margin-bottom:10px"><button class="btn sm" data-a="autoEquipParty">파티 자동 장착</button><button class="btn ghost sm" data-a="unequipParty">파티 장비 전체 해제</button><span class="small mute">새 용병으로 바꿀 땐 해제 → 자동 장착 순서로 누르면 편해요</span></div>
+    <p class="small mute" style="margin:4px 0 8px">전열 ${nFront}명 · 후열 ${party.length - nFront}명 — 전열은 방어·마저 +5%에 적이 주로 노리고, 후열은 공격·마력 +5%에 덜 맞아요. 공격 대상: 자동(체력 낮은 적), 보스 우선, 잡몹 우선.</p>
+    <div class="slots">${slots}</div>
+    <div class="row" style="margin-top:22px;justify-content:space-between"><h3>대기 중인 단원 ${s.roster.length - party.length}명</h3><span class="small mute">전투력 높은 순</span></div>
+    <div class="tabs" role="group" aria-label="직업 필터" style="margin:8px 0">${JOB_FILTERS.map(([v, n]) => `<button class="${partyFilter === v ? 'on' : ''}" data-a="partyFilter" data-v="${v}">${n}</button>`).join('')}</div>
+    <div class="bench">${bench.map((c) => pcard(c, false, full)).join('') || '<p class="mute">대기 중인 단원이 없습니다. 길드에서 고용해 보세요.</p>'}</div>
+  </div>`;
+}
+
+const LOCK_SVG = (on: boolean) => `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="${on ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"/><path d="${on ? 'M8 11V7a4 4 0 0 1 8 0v4' : 'M8 11V7a4 4 0 0 1 7.5-2'}" fill="none" stroke="currentColor" stroke-width="2"/></svg>`;
+
+/** 교체 대상 중 영웅 등급 이상 */
+function rareTargets(which: { kind: 'one'; i: number } | { kind: 'all' }) {
+  const s = S!;
+  const idx = which.kind === 'one' ? [which.i] : s.board.map((_, i) => i).filter((i) => !s.boardLocks[i]);
+  return idx.map((i) => s.board[i]).filter(Boolean).map((c) => MERC_BY_ID[c!.mercId]).filter((d) => d.grade >= 4);
+}
+
+function boardConfirmBox() {
+  if (!boardConfirm) return '';
+  const list = rareTargets(boardConfirm);
+  return `<div class="confirm" role="alertdialog" aria-label="교체 확인" style="margin-bottom:12px">
+    <p><b>영웅 등급 이상입니다. 교체하시겠습니까?</b></p>
+    <p class="small mute">${list.map((d) => `${esc(d.name)} (${GRADE_NAME[d.grade]})`).join(', ')}이(가) 사라져요. 남기고 싶으면 취소하고 자물쇠로 잠가 두세요.</p>
+    <div class="row"><button class="btn danger" data-a="confirmRefresh">교체하기</button><button class="btn ghost" data-a="cancelRefresh">취소</button></div>
+  </div>`;
+}
+
+function doRefresh(which: { kind: 'one'; i: number } | { kind: 'all' }) {
+  boardConfirm = null;
+  commit(which.kind === 'one' ? G.refreshSlot(S!, which.i) : G.refreshAll(S!));
+}
+
+function viewGuild() {
+  const s = S!;
+  const lead = G.leadLevel(s);
+  const board = s.board.map((c, i) => {
+    if (!c) return `<div class="bcard empty"><span>빈 자리</span><button class="btn ghost sm" data-a="refresh" data-i="${i}">새 지원자 · ${refreshSlotCost(lead)}G</button></div>`;
+    const d = MERC_BY_ID[c.mercId];
+    const owned = s.roster.find((r) => r.mercId === d.id);
+    const tr = [...d.traits, ...(d.unique ? [d.unique] : [])].map((t) => traitTag(t)).join('') || '<span class="small mute">특성 없음</span>';
+    const locked = s.boardLocks[i];
+    return `<div class="bcard gr${d.grade} ${locked ? 'locked' : ''}">
+      <div class="row" style="gap:8px;align-items:flex-start"><div class="ico">${charSprite(d.job, d.name, 1, { size: 44 })}</div><div style="flex:1"><div class="cname">${esc(d.name)}</div>${stars(d.grade)} <span class="small mute">${GRADE_NAME[d.grade]}</span></div>
+        <button class="lockbtn ${locked ? 'on' : ''}" data-a="lock" data-i="${i}" aria-pressed="${locked}" aria-label="${locked ? '잠금 해제' : '잠금'}" title="${locked ? '잠금 해제' : '잠그면 전체 교체에서 빠져요'}">${LOCK_SVG(locked)}</button></div>
+      <div class="small">${JOBS[d.job].name} · Lv.${owned ? owned.level : c.level}</div>
+      <div class="tags">${tr}</div>
+      <div class="desc">${esc(d.desc)}${d.unique ? `<br><span class="small">${esc(TRAITS[d.unique].desc)}</span>` : ''}</div>
+      ${owned ? `<div class="owned">이미 보유 · 고용 시 각성 ${owned.awakening}→${Math.min(5, owned.awakening + 1)}</div>` : ''}
+      <div class="row" style="justify-content:space-between"><span class="price">${fmt(c.price)}G</span></div>
+      <div class="row"><button class="btn sm" data-a="hire" data-i="${i}" ${owned?.awakening === 5 ? 'disabled' : ''}>${owned ? '각성' : '고용'}</button><button class="btn ghost sm" data-a="refresh" data-i="${i}" ${locked ? 'disabled title="잠금 중"' : ''}>${refreshSlotCost(lead)}G 교체</button></div>
+    </div>`;
+  }).join('');
+  const roster = s.roster.map((c) => charCard(c, { inParty: s.party.includes(c.uid) })).join('');
+  return `<div class="wrap">${backBtn()}
+    <div class="row" style="justify-content:space-between"><h2>모험가 길드 <span class="mute small">Lv.${s.guildLevel}</span></h2>
+      <button class="btn ghost sm" data-a="upgradeGuild">길드 확장 · ${fmt(G.guildUpgradeCost(s.guildLevel))}G</button></div>
+    <div class="row" style="justify-content:space-between;margin:6px 0 10px">
+      <p class="small mute" style="margin:0">지원자는 골드로만 바뀌어요. 자물쇠를 잠근 칸은 전체 교체에서 빠지고, 같은 용병을 다시 고용하면 각성합니다.</p>
+      <button class="btn sm" data-a="refreshAll" ${s.boardLocks.every(Boolean) ? 'disabled' : ''}>전체 교체 ${s.board.filter((_, i) => !s.boardLocks[i]).length}칸 · ${fmt(G.refreshAllCost(s))}G</button></div>
+    ${boardConfirmBox()}
+    <div class="board">${board}</div>
+    <div class="row" style="margin-top:22px;justify-content:space-between"><h2>단원 ${s.roster.length}/${rosterLimit(s.guildLevel)}</h2><button class="btn sm" data-a="go" data-to="party">파티 편성 ${s.party.length}/${G.PARTY_MAX}</button></div>
+    <div class="cards" style="margin-top:10px">${roster}</div>
+  </div>`;
+}
+
+function allEquips() {
+  const s = S!;
+  const out: { e: Equip; owner?: Character }[] = [];
+  for (const c of s.roster) for (const e of Object.values(c.equipment)) if (e) out.push({ e, owner: c });
+  for (const e of s.inventory) out.push({ e });
+  return out;
+}
+
+type GroupView = 'party' | 'all' | 'bag';
+let smithView: GroupView = 'party';
+
+const SLOTS: EquipSlot[] = ['weapon', 'armor', 'accessory'];
+
+/** 제련 칸: 옵션 3칸 + 고정 토글 + 제련 버튼 */
+function refineCtl(e: Equip) {
+  const s = S!;
+  const locked = new Set(e.locked ?? []);
+  const cost = G.refineCost(e);
+  const cells = Array.from({ length: OPTION_SLOTS }, (_, i) => {
+    const o = e.options[i];
+    if (!o) return `<div class="optcell empty"><span class="small mute">빈 칸</span></div>`;
+    const on = locked.has(i);
+    return `<div class="optcell ${on ? 'locked' : ''}"><span class="small">${esc(optText(o))}</span><button class="lockbtn ${on ? 'on' : ''}" data-a="optLock" data-e="${esc(e.uid)}" data-i="${i}" aria-pressed="${on}" aria-label="${on ? '고정 해제' : '고정'}" title="${on ? '고정 해제' : '고정하면 제련석 +2'}">${LOCK_SVG(on)}</button></div>`;
+  }).join('');
+  const can = s.refineStones >= cost.stones && s.gold >= cost.gold;
+  return `<div class="refine"><div class="opts">${cells}</div>
+    <div class="row" style="gap:6px;justify-content:space-between"><span class="small mute">제련석 ${cost.stones} · ${fmt(cost.gold)}G${locked.size ? ` · 고정 ${locked.size}칸` : ''}</span>
+    <button class="btn sm" data-a="refine" data-e="${esc(e.uid)}" ${can ? '' : 'disabled'}>제련</button></div></div>`;
+}
+/** 강화 정보 한 줄 + 버튼 */
+function enhanceCtl(e: Equip) {
+  if (e.enhance >= 15) return `<div class="ectl"><span class="small mute">최대 강화</span></div>`;
+  const cost = enhanceCost(e.enhance + 1);
+  const rate = enhanceRate(e, useBlessing);
+  return `<div class="ectl"><span class="small mute">+${e.enhance}→+${e.enhance + 1} · 성공 <b class="${rate >= 50 ? 'okt' : rate >= 25 ? 'closet' : 'lowt'}">${rate}%</b> · 강화석 ${cost.stone} · ${fmt(cost.gold)}G${e.failStack ? ` · 천장 +${e.failStack * 5}%p` : ''}</span>
+    <span class="row" style="gap:6px"><button class="btn sm" data-a="enhance" data-e="${esc(e.uid)}">강화</button></span></div>`;
+}
+
+/** 캐릭터 한 명의 장비 3칸 묶음 */
+function equipGroup(c: Character, mode: 'smith' | 'storage' | 'refine') {
+  const s = S!;
+  const cells = SLOTS.map((sl) => {
+    const e = c.equipment[sl];
+    const bag = s.inventory.filter((x) => EQUIP_BY_ID[x.baseId].slot === sl && G.canWear(c, x));
+    const pick = mode === 'storage' && bag.length
+      ? `<select data-a="equipSel" data-uid="${esc(c.uid)}" aria-label="${esc(c.name)} ${SLOT_NAME[sl]}"><option value="">${e ? '교체…' : '장착…'}</option>${bag.map((x) => `<option value="${esc(x.uid)}">${esc(EQUIP_BY_ID[x.baseId].name)}${x.enhance ? ` +${x.enhance}` : ''} (${RARITY_NAME[x.rarity]})</option>`).join('')}</select>` : '';
+    const body = e ? equipLine(e) : '<span class="mute">비어 있음</span>';
+    const ctl = mode === 'smith' ? (e ? enhanceCtl(e) : '')
+      : mode === 'refine' ? (e ? refineCtl(e) : '')
+      : `<div class="row" style="gap:6px">${e ? `<button class="btn ghost sm" data-a="unequip" data-uid="${esc(c.uid)}" data-slot="${sl}">해제</button>` : ''}${pick}</div>`;
+    return `<div class="eqcell ${e ? `rb${e.rarity}` : 'none'}"><div class="small mute">${SLOT_NAME[sl]}</div><div>${body}</div>${ctl}</div>`;
+  }).join('');
+  return `<section class="eqgroup ${s.party.includes(c.uid) ? 'inparty' : ''}">
+    <div class="eqhead"><div class="ico">${avatar(c)}</div><div><div class="cname">${esc(c.name)} ${stars(c.grade)}${s.party.includes(c.uid) ? '<span class="tag wear">출전</span>' : ''}</div>
+      <div class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} · <span class="cp">전투력 ${fmt(charPower(c))}</span></div></div></div>
+    <div class="eqcells">${cells}</div></section>`;
+}
+
+const orderedRoster = (s: G.GameState) => [...G.partyChars(s), ...s.roster.filter((c) => !s.party.includes(c.uid))];
+
+function bagList(mode: 'smith' | 'storage' | 'refine') {
+  const s = S!;
+  const slotOrder: Record<EquipSlot, number> = { weapon: 0, armor: 1, accessory: 2 };
+  const list = [...s.inventory].sort((a, b) => slotOrder[EQUIP_BY_ID[a.baseId].slot] - slotOrder[EQUIP_BY_ID[b.baseId].slot] || b.rarity - a.rarity || b.enhance - a.enhance);
+  if (!list.length) return '<p class="mute">가방이 비었습니다.</p>';
+  return `<div class="items">${list.map((e) => {
+    if (mode === 'smith') return `<div class="item"><div>${equipLine(e)}</div><div>${enhanceCtl(e)}</div></div>`;
+    if (mode === 'refine') return `<div class="item col"><div>${equipLine(e)}</div>${refineCtl(e)}</div>`;
+    const wearers = s.roster.filter((c) => G.canWear(c, e));
+    return `<div class="item"><div>${equipLine(e)}</div><div class="row">
+      ${wearers.length ? `<select data-a="equipToSel" data-e="${esc(e.uid)}" aria-label="장착할 캐릭터"><option value="">장착하기…</option>${wearers.map((c) => `<option value="${esc(c.uid)}">${esc(c.name)} (${esc(JOBS[c.jobId].name)})</option>`).join('')}</select>` : ''}
+      <button class="btn ghost sm" data-a="sell" data-e="${esc(e.uid)}">${fmt(G.sellPrice(e))}G 판매</button><button class="btn ghost sm" data-a="dismantle" data-e="${esc(e.uid)}">분해 +${G.dismantleValue(e)}</button></div></div>`;
+  }).join('')}</div>`;
+}
+
+function viewSmith() {
+  const s = S!;
+  const tabs: [GroupView, string][] = [['party', `출전 파티 ${s.party.length}`], ['all', `전체 단원 ${s.roster.length}`], ['bag', `가방 ${s.inventory.length}`]];
+  const body = smithView === 'bag' ? bagList('smith')
+    : (smithView === 'party' ? G.partyChars(s) : orderedRoster(s)).map((c) => equipGroup(c, 'smith')).join('');
+  return `<div class="wrap">${backBtn()}
+    <h2>대장간</h2>
+    <p class="small mute">실패해도 단계는 내려가지 않고 재료만 소모됩니다. 실패할 때마다 다음 성공률 +5%p. 보유: 강화석 <b>${s.stones}</b> · 축복 <b>${s.blessings}</b></p>
+    <label class="chk"><input type="checkbox" id="bless" data-a="toggleBless" ${useBlessing ? 'checked' : ''} ${s.blessings ? '' : 'disabled'}> 축복 주문서 사용 (성공률 +10%p)</label>
+    <div class="tabs" role="group" aria-label="보기">${tabs.map(([v, n]) => `<button class="${smithView === v ? 'on' : ''}" data-a="smithView" data-v="${v}">${n}</button>`).join('')}</div>
+    <div class="groups">${body}</div>
+  </div>`;
+}
+
+/** 착용 중인 세트 효과 */
+function setStatus(c: Character) {
+  const cnt: Record<string, number> = {};
+  for (const e of Object.values(c.equipment)) { const st = e && EQUIP_BY_ID[e.baseId].set; if (st) cnt[st] = (cnt[st] ?? 0) + 1; }
+  const ids = Object.keys(cnt);
+  if (!ids.length) return '';
+  return `<div class="setbonus">${ids.map((id) => { const d = SET_BY_ID[id], n = cnt[id]; return `<div class="small"><span class="settag">${esc(d.name)} ${n}/3</span> <span class="${n >= 2 ? 'on' : 'mute'}">2세트: ${esc(d.twoText)}</span> · <span class="${n >= 3 ? 'on' : 'mute'}">3세트: ${esc(d.threeText)}</span></div>`; }).join('')}</div>`;
+}
+let forgeSet = 'ash';
+let forgeJob: BaseJob = 'warrior';
+function viewForge() {
+  const s = S!;
+  const set = SET_BY_ID[forgeSet];
+  const bases = SET_BASES.filter((b) => b.set === forgeSet && (b.slot !== 'weapon' || b.jobs?.[0] === forgeJob));
+  const raidSet = forgeSet === RAID_SET;
+  const card = (b: typeof bases[number]) => {
+    const c = CRAFT_COST[b.slot], rc = RAID_CRAFT_COST[b.slot];
+    const can = raidSet ? s.scales >= rc.scales && s.gold >= rc.gold : s.cores >= c.cores && s.gold >= c.gold;
+    const st = Object.entries(b.stats).map(([k, v]) => `${STAT_LABEL[k as StatKey]} +${v}`).join(', ');
+    return `<div class="icard r5b forgecard"><div class="row" style="gap:10px;align-items:center"><span class="eico r5e setico" style="width:64px;height:64px">${equipSprite(equipKind(b.slot, b.jobs?.[0]), 8, { size: 60, set: b.set })}</span>
+      <div><b class="r5">${esc(b.name)}</b><div class="small mute">${({ weapon: '무기', armor: '갑옷', accessory: '장신구' } as Record<string, string>)[b.slot]}${b.jobs ? ` · ${JOBS[b.jobs[0]].name}` : ''} · 기본 ${st}</div></div></div>
+      <div class="small">재료: ${raidSet ? `벨리알의 파편 ${rc.scales} · ${fmt(rc.gold)}G` : `군단장의 핵 ${c.cores} · ${fmt(c.gold)}G`}</div>
+      <button class="btn" data-a="craft" data-id="${b.id}" ${can ? '' : 'disabled'}>제작</button></div>`;
+  };
+  return `<div class="wrap">${backBtn()}
+    <h2>제작소</h2>
+    <p class="small mute">마왕성 입구에서 모은 재료로 원하는 세트 장비를 만들어요. 만든 장비는 영웅 ${SET_RARITY[4]}% · 전설 ${SET_RARITY[5]}% 등급으로 나오고, 강화·제련도 그대로 할 수 있어요.<br>
+    재료 드롭(마왕성): 군단장의 핵 — 일반 ${SHARD_CHANCE.normal}% · 엘리트·보스 확정 (보스 25~38개) · 일일 던전 '군단의 잔해' · 레이드 / 세트 장비 직접 드롭 — 엘리트 ${SET_DROP_CHANCE.elite}% · 보스 ${SET_DROP_CHANCE.boss}%</p>
+    <div class="panel row" style="gap:16px;flex-wrap:wrap">
+      <span class="row" style="gap:6px">${equipSprite('accessory', 8, { size: 36, set: 'demon' })}<span>군단장의 핵 <b>${s.cores}</b></span></span>
+      <span class="row" style="gap:6px">${monsterSprite('belialFire', { size: 36, tags: ['demon'] })}<span>벨리알의 파편 <b>${s.scales}</b></span></span>
+      <span>골드 <b>${fmt(s.gold)}</b></span>
+    </div>
+    <div class="tabs" role="group" aria-label="세트" style="margin-top:12px">${SETS.map((x) => `<button class="${forgeSet === x.id ? 'on' : ''}" data-a="forgeSet" data-v="${x.id}">${x.id === RAID_SET ? '레이드 · ' : ''}${esc(x.name)}</button>`).join('')}</div>
+    ${raidSet ? '<p class="small mute">레이드 장비는 개인 레이드에서 얻는 벨리알의 파편으로 만들어요. 레이드 보스에게만 강해지는 대신 다른 세트 효과를 포기해야 해요.</p>' : ''}
+    <div class="panel setinfo"><b class="r5">${esc(set.name)} 세트</b> <span class="small mute">${esc(set.desc)}</span>
+      <div class="small" style="margin-top:6px"><b>2세트</b> ${esc(set.twoText)} · <b>3세트</b> ${esc(set.threeText)}</div></div>
+    <div class="tabs" role="group" aria-label="무기 직업">${(['warrior', 'mage', 'archer', 'priest'] as BaseJob[]).map((j) => `<button class="${forgeJob === j ? 'on' : ''}" data-a="forgeJob" data-v="${j}">${JOBS[j].name} 무기</button>`).join('')}</div>
+    <div class="petgrid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">${bases.map(card).join('')}</div>
+  </div>`;
+}
+
+function viewPets() {
+  const s = S!;
+  const act = G.activePet(s);
+  const list = [...s.pets].sort((a, b) => (a.uid === s.activePet ? -1 : b.uid === s.activePet ? 1 : b.grade - a.grade || b.stars - a.stars || a.kind.localeCompare(b.kind)));
+  const dupes = (p: Pet) => s.pets.some((x) => x.uid !== p.uid && x.kind === p.kind && x.grade === p.grade && x.uid !== s.activePet);
+  const cards = list.map((p) => {
+    const on = p.uid === s.activePet;
+    return `<div class="petcard r${p.grade}b ${on ? 'on' : ''}">
+      <div class="petpic">${petSprite(p.kind, p.grade, { size: 72 })}</div>
+      <div class="row" style="justify-content:space-between"><b class="g${p.grade}">${esc(PET_BY_ID[p.kind].name)}</b><span class="small g${p.grade}">${PET_GRADE_NAME[p.grade]}</span></div>
+      <div class="stars" aria-label="${p.stars}성">${'★'.repeat(p.stars)}${'☆'.repeat(PET_MAX_STARS - p.stars)}</div>
+      <div class="small">${esc(petEffectText(p))}</div>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">
+        ${on ? '<span class="tag">동행 중</span>' : `<button class="btn sm" data-a="petUse" data-id="${p.uid}">데려가기</button>`}
+        ${p.stars < PET_MAX_STARS ? `<button class="btn ghost sm" data-a="petMerge" data-id="${p.uid}" ${dupes(p) ? '' : 'disabled'} title="같은 종류·등급 펫 하나를 먹여 +1성">합성</button>` : ''}
+        ${on ? '' : `<button class="btn ghost sm" data-a="petSell" data-id="${p.uid}">보내기 ${fmt(petSellPrice(p))}G</button>`}
+      </div></div>`;
+  }).join('');
+  return `<div class="wrap">${backBtn()}
+    <h2>펫 우리</h2>
+    <p class="small mute">펫 한 마리를 데려가면 출전 파티 전원이 효과를 받아요. 등급별 기본 효과 ${Object.values(PET_GRADE_PCT).join('/')}%, 같은 종류·등급 펫을 합성하면 ★ 하나당 +1%p (최대 ★${PET_MAX_STARS}).<br>
+    알 부화 확률: 일반 ${EGG_ODDS[1]}% · 고급 ${EGG_ODDS[2]}% · 희귀 ${EGG_ODDS[3]}% · 영웅 ${EGG_ODDS[4]}% · 전설 ${EGG_ODDS[5]}%. 보스를 처음 잡으면 알을 하나 줘요 (마왕성 보스는 희귀 이상).</p>
+    <div class="panel row" style="gap:10px;flex-wrap:wrap;align-items:center">
+      ${act ? `<div class="petpic sm">${petSprite(act.kind, act.grade, { size: 56 })}</div>` : itemSprite('egg', { size: 48 })}
+      <div style="flex:1;min-width:200px">${act ? `동행 중: <b class="g${act.grade}">${esc(PET_BY_ID[act.kind].name)}</b> ${'★'.repeat(act.stars)} · ${esc(petEffectText(act))}` : '<span class="mute">동행 중인 펫이 없어요</span>'}</div>
+      <button class="btn" data-a="buyEgg" data-n="1" ${s.gold < EGG_PRICE ? 'disabled' : ''}>알 1개 · ${fmt(EGG_PRICE)}G</button>
+      <button class="btn ghost" data-a="buyEgg" data-n="10" ${s.gold < EGG_PRICE * 10 ? 'disabled' : ''}>알 10개 · ${fmt(EGG_PRICE * 10)}G</button>
+    </div>
+    <div class="petgrid">${cards || '<p class="mute">아직 펫이 없어요.</p>'}</div>
+  </div>`;
+}
+
+let refineView: GroupView = 'party';
+function viewRefinery() {
+  const s = S!;
+  const tabs: [GroupView, string][] = [['party', `출전 파티 ${s.party.length}`], ['all', `전체 단원 ${s.roster.length}`], ['bag', `가방 ${s.inventory.length}`]];
+  const body = refineView === 'bag' ? bagList('refine')
+    : (refineView === 'party' ? G.partyChars(s) : orderedRoster(s)).map((c) => equipGroup(c, 'refine')).join('');
+  return `<div class="wrap">${backBtn()}
+    <h2>제련소</h2>
+    <p class="small mute">제련석으로 장비 옵션 3칸을 새로 새겨요. 마음에 드는 옵션은 자물쇠로 고정하면 그대로 남고, 고정한 칸마다 제련석이 2개씩 더 들어요. 깊은 층 장비일수록 옵션 수치가 높아요.<br>
+    제련석은 던전에서만 나와요: 일반 몬스터 ${REFINE_CHANCE.normal}% · 엘리트 ${REFINE_CHANCE.elite}% · 보스 ${REFINE_CHANCE.boss}%. 보유 <b>${s.refineStones}</b>개</p>
+    <div class="tabs" role="group" aria-label="보기">${tabs.map(([v, n]) => `<button class="${refineView === v ? 'on' : ''}" data-a="refineView" data-v="${v}">${n}</button>`).join('')}</div>
+    <div class="groups">${body}</div>
+  </div>`;
+}
+
+function viewShop() {
+  const s = S!;
+  const pots = G.potionsAvailable(s).map((p) => `<div class="item"><div><span class="eico">${potionIcon(p.id)}</span><span class="iname">${esc(p.name)}</span> <span class="small mute">보유 ${s.potions[p.id] ?? 0}</span><div class="istat">${MOD_LABEL[p.mod.key] ?? (p.mod.key === 'goldGain' ? '골드 획득' : p.mod.key)} +${p.mod.value}${p.mod.kind === 'pct' ? '%' : '%p'} · 이번 탐험 동안 파티 전체</div></div><div class="row buyn">${[1, 10, 100].map((n) => `<button class="btn sm ${n > 1 ? 'ghost' : ''}" data-a="buyPotion" data-id="${p.id}" data-n="${n}" ${s.gold < p.price * n ? 'disabled' : ''}>${n > 1 ? `+${n} · ` : ''}${fmt(p.price * n)}G</button>`).join('')}</div></div>`).join('');
+  const eq = G.shopList(s).map((x) => {
+    const b = EQUIP_BY_ID[x.baseId];
+    const fake: Equip = { uid: '', baseId: x.baseId, rarity: x.rarity, enhance: 0, failStack: 0, options: [] };
+    return `<div class="item"><div>${equipLine(fake)}</div><button class="btn sm" data-a="buyEquip" data-id="${b.id}" data-r="${x.rarity}">${fmt(x.price)}G</button></div>`;
+  }).join('');
+  const sell = s.inventory.map((e) => `<div class="item"><div>${equipLine(e)}</div><button class="btn ghost sm" data-a="sell" data-e="${esc(e.uid)}">${fmt(G.sellPrice(e))}G 판매</button></div>`).join('');
+  const deals = s.deals.map((d, i) => `<div class="icard r${d.equip.rarity}b"><div class="who"><span class="small mute">오늘의 특가</span></div><div>${equipLine(d.equip)}</div><div class="row" style="margin-top:auto"><button class="btn sm" data-a="buyDeal" data-i="${i}">${fmt(d.price)}G 구매</button></div></div>`).join('');
+  const sp = G.stonePrice(s);
+  return `<div class="wrap">${backBtn()}
+    <h2>잡화점</h2>
+    <section class="grid" style="margin-top:12px">
+      <div class="row" style="justify-content:space-between"><h3>오늘의 특가 <span class="small mute">탐험에서 돌아올 때마다 바뀌어요</span></h3></div>
+      <div class="igrid" style="margin-top:0">${deals || '<p class="mute">오늘 특가는 모두 팔렸어요.</p>'}</div>
+      <div class="item"><div><span class="iname">강화석</span> <span class="small mute">보유 ${s.stones} · 오늘 남은 재고 ${s.stoneStock}개</span><div class="istat">개당 ${fmt(sp)}G</div></div>
+        <div class="row">${[1, 5, 10].map((n) => `<button class="btn sm" data-a="buyStones" data-n="${n}" ${s.stoneStock ? '' : 'disabled'}>${n}개 ${fmt(sp * Math.min(n, Math.max(1, s.stoneStock)))}G</button>`).join('')}</div></div>
+    </section>
+    <div class="cols" style="margin-top:16px">
+      <section class="grid"><h3>버프 물약</h3><div class="items">${pots}
+        <div class="item"><div><span class="iname">축복 주문서</span> <span class="small mute">보유 ${s.blessings}</span><div class="istat">강화 성공률 +10%p</div></div><div class="row buyn">${[1, 10].map((n) => `<button class="btn sm ${n > 1 ? 'ghost' : ''}" data-a="buyBless" data-n="${n}" ${s.gold < G.blessingPrice * n ? 'disabled' : ''}>${n > 1 ? `+${n} · ` : ''}${fmt(G.blessingPrice * n)}G</button>`).join('')}</div></div></div>
+        <h3 style="margin-top:12px">장비</h3><div class="items">${eq}</div></section>
+      <section class="grid"><h3>가방 판매</h3><div class="items">${sell || '<p class="mute">팔 장비가 없습니다.</p>'}</div></section>
+    </div>
+  </div>`;
+}
+
+function viewTraining() {
+  const s = S!;
+  const list = [...s.roster].sort((a, b) => (s.party.includes(b.uid) ? 1 : 0) - (s.party.includes(a.uid) ? 1 : 0) || b.level - a.level);
+  const rows = list.map((c) => {
+    const no = G.canTrain(s, c);
+    const cost = G.trainCost(c);
+    return `<div class="pcard ${s.party.includes(c.uid) ? 'inparty' : ''}"><div class="ico">${avatar(c)}</div>
+      <div class="cinfo"><div class="cname">${esc(c.name)} ${stars(c.grade)}</div>
+        <div class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} / 상한 ${levelCap(c)} · <span class="cp">전투력 ${fmt(charPower(c))}</span></div>
+        ${no ? `<div class="small mute">${esc(no)}</div>` : ''}</div>
+      <div class="pact"><button class="btn sm" data-a="train" data-uid="${esc(c.uid)}" ${no ? 'disabled' : ''}>Lv.${c.level + 1} · ${fmt(cost)}G</button></div></div>`;
+  }).join('');
+  return `<div class="wrap">${backBtn()}
+    <h2>훈련소</h2>
+    <p class="mute">골드를 내고 단원을 한 레벨씩 훈련시켜요. 직업 레벨 상한까지 올릴 수 있어요.</p>
+    <div class="bench">${rows || '<p class="mute">훈련할 단원이 없습니다.</p>'}</div>
+  </div>`;
+}
+
+function viewTemple() {
+  const s = S!;
+  const list = s.roster.filter((c) => c.traitIds.length);
+  const rows = list.map((c) => {
+    const cost = G.rerollTraitCost(c);
+    return `<div class="pcard"><div class="ico">${avatar(c)}</div>
+      <div class="cinfo"><div class="cname">${esc(c.name)} ${stars(c.grade)}</div>
+        <div class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} · 재설정 ${fmt(cost)}G</div>
+        <div class="slist" style="margin-top:6px">${c.traitIds.map((t, i) => `<div class="sitem"><span class="t">${traitTag(t)}</span><button class="btn ghost sm" data-a="reroll" data-uid="${esc(c.uid)}" data-i="${i}">다시 받기</button></div>`).join('')}
+        ${c.uniqueTraitId ? `<div class="sitem"><span class="t">${traitTag(c.uniqueTraitId)}</span><span class="small mute">고유 특성은 바꿀 수 없어요</span></div>` : ''}</div></div></div>`;
+  }).join('');
+  return `<div class="wrap">${backBtn()}
+    <h2>신전</h2>
+    <p class="mute">골드를 바치고 특성 하나를 무작위로 다시 받아요. 지금 가진 특성과 겹치지 않는 것 중에서 나와요.</p>
+    <div class="bench">${rows || '<p class="mute">특성을 가진 단원이 없습니다.</p>'}</div>
+  </div>`;
+}
+
+/** 선택한 층에서 얻을 수 있는 것 (확률 공개) */
+function dropInfo(floor: number) {
+  const z = zoneOf(floor);
+  const boss = z.boss.floor === floor;
+  const tier = tierOfFloor(floor);
+  const w = rarityWeights(floor);
+  const sum = w.reduce((a, b) => a + b, 0);
+  const pct = (x: number) => `${(Math.round((x / sum) * 1000) / 10).toString()}%`;
+  const items = EQUIP_BASES.filter((b) => b.tier === tier);
+  const st = STONE_CHANCE(floor), bl = BLESS_CHANCE(floor);
+  const mons = z.pool.map((p) => esc(MONSTERS[p.id].name)).join(', ');
+  return `<details class="panel drops" ${dropOpen ? 'open' : ''} data-drops><summary><h3>${localFloor(floor)}층에서 얻을 수 있는 것</h3></summary>
+    <div class="dgrid">
+      <div><div class="small mute">등장 몬스터</div>
+        <p>${boss ? `<b class="g5">보스 ${esc(MONSTERS[z.boss.id].name)}</b> + ${z.boss.adds.map((id) => esc(MONSTERS[id].name)).join(', ')}` : `${mons}<br><span class="small">웨이브마다 10% 확률로 엘리트 <b class="g4">${esc(MONSTERS[z.elite].name)}</b></span>`}</p></div>
+      <div><div class="small mute">장비 (T${tier})</div>
+        <div class="tags">${items.map((b) => `<span class="tag">${esc(b.name)}</span>`).join('')}</div></div>
+      <div><div class="small mute">장비가 나올 확률</div>
+        <p class="small">일반 몬스터 ${DROP_CHANCE.normal}% · 엘리트 ${DROP_CHANCE.elite}% · 보스 ${DROP_CHANCE.boss}% (희귀 이상 확정)</p>
+        <div class="small mute" style="margin-top:6px">나온 장비의 등급 확률</div>
+        <div class="rprob">${(['일반', '고급', '희귀', '영웅', '전설'] as const).map((n, i) => `<span class="r${i + 1}">${n} ${pct(w[i])}</span>`).join('')}</div></div>
+      <div><div class="small mute">재료</div>
+        <p class="small">강화석: 일반 몬스터 ${Math.round(st.normal * 10) / 10}% (${1 + Math.floor(floor / 15)}개) · 엘리트 ${st.elite}% · ${boss ? `보스 확정 ${st.bossCount}개` : `보스 처치 시 확정`}<br>
+        축복 주문서: 엘리트 ${bl.elite}% · ${boss ? `보스 확정 ${bl.bossCount}장` : '보스 처치 시 확정'}<br>
+        제련석: 일반 몬스터 ${REFINE_CHANCE.normal}% · 엘리트 ${REFINE_CHANCE.elite}% · 보스 ${REFINE_CHANCE.boss}%${floor > 50 ? `<br>군단장의 핵: 일반 ${SHARD_CHANCE.normal}% · 엘리트·보스 확정<br><b class="r5">세트 장비</b>: 엘리트 ${SET_DROP_CHANCE.elite}% · 보스 ${SET_DROP_CHANCE.boss}% (4세트 중 무작위)` : ''}${boss ? '<br>보스 첫 처치: 희귀 이상 장비 1개 + 보너스 골드' : ''}</p></div>
+    </div>
+    <p class="small mute" style="margin:8px 0 0">황금손 특성·탐욕의 물약 같은 효과로 골드·장비 획득량이 늘 수 있어요.</p>
+  </details>`;
+}
+
+let gateRegion: string | null = null;
+/** 던전 입구 첫 화면: 지역 고르기 */
+function viewRegions() {
+  const s = S!;
+  const cards = REGIONS.map((r) => {
+    if (!r.floors) return `<div class="region locked"><h3>${esc(r.name)}</h3><p class="small mute">${esc(r.desc)}</p><span class="tag">준비 중</span></div>`;
+    const [a, b] = r.floors;
+    const open = s.maxFloor + 1 >= a;
+    const best = Math.max(0, Math.min(s.maxFloor, b) - a + 1);
+    const total = b - a + 1;
+    const zones = ZONES.filter((z) => z.floors[0] >= a && z.floors[1] <= b).map((z) => z.name.replace(/^마왕성 · /, '')).join(' · ');
+    return `<button class="region ${open ? '' : 'locked'}" data-a="pickRegion" data-v="${r.id}" ${open ? '' : 'disabled'}>
+      <h3>${esc(r.name)}</h3><p class="small">${esc(r.desc)}</p>
+      <div class="small mute">${esc(zones)}</div>
+      <div class="bar xp" style="margin-top:8px"><i style="width:${Math.round((best / total) * 100)}%"></i></div>
+      <div class="small">${open ? `진행 ${best}/${total}층${best >= total ? ' · 정복!' : ''}` : `${REGIONS[REGIONS.indexOf(r) - 1]?.name ?? ''} 끝까지 클리어하면 열려요`}</div>
+    </button>`;
+  }).join('');
+  return `<div class="wrap">${backBtn()}
+    <h2>던전 입구</h2>
+    <p class="mute">들어갈 지역을 고르세요. 지역마다 1층부터 시작하고, 5층마다 새 구역과 보스가 있어요.</p>
+    <div class="regions">${cards}
+    </div>
+  </div>`;
+}
+
+/** 실행 중 층 표시: 일일 던전이면 "황금 금고 3단계" */
+function runLabel(f: number) {
+  if (EX?.settings.tower) return `무한 탑 ${f}층`;
+  const rd = EX?.settings.raid;
+  if (rd) return `레이드 · ${RAID_DIFF_NAME[rd.diff]}`;
+  const d = EX?.settings.daily;
+  return d ? `${DAILY_BY_ID[d.id].name} ${d.stage}단계` : `${localFloor(f)}층`;
+}
+const dailyStage: Record<string, number> = {};
+const REWARD_ICON: Record<string, () => string> = {
+  gold: () => itemSprite('gold', { size: 40 }), refine: () => itemSprite('refine', { size: 40 }), stone: () => itemSprite('stone', { size: 40 }),
+  exp: () => itemSprite('scroll', { size: 40 }), legion: () => equipSprite('accessory', 8, { size: 40, set: 'demon' }),
+};
+let raidDiff: RaidDiff = 'normal';
+function viewRaid() {
+  const s = S!;
+  const st = G.raidState(s), form = raidForm(st.week);
+  if (!G.raidOpen(s, raidDiff)) raidDiff = 'normal';
+  const max = raidMaxHp(raidDiff), left = G.raidHpLeft(s, raidDiff), pct = (left / max) * 100;
+  const claimed = new Set(st.claimed[raidDiff] ?? []);
+  const m = RAID_DIFF[raidDiff].mult;
+  const ms: [number, string][] = ([[25, `제련석 ${10 * m}`], [50, `군단장의 핵 ${70 * m}`], [75, `펫 알 (${RAID_DIFF[raidDiff].eggMin === 4 ? '영웅' : '희귀'} 이상)`], [100, `전설 세트 장비 · 핵 ${5 * m} · 골드 ${fmt(100000 * m)}`]] as [number, string][]).map(([p, t]) => [p, `${t} · 벨리알의 파편 ${MILESTONE_SCALES[p] * m}`]);
+  gatePotions = gatePotions.filter((id) => (s.potions[id] ?? 0) > 0);
+  const owned = POTIONS.filter((p) => (s.potions[p.id] ?? 0) > 0);
+  const open = s.maxFloor >= 50;
+  return `<div class="wrap">${backBtn()}
+    <h2>개인 레이드</h2>
+    ${open ? '' : '<p class="panel">마왕숲 50층을 클리어하면 열려요.</p>'}
+    <div class="panel raidboss">
+      <div class="raidpic">${monsterSprite(form.monster, { size: 128, boss: true, tags: ['demon', 'boss'] })}</div>
+      <div style="flex:1;min-width:240px">
+        <div class="small mute">이번 주 · ${nextResetText()} 형태가 바뀜</div>
+        <h3 style="margin:2px 0">군단장 벨리알 · ${esc(form.name)}</h3>
+        <p class="small" style="margin:4px 0"><b class="r5">공략</b> ${esc(form.tip)}</p>
+        <div class="tabs" role="group" aria-label="난이도" style="margin:8px 0">${RAID_DIFFS.map((d) => `<button class="${raidDiff === d ? 'on' : ''}" data-a="raidDiff" data-v="${d}" ${G.raidOpen(s, d) ? '' : 'disabled'} title="${G.raidOpen(s, d) ? '' : '이전 난이도를 처치하면 열려요'}">${RAID_DIFF_NAME[d]}${st.everKilled[d] ? ' ✓' : ''}</button>`).join('')}</div>
+        <div class="bar hp raidbar" aria-label="남은 HP"><i style="width:${pct.toFixed(1)}%"></i></div>
+        <div class="row small" style="justify-content:space-between"><span>남은 HP ${fmt(left)} / ${fmt(max)} (${pct.toFixed(1)}%)</span><span>이번 주 최고 한 방 ${fmt(st.best)}</span></div>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="panel">
+        <h3>구간 보상 <span class="small mute">이번 주 · ${RAID_DIFF_NAME[raidDiff]}</span></h3>
+        ${ms.map(([p, t]) => `<div class="msrow ${claimed.has(p) ? 'done' : ''}"><b>${p === 100 ? '처치' : `${p}%`}</b><span class="small">${esc(t)}</span><span class="small">${claimed.has(p) ? '받음' : ''}</span></div>`).join('')}
+        <p class="small" style="margin:8px 0 0">구간마다 <b>벨리알의 파편</b>도 받아요. 파편으로 제작소에서 <b>군단장 사냥꾼 세트</b>(레이드 보스 피해 최대 +70%)를 만들 수 있어요. 보유 <b>${s.scales}</b>개 <button class="btn ghost sm" data-a="go" data-to="forge">제작소</button></p>
+        <p class="small mute" style="margin:6px 0 0">도전할 때마다 가한 피해만큼 골드·제련석·벨리알의 파편도 받아요. 한 번에 ${RAID_ROUNDS}라운드, 파티가 쓰러져도 넣은 피해는 남아요.</p>
+      </div>
+      <div class="panel">
+        <h3>도전 <span class="small mute">오늘 ${G.raidLeft(s)}/${RAID_LIMIT} · 자정 초기화</span></h3>
+        <p class="small">파티 전투력 ${fmt(G.statePower(s))} · 펫 ${G.activePet(s) ? esc(PET_BY_ID[G.activePet(s)!.kind].name) : '없음'}</p>
+        <h3 style="margin-top:10px">버프 물약 <span class="small mute">최대 ${MAX_POTIONS}종</span></h3>
+        <div class="pots">${owned.map((p) => `<button class="pot ${gatePotions.includes(p.id) ? 'on' : ''}" data-a="pickPotion" data-id="${p.id}"><span class="row" style="gap:4px">${potionIcon(p.id, 24)}${esc(p.name)}</span><span class="small mute">×${s.potions[p.id]}</span></button>`).join('') || '<p class="small mute">물약이 없어요.</p>'}</div>
+        <button class="btn" style="margin-top:10px;width:100%" data-a="raidGo" ${open && G.raidLeft(s) > 0 && left > 0 ? '' : 'disabled'}>${left > 0 ? `${RAID_DIFF_NAME[raidDiff]} 도전` : '이번 주 처치 완료'}</button>
+      </div>
+    </div>
+  </div>`;
+}
+function startRaidRun() {
+  const s = S!;
+  const ex = G.startRaid(s, raidDiff, gatePotions);
+  if (typeof ex === 'string') { toast(ex, true); return; }
+  EX = ex;
+  gatePotions = [];
+  saveGame(s);
+  units = {};
+  screen = 'dungeon';
+  render();
+  drawParty();
+  playFloor();
+}
+
+const unlockShort = (f: number) => `${regionOf(f).name.includes('성') ? '성' : '숲'} ${localFloor(f)}층`;
+
+function viewTower() {
+  const s = S!;
+  if (!G.towerOpen(s)) return `<div class="wrap">${backBtn()}<h2>무한 탑</h2><p class="mute">마왕숲 ${TOWER_UNLOCK}층을 클리어하면 열려요.</p></div>`;
+  const best = G.towerState(s).best, next = best + 1;
+  const power = G.statePower(s);
+  const rows = Array.from({ length: 6 }, (_, i) => next + i).map((t) => {
+    const g = towerGimmick(t), boss = isTowerBoss(t), r = towerReward(t);
+    const bname = boss ? MONSTERS[towerBoss(t).id].name : '';
+    return `<div class="trow ${boss ? 'boss' : ''} ${t === next ? 'next' : ''}"><b class="tf">${t}층</b><div class="tg"><span>${g.icon} <b>${esc(g.name)}</b>${boss ? ` · <span class="r5">보스 ${esc(bname)}</span>` : ''}</span><span class="small mute">${esc(g.desc)} — ${esc(g.tip)}</span></div>
+      <span class="small tr">${fmt(r.gold)}G · 핵 ${r.cores}${r.refineStones ? ` · 제련석 ${r.refineStones}` : ''}${r.egg ? ` · ${r.egg === 5 ? '전설' : '영웅'} 이상 알` : ''}</span></div>`;
+  }).join('');
+  return `<div class="wrap">${backBtn()}
+    <h2>무한 탑</h2>
+    <p class="mute">끝없이 이어지는 탑이에요. 층마다 <b>기믹이 고정</b>되어 있어서 미리 보고 세팅을 맞출 수 있어요. 10층마다 보스가 나와요. 이기면 파티가 완전히 회복되고 다음 층으로 계속 올라가요. 져도 잃는 건 없고, <b>처음 돌파한 층</b>만 보상을 줘요. 입장 제한도 없어요.</p>
+    <div class="sum" style="margin:12px 0"><div><span class="small mute">최고 기록</span><b>${best}층</b></div><div><span class="small mute">파티 전투력</span><b>${fmt(power)}</b></div><div><span class="small mute">군단장의 핵</span><b>${fmt(s.cores)}</b></div></div>
+    <div class="panel"><h3 style="margin-top:0">다가오는 층</h3><div class="tlist">${rows}</div>
+      <p class="small mute" style="margin:8px 0 0">25층마다 펫 알 보상이 있어요. 전투 리포트의 패배 분석을 보고 공격 대상·전열·장비를 바꿔가며 오르세요.</p>
+      <button class="btn" data-a="towerGo" style="margin-top:10px">${next}층부터 도전</button></div>
+  </div>`;
+}
+
+function viewDaily() {
+  const s = S!;
+  const power = G.statePower(s);
+  const cards = DAILIES.map((d) => {
+    const open = G.dailyOpen(s, d);
+    if (!open) return `<div class="panel daily locked"><div class="row" style="gap:10px">${REWARD_ICON[d.reward]()}<div><h3 style="margin:0">${esc(d.name)}</h3><p class="small mute" style="margin:2px 0 0">${d.unlockFloor >= 50 ? '마왕숲 50층 클리어' : `마왕숲 ${d.unlockFloor}층 클리어`} 후 개방</p></div></div></div>`;
+    const cleared = G.dailyState(s).cleared[d.id] ?? 0;
+    const maxOpen = Array.from({ length: DAILY_STAGES }, (_, i) => i + 1).filter((k) => G.stageOpen(s, d, k)).pop() ?? 1;
+    const st = Math.min(dailyStage[d.id] ?? Math.min(maxOpen, cleared + 1), maxOpen);
+    const f = d.stageFloor(st), need = floorPower(f);
+    const r = dailyReward(d, st, rewardScale(f));
+    const rw = [r.gold && `골드 ${fmt(r.gold)}`, r.exp && `경험치 ${fmt(r.exp)} (파티 나눔)`, r.stones && `강화석 ${r.stones}`, r.blessings && `축복 ${r.blessings}`, r.refineStones && `제련석 ${r.refineStones}`, r.cores && `군단장의 핵 ${r.cores}`].filter(Boolean).join(' · ');
+    const left = G.dailyLeft(s, d.id);
+    const lv = powerLevel(power, f, hasHealer(G.partyChars(s)));
+    return `<div class="panel daily">
+      <div class="row" style="gap:10px;align-items:flex-start">${REWARD_ICON[d.reward]()}<div style="flex:1"><div class="row" style="justify-content:space-between"><h3 style="margin:0">${esc(d.name)}</h3><span class="tag ${left ? '' : 'mute'}">오늘 ${left}/${DAILY_LIMIT}</span></div>
+        <p class="small mute" style="margin:2px 0">${esc(d.desc)}</p><p class="small" style="margin:0"><b class="r5">공략</b> ${esc(d.tip)}</p></div></div>
+      <div class="floors stages" role="group" aria-label="단계">${Array.from({ length: DAILY_STAGES }, (_, i) => i + 1).map((k) => `<button class="fl ${k === st ? 'on' : ''} ${k <= cleared ? 'cleared' : ''}" data-a="dailyStage" data-id="${d.id}" data-v="${k}" ${G.stageOpen(s, d, k) ? '' : 'disabled'} aria-pressed="${k === st}"><b>${k}단계</b><span class="${G.stageOpen(s, d, k) ? (k <= cleared ? 'sw' : '') : 'lk'}">${!G.stageOpen(s, d, k) ? `🔒${unlockShort(d.stageUnlock(k))}` : k <= cleared ? '소탕 가능' : fmt(floorPower(d.stageFloor(k)))}</span></button>`).join('')}</div>
+      ${maxOpen < DAILY_STAGES ? `<p class="small mute" style="margin:4px 0 0">다음 개방: <b>${maxOpen + 1}단계</b> — ${esc(floorName(d.stageUnlock(maxOpen + 1)))} 클리어 시</p>` : ''}
+      <p class="small ${lv}t" style="margin:6px 0 2px">권장 전투력 ${fmt(need)} · 파티 ${fmt(power)} · ${{ ok: '충분', close: '조금 부족', low: '많이 부족' }[lv]}</p>
+      <p class="small" style="margin:0 0 8px"><b>보상</b> ${rw}</p>
+      <div class="row" style="gap:8px"><button class="btn" data-a="dailyGo" data-id="${d.id}" data-v="${st}" ${left ? '' : 'disabled'}>도전</button>
+        <button class="btn ghost" data-a="dailySweep" data-id="${d.id}" data-v="${st}" ${left && st <= cleared ? '' : 'disabled'} title="클리어한 단계는 전투 없이 보상">소탕</button>
+        <span class="small mute">실패하면 입장 횟수는 그대로</span></div>
+    </div>`;
+  }).join('');
+  return `<div class="wrap">${backBtn()}
+    <h2>일일 던전</h2>
+    <p class="mute">던전마다 하루 ${DAILY_LIMIT}번 (한국 시간 자정 초기화). 단계마다 개방 조건(🔒)이 표시돼 있고, 한 번 클리어한 단계는 <b>소탕</b>으로 바로 보상을 받을 수 있어요.</p>
+    <div class="dailies">${cards}</div>
+  </div>`;
+}
+
+function viewGate() {
+  const s = S!;
+  if (!gateRegion) return viewRegions();
+  const region = REGIONS.find((r) => r.id === gateRegion)!;
+  const [rA, rB] = region.floors!;
+  const st = s.settings;
+  if (st.startFloor < rA || st.startFloor > rB) st.startFloor = rA;
+  if (!region.repeat && st.mode === 'repeat') st.mode = 'advance';
+  if (st.targetFloor > rB) st.targetFloor = rB;
+  const party = G.partyChars(s);
+  const owned = POTIONS.filter((p) => (s.potions[p.id] ?? 0) > 0);
+  gatePotions = gatePotions.filter((id) => (s.potions[id] ?? 0) > 0);
+  const maxStart = Math.min(G.maxStartFloor(s), rB);
+  if (st.startFloor > maxStart) st.startFloor = Math.max(rA, maxStart);
+  const L = localFloor;
+  if (st.targetFloor < st.startFloor) st.targetFloor = st.startFloor;
+  const can = G.canDepart(s);
+  const rep = st.mode === 'repeat';
+  const opt = (v: number | string, cur: number | string, label: string) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${label}</option>`;
+  const power = G.statePower(s), healer = hasHealer(party);
+  const lastFloor = rep ? st.startFloor : st.targetFloor;
+  const bossInRange = Array.from({ length: MAX_FLOOR / 5 }, (_, i) => (i + 1) * 5).filter((b) => b >= st.startFloor && b <= lastFloor);
+  const bossWarn = bossInRange.length && !healer
+    ? `진행 범위에 보스(${bossInRange.length > 3 ? `${L(bossInRange[0])}층 외 ${bossInRange.length - 1}곳` : bossInRange.map((b) => `${L(b)}층`).join('·')})가 있어요. 회복 없이는 매우 어려우니 성직자 계열을 넣는 걸 추천해요.` : '';
+  const best = Math.min(s.maxFloor, rB) - rA + 1;
+  return `<div class="wrap"><div class="back row" style="gap:8px"><button class="btn ghost sm" data-a="go" data-to="town">← 마을로</button><button class="btn ghost sm" data-a="pickRegion" data-v="">← 지역 선택</button></div>${hubTabs()}
+    <h2>${esc(region.name)}</h2>
+    <p class="mute">${esc(region.desc)}. 클리어한 최고 층: <b>${best > 0 ? `${best}층 (${esc(zoneOf(Math.min(s.maxFloor, rB)).name)})` : '없음'}</b></p>
+    <p class="small mute" style="margin-top:-6px">최고 기록보다 5층 이상 아래 층은 골드·경험치가 75%, 10층 이상 아래는 50%만 들어와요. 강화석·장비 드롭은 그대로예요.</p>
+    <div class="cols" style="margin-top:12px">
+      <section class="grid">
+        <h3>파티 <span class="small mute">전열/후열 · 공격 대상</span></h3><div class="cards">${[...party].sort((a, b) => (rowOf(a) === rowOf(b) ? 0 : rowOf(a) === 'front' ? -1 : 1)).map((c) => `<div class="gmem row-${rowOf(c)}">${charCard(c, { inParty: true })}${tacticsCtl(c)}</div>`).join('')}</div>
+        <h3>동행 펫</h3>
+        ${G.activePet(s) ? `<p class="small row" style="gap:8px">${petSprite(G.activePet(s)!.kind, G.activePet(s)!.grade, { size: 40 })}<b class="g${G.activePet(s)!.grade}">${esc(PET_BY_ID[G.activePet(s)!.kind].name)}</b> ${'★'.repeat(G.activePet(s)!.stars)} · ${esc(petEffectText(G.activePet(s)!))} <button class="btn ghost sm" data-a="go" data-to="pets">바꾸기</button></p>` : '<p class="small mute">펫이 없어요. 펫 우리에서 알을 사서 부화시켜 보세요. <button class="btn ghost sm" data-a="go" data-to="pets">펫 우리</button></p>'}
+        <h3>버프 물약 <span class="small mute">최대 ${MAX_POTIONS}종, 입장할 때 마심</span></h3>
+        <div class="pots">${owned.map((p) => `<button class="pot ${gatePotions.includes(p.id) ? 'on' : ''}" data-a="pickPotion" data-id="${p.id}"><span class="row" style="gap:4px">${potionIcon(p.id, 24)}${esc(p.name)}</span><span class="small mute">×${s.potions[p.id]}</span></button>`).join('') || '<p class="small mute">물약이 없습니다. 잡화점에서 살 수 있어요.</p>'}</div>
+      </section>
+      <section class="panel grid">
+        <h3>탐험 방식</h3>
+        <div class="seg" role="group" aria-label="탐험 방식">
+          <button data-a="setMode" data-v="advance" class="${rep ? '' : 'on'}"><b>아래로 진행</b><span>층을 내려가며 최고 기록에 도전</span></button>
+          <button data-a="setMode" data-v="repeat" class="${rep ? 'on' : ''}" ${region.repeat ? '' : 'disabled'}><b>한 층 반복</b><span>${region.repeat ? '같은 층을 계속 돌며 파밍' : '이 지역에선 반복 불가'}</span></button>
+        </div>
+        <div class="field"><label>${rep ? '반복할 층' : '시작 층'} <span class="small mute">· 숫자는 권장 전투력</span></label>
+          <div class="floors" role="group" aria-label="층 선택">${Array.from({ length: Math.min(rB, rA - 1 + Math.ceil((maxStart - rA + 2) / 5) * 5) - rA + 1 }, (_, i) => {
+            const f = rA + i, lv = powerLevel(power, f, healer), locked = f > maxStart;
+            return `<button class="fl ${lv} ${f === st.startFloor ? 'on' : ''} ${zoneOf(f).boss.floor === f ? 'boss' : ''}" data-a="pickFloor" data-v="${f}" ${locked ? 'disabled' : ''} aria-pressed="${f === st.startFloor}"><b>${L(f)}층${zoneOf(f).boss.floor === f ? ' 보스' : ''}</b><span>${fmt(floorPower(f))}</span></button>`;
+          }).join('')}</div>
+          <p class="small ${powerLevel(power, st.startFloor, healer)}t">파티 전투력 ${fmt(power)} · ${L(st.startFloor)}층 권장 ${fmt(floorPower(st.startFloor))} · ${{ ok: '충분', close: '조금 부족', low: '많이 부족' }[powerLevel(power, st.startFloor, healer)]}</p>
+          ${healer ? '' : `<p class="small" style="color:var(--gold)">회복 담당이 없어 전투력을 ${Math.round(noHealerFactor(st.startFloor) * 100)}%로 쳐서 판정해요${st.startFloor >= 25 ? ' (이 깊이부터는 회복 없이 거의 불가능)' : ''}.</p>`}
+          <p class="small mute">권장 = 그 층 하나를 체력 가득한 상태로 80% 깨는 수준. 아래로 연속 진행하면 체력이 이어지니 여유를 두세요.</p>
+          <p class="tipline"><b>${L(st.startFloor)}층 공략</b> ${esc(floorTip(st.startFloor))}</p>
+          ${bossInRange.length ? bossCard(bossInRange[0], party, power) : ''}
+          ${st.startFloor > PART1_FLOOR ? '<p class="small mute">마왕성 권장 전투력은 탱커·딜러·힐러를 갖춘 정석 조합 기준이에요. 조합과 공격 대상 설정이 어긋나면 훨씬 더 필요해요.</p>' : ''}
+        </div>
+        ${dropInfo(st.startFloor)}
+        <div class="form">
+          ${rep
+            ? `<div class="field"><label for="g_repeatCount">반복 횟수</label><select id="g_repeatCount" data-g="repeatCount">${[3, 5, 10, 20, 30, MAX_REPEAT].map((v) => opt(v, st.repeatCount, `${v}회`)).join('')}</select></div>`
+            : `<div class="field"><label for="g_targetFloor">목표 층 (도달 시 귀환)</label><select id="g_targetFloor" data-g="targetFloor">${Array.from({ length: rB - st.startFloor + 1 }, (_, i) => opt(st.startFloor + i, st.targetFloor, `${L(st.startFloor + i)}층`)).join('')}</select></div>`}
+          <div class="field"><label for="g_retreatHpPct">HP 귀환 기준 (파티 평균)</label><select id="g_retreatHpPct" data-g="retreatHpPct">${[0, 20, 30, 40, 50].map((v) => opt(v, st.retreatHpPct, v ? `${v}% 이하` : '사용 안 함')).join('')}</select></div>
+          <div class="field"><label for="g_auto">진행</label><select id="g_auto" data-g="auto">${opt(1, st.auto ? 1 : 0, rep ? '자동으로 계속 반복' : '자동으로 다음 층')}${opt(0, st.auto ? 1 : 0, '매번 직접 선택')}</select></div>
+        </div>
+        <label class="chk"><input type="checkbox" data-g="retreatOnDown" ${st.retreatOnDown ? 'checked' : ''}> 파티원이 쓰러지면 귀환</label>
+        ${rep ? '' : `<label class="chk"><input type="checkbox" data-g="stopBeforeBoss" ${st.stopBeforeBoss ? 'checked' : ''}> 보스 층 앞에서 멈추고 묻기</label>`}
+        <label class="chk"><input type="checkbox" data-g="insured" ${st.insured ? 'checked' : ''}> 탐험 보험 ${fmt(G.insuranceCost(st.startFloor))}G · 전멸해도 골드·장비 손실 없음</label>
+        <p class="small mute">${rep ? `층을 클리어할 때마다 HP·MP가 15% 회복되고, ${st.repeatCount}회를 채우거나 귀환 조건에 걸리면 돌아옵니다.` : '층을 클리어할 때마다 HP·MP가 15% 회복됩니다.'}</p>
+        ${can.ok ? '' : `<p class="small" style="color:var(--bad)">${esc(can.msg)}</p>`}
+        <button class="btn" data-a="depart" ${can.ok ? '' : 'disabled'}>${rep ? `${L(st.startFloor)}층 반복 출발` : `${L(st.startFloor)}층부터 출발`}</button>
+      </section>
+    </div>
+  </div>`;
+}
+
+/** 보스 대비 카드: 기믹·피해 성향·지금 파티 점검 */
+function bossCard(f: number, party: Character[], power: number) {
+  const z = zoneOf(f);
+  const boss = MONSTERS[z.boss.id];
+  const adds = z.boss.adds.map((id) => MONSTERS[id]);
+  const all = [boss, ...adds];
+  const has = (p: string) => all.some((m) => (m.passives ?? []).includes(p as never));
+  // 보스 피해 성향: 평타 + 스킬(발동 확률 가중)
+  let magW = 0, physW = 0, aoe = false;
+  const skillW = boss.skillChance / 100;
+  (boss.attackScale === 'mag' ? (magW += 1 - skillW) : (physW += 1 - skillW));
+  const dmgSkills = boss.skills.map((sl) => SKILLS[sl.skillId]).filter((sk) => sk?.effects.some((e) => e.type === 'damage'));
+  for (const sk of dmgSkills) for (const e of sk.effects) if (e.type === 'damage') {
+    const w = (skillW / Math.max(1, dmgSkills.length)) * (e.target === 'all' ? 3 : e.target === 'back' || e.target === 'front' ? 2 : 1);
+    if (e.scale === 'mag' || (e.scale !== 'atk' && boss.attackScale === 'mag')) magW += w; else physW += w;
+    if (e.target === 'all' || e.target === 'back') aoe = true;
+  }
+  const magic = magW >= physW;
+  const lv = floorLevel(f);
+  const red = party.length ? party.reduce((a, c) => { const st = finalStats(c).stats; return a + (1 - mitigation(magic ? st.res : st.def, lv)); }, 0) / party.length : 0;
+  const dps = party.filter((c) => JOBS[c.jobId].base !== 'priest' && JOBS[c.jobId].base !== 'warrior');
+  const healer = hasHealer(party);
+  const tankFront = party.some((c) => JOBS[c.jobId].base === 'warrior' && rowOf(c) === 'front');
+  const gimmicks: string[] = [];
+  if (has('bulwark')) gimmicks.push('🛡 <b>결계</b> — 수하가 살아있는 동안 보스가 받는 피해 −70%');
+  if (has('mender')) gimmicks.push('✚ <b>치유 수하</b> — 살아있으면 매 라운드 보스 HP 9% 회복');
+  if (has('rampage')) gimmicks.push('🔥 <b>광폭화</b> — 라운드마다 공격 +12%, 오래 끌수록 위험');
+  if (boss.phase2) gimmicks.push(`⚡ <b>2페이즈</b> — HP 50% 이하에서 공격 +${boss.phase2.atkMagPct}%`);
+  gimmicks.push(`${magic ? '🔮 주로 <b>마법</b> 피해' : '⚔ 주로 <b>물리</b> 피해'}${aoe ? ' · <b>광역</b> 공격 있음' : ''}`);
+  const chk: [boolean | null, string][] = [];
+  chk.push([healer, healer ? '힐러 있음' : '힐러 없음 — 보스전은 회복 없이 매우 어려워요']);
+  chk.push([red >= 0.45, `파티 평균 ${magic ? '마법' : '물리'} 피해 감소 ${Math.round(red * 100)}%${red >= 0.45 ? '' : ` — ${magic ? '마저 장비·옵션, 방패 거북 펫' : '방어 장비·옵션'}으로 올려보세요`}`]);
+  if (has('bulwark') || has('mender')) { const n = party.filter((c) => c.target === 'adds').length; chk.push([n > 0, n ? `잡몹 우선 단원 ${n}명` : '잡몹 우선 단원 없음 — 딜러 한두 명을 잡몹 우선으로 두세요']); }
+  if (has('rampage')) { const n = dps.filter((c) => c.target === 'boss').length; chk.push([n > 0 ? true : null, n ? `보스 우선 딜러 ${n}명` : '보스 우선 딜러가 있으면 더 빨리 끝나요']); }
+  chk.push([tankFront, tankFront ? '전사 계열이 전열에 있음' : '전열에 전사 계열이 없어요 — 딜러가 대신 맞게 돼요']);
+  if (aoe) { const weak = party.filter((c) => rowOf(c) === 'back' && finalStats(c).stats.hp < Math.max(...party.map((x) => finalStats(x).stats.hp)) * 0.6).length; if (weak) chk.push([null, `광역 공격이 있어 HP 낮은 후열 ${weak}명이 위험해요`]); }
+  const lvl = powerLevel(power, f, healer);
+  chk.push([lvl === 'ok', `전투력 ${fmt(power)} / 보스층 권장 ${fmt(floorPower(f))}`]);
+  const L = (x: number) => localFloor(x);
+  return `<div class="bosscard"><div class="row" style="gap:10px;align-items:center">${monsterSprite(boss.id, { size: 56, boss: true, tags: boss.tags })}<div><span class="small mute">${L(f)}층 보스 대비</span><h3 style="margin:0">${esc(boss.name)}</h3>${adds.length ? `<span class="small mute">수하: ${[...new Set(adds.map((a) => a.name))].map(esc).join(', ')}</span>` : ''}</div></div>
+    <ul class="gim">${gimmicks.map((g) => `<li>${g}</li>`).join('')}</ul>
+    <p class="small" style="margin:6px 0 4px"><b>지금 파티 점검</b></p>
+    <ul class="bchk">${chk.map(([ok, t]) => `<li class="${ok === true ? 'ok' : ok === false ? 'no' : 'mid'}"><span>${ok === true ? '✔' : ok === false ? '✘' : '△'}</span>${esc(t)}</li>`).join('')}</ul>
+    <p class="small" style="margin:6px 0 0"><b class="r5">공략</b> ${esc(floorTip(f))}</p>
+  </div>`;
+}
+
+function bulkPanel() {
+  const s = S!;
+  if (!s.inventory.length) return '';
+  const f = { rarities: [...bulkR], keepEnhanced: bulkKeepEnh };
+  const list = G.bulkTargets(s, f);
+  const gold = list.reduce((a, e) => a + G.sellPrice(e), 0);
+  const stones = list.reduce((a, e) => a + G.dismantleValue(e), 0);
+  return `<details class="panel bulk" ${bulkOpen ? 'open' : ''} data-bulk><summary><h3>일괄 정리</h3><span class="small mute">가방 장비만 · 장착 중 제외</span></summary>
+    <div class="tabs" role="group" aria-label="등급 선택">${([1, 2, 3, 4, 5] as Rarity[]).map((r) => {
+      const n = s.inventory.filter((e) => e.rarity === r).length;
+      return `<button class="rr r${r} ${bulkR.has(r) ? 'on' : ''}" data-a="bulkR" data-r="${r}" aria-pressed="${bulkR.has(r)}">${RARITY_NAME[r]} ${n}</button>`;
+    }).join('')}</div>
+    <label class="chk"><input type="checkbox" data-a="bulkKeep" ${bulkKeepEnh ? 'checked' : ''}> 강화한 장비(+1 이상)는 남기기</label>
+    <div class="row"><span>대상 <b>${list.length}</b>개</span>
+      <button class="btn sm" data-a="bulkSell" ${list.length ? '' : 'disabled'}>일괄 판매 +${fmt(gold)}G</button>
+      <button class="btn ghost sm" data-a="bulkDis" ${list.length ? '' : 'disabled'}>일괄 분해 · 강화석 +${stones}</button></div>
+  </details>`;
+}
+
+type WhFilter = 'all' | EquipSlot | 'worn' | 'bag';
+let whFilter: WhFilter = 'all';
+let whOpen: string | null = null;
+
+function viewStorage() {
+  const s = S!;
+  const all = allEquips();
+  const slotOrder: Record<EquipSlot, number> = { weapon: 0, armor: 1, accessory: 2 };
+  const list = all
+    .filter(({ e, owner }) => whFilter === 'all' || (whFilter === 'worn' ? !!owner : whFilter === 'bag' ? !owner : EQUIP_BY_ID[e.baseId].slot === whFilter))
+    .sort((a, b) => slotOrder[EQUIP_BY_ID[a.e.baseId].slot] - slotOrder[EQUIP_BY_ID[b.e.baseId].slot] || b.e.rarity - a.e.rarity || b.e.enhance - a.e.enhance);
+  const filters: [WhFilter, string][] = [['all', `전체 ${all.length}`], ['weapon', '무기'], ['armor', '방어구'], ['accessory', '장신구'], ['worn', `장착 중 ${all.filter((x) => x.owner).length}`], ['bag', `가방 ${s.inventory.length}`]];
+  const cards = list.map(({ e, owner }) => {
+    const bs = EQUIP_BY_ID[e.baseId];
+    const on = whOpen === e.uid;
+    const st = Object.entries(equipStats(e)).map(([k, v]) => `${STAT_LABEL[k as StatKey]} +${Math.round(v as number)}`).join(' · ');
+    const opts = e.options.map(optText);
+    const set = bs.set ? SET_BY_ID[bs.set] : null;
+    return `<div class="wrow r${e.rarity}b ${owner ? 'worn' : ''} ${on ? 'on' : ''}">
+      <button class="whead" data-a="whOpen" data-e="${esc(e.uid)}" aria-expanded="${on}">
+        <span class="eico r${e.rarity}e ${bs.set ? 'setico' : ''}">${equipIcon(e)}</span>
+        <span class="wname"><span class="iname r${e.rarity}">${esc(bs.name)}${e.enhance ? ` +${e.enhance}` : ''}</span><span class="small mute">${RARITY_NAME[e.rarity]} · ${SLOT_NAME[bs.slot]}${set ? ` · <span class="settag">${esc(set.name)}</span>` : ''}</span></span>
+        <span class="wown">${owner ? `<span class="ico">${avatar(owner, 22)}</span><span class="small">${esc(owner.name)}</span>` : '<span class="small mute">가방</span>'}</span>
+        <span class="chev">${on ? '▴' : '▾'}</span>
+      </button>
+      ${on ? `<div class="wbody">
+        <p class="small" style="margin:0">${st || '기본 능력치 없음'}</p>
+        ${opts.length ? `<p class="small" style="margin:0"><b>옵션</b> ${opts.join(' · ')}</p>` : ''}
+        ${bs.jobs ? `<p class="small mute" style="margin:0">전용: ${bs.jobs.map((j) => JOBS[j].name).join('/')}</p>` : ''}
+        ${set ? `<p class="small mute" style="margin:0">${esc(set.name)} 세트 효과는 캐릭터 정보에서 확인</p>` : ''}
+        <div class="row" style="gap:6px">${owner ? `<button class="btn ghost sm" data-a="unequip" data-uid="${esc(owner.uid)}" data-slot="${bs.slot}">${esc(owner.name)}에게서 해제</button>`
+          : `<button class="btn ghost sm" data-a="sell" data-e="${esc(e.uid)}">판매 ${fmt(G.sellPrice(e))}G</button><button class="btn ghost sm" data-a="dismantle" data-e="${esc(e.uid)}">분해 · 강화석 +${G.dismantleValue(e)}</button>`}</div>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+  const pots = POTIONS.filter((p) => (s.potions[p.id] ?? 0) > 0).map((p) => `<div><span class="small mute row" style="gap:4px">${potionIcon(p.id, 22)}${esc(p.name)}</span><b>${s.potions[p.id]}</b></div>`).join('');
+  return `<div class="wrap">${backBtn()}
+    <h2>창고</h2>
+    <div class="sum" style="margin:12px 0">
+      <div><span class="small mute">강화석</span><b>${s.stones}</b></div>
+      <div><span class="small mute">축복 주문서</span><b>${s.blessings}</b></div>
+      <div><span class="small mute">제련석</span><b>${s.refineStones}</b></div>
+      <div><span class="small mute">군단장의 핵</span><b>${s.cores}</b></div>
+      <div><span class="small mute">벨리알의 파편</span><b>${s.scales}</b></div>
+      ${pots}
+    </div>
+    ${bulkPanel()}
+    <div class="tabs" role="group" aria-label="필터">${filters.map(([v, n]) => `<button class="${whFilter === v ? 'on' : ''}" data-a="whFilter" data-v="${v}">${n}</button>`).join('')}</div>
+    <div class="wlist">${cards || '<p class="mute">해당하는 장비가 없습니다.</p>'}</div>
+  </div>`;
+}
+
+// ───────── 던전 진행 ─────────
+let EX: Expedition | null = null;
+let speed: 1 | 2 | 0 = 1;
+let playToken = 0;
+let units: Record<string, { id: string; hp: number; max: number; dead: boolean; side: 'p' | 'e' }> = {};
+let uidSeq = 0;
+let phase: 'playing' | 'between' | 'bossAsk' | 'done' = 'playing';
+let lastFloor: FloorResult | null = null;
+
+function viewDungeon() {
+  const ex = EX!;
+  const zone = zoneOf(ex.floor);
+  return `<div class="wrap">
+    <div class="dhead"><div><div class="small mute">${ex.settings.tower ? `무한 탑 · ${esc(towerGimmick(ex.floor).icon)} ${esc(towerGimmick(ex.floor).name)}` : ex.settings.raid ? `개인 레이드 · ${esc(raidForm(ex.settings.raid.week).name)}` : ex.daily ? '일일 던전' : `${esc(regionOf(ex.floor).name)} · ${esc(zone.name)}`}</div><h2 id="floorTitle">${floorTitle(ex)}</h2></div>
+      <div class="speed" role="group" aria-label="전투 속도">${([1, 2, 0] as const).map((v) => `<button data-a="speed" data-v="${v}" class="${speed === v ? 'on' : ''}">${v === 0 ? '스킵' : `${v}x`}</button>`).join('')}</div></div>
+    <div class="stage"><div class="side" id="pside"></div><div class="vs">VS</div><div class="side" id="eside"></div></div>
+    <div class="log" id="log" aria-live="polite"></div>
+    <div class="dctl" id="dctl"></div>
+  </div>`;
+}
+
+const floorTitle = (ex: Expedition) =>
+  `${runLabel(ex.floor)}${ex.isBossFloor() ? ' · 보스' : ''}${ex.repeating ? ` · 반복 ${Math.min(ex.floorsCleared + 1, ex.settings.repeatCount)}/${ex.settings.repeatCount}` : ''}`;
+
+const unitHtml = (name: string, u: { id: string; hp: number; max: number; dead: boolean }, icon: string, cls = '') =>
+  `<div class="unit ${cls} ${u.dead ? 'dead' : ''}" id="${u.id}"><div class="un"><span class="row" style="gap:6px"><span class="uico">${icon}</span>${esc(name)}</span><small>${Math.round(u.hp)}/${u.max}</small></div><div class="bar ${u.id.startsWith('e') ? 'e' : ''}"><i style="width:${pctW(u.hp, u.max)}"></i></div></div>`;
+
+function drawParty() {
+  const el = document.getElementById('pside');
+  if (!el || !EX) return;
+  el.innerHTML = EX.party.map((p) => {
+    const u = (units[p.name] ??= { id: `u${uidSeq++}`, hp: p.hp, max: p.maxHp, dead: !p.alive, side: 'p' });
+    return unitHtml(p.name, u, avatar(p.char!, 52));
+  }).join('');
+}
+function syncPartyFromEx() {
+  if (!EX) return;
+  for (const p of EX.party) units[p.name] = { ...(units[p.name] ?? { id: `u${uidSeq++}`, side: 'p' as const }), hp: p.hp, max: p.maxHp, dead: !p.alive };
+  drawParty();
+}
+function drawEnemies(list: UnitSnap[], append = false) {
+  const el = document.getElementById('eside');
+  if (!el) return;
+  if (!append) { el.innerHTML = ''; for (const k of Object.keys(units)) if (units[k].side === 'e') delete units[k]; }
+  for (const m of list) {
+    const u = (units[m.name] = { id: `e${uidSeq++}`, hp: m.hp, max: m.maxHp, dead: false, side: 'e' });
+    el.insertAdjacentHTML('beforeend', unitHtml(m.name, u, monsterSprite(m.id ?? '', { size: m.boss ? 72 : 52, boss: m.boss, elite: m.elite, tags: m.tags }), m.boss ? 'boss' : m.elite ? 'elite' : ''));
+  }
+}
+function setHp(name: string, hp: number, max: number, hit: boolean) {
+  const u = units[name];
+  if (!u) return;
+  u.hp = hp; u.max = max;
+  const el = document.getElementById(u.id);
+  if (!el) return;
+  (el.querySelector('.bar i') as HTMLElement).style.width = pctW(hp, max);
+  el.querySelector('small')!.textContent = `${Math.round(hp)}/${max}`;
+  if (hit && speed !== 0) { el.classList.remove('hit'); void el.offsetWidth; el.classList.add('hit'); }
+}
+function setDead(name: string, dead: boolean) {
+  const u = units[name];
+  if (!u) return;
+  u.dead = dead;
+  document.getElementById(u.id)?.classList.toggle('dead', dead);
+}
+
+function logLine(cls: string, text: string) {
+  const el = document.getElementById('log');
+  if (!el) return;
+  const p = document.createElement('p');
+  p.className = cls;
+  p.textContent = text;
+  el.appendChild(p);
+  while (el.childElementCount > 400) el.firstElementChild!.remove();
+  el.scrollTop = el.scrollHeight;
+}
+
+function applyEvent(e: BattleEvent): boolean {
+  switch (e.t) {
+    case 'wave':
+      drawEnemies(e.enemies);
+      logLine('w', e.boss ? `${runLabel(e.floor)} 보스전 · ${e.enemies.map((x) => x.name).join(', ')}` : `${runLabel(e.floor)} ${e.wave}웨이브${e.elite ? ' · 엘리트 출현' : ''} · ${e.enemies.map((x) => x.name).join(', ')}`);
+      return true;
+    case 'round': case 'attack': return false;
+    case 'skill': logLine('sk', `${e.actor}의 [${e.skill}]`); return true;
+    case 'damage': setHp(e.to, e.hpLeft, e.maxHp, true); logLine(e.crit ? 'cr' : 'dm', `  ${e.from} → ${e.to} ${e.amount}${e.crit ? ' 치명타!' : ''}`); return true;
+    case 'evade': logLine('st', `  ${e.to}이(가) 공격을 피했다`); return true;
+    case 'heal': setHp(e.to, e.hpLeft, e.maxHp, false); logLine('hl', `  ${e.to} +${e.amount} 회복`); return true;
+    case 'status': logLine('st', `  ${e.to}: ${e.label}`); return true;
+    case 'dot': setHp(e.to, e.hpLeft, e.maxHp, false); logLine('st', `  ${e.to} ${e.status === 'poison' ? '독' : '화상'} 피해 ${e.amount}`); return true;
+    case 'stunned': logLine('st', `  ${e.who}은(는) 기절해 움직이지 못한다`); return true;
+    case 'death': setDead(e.who, true); logLine('de', `  ${e.who} 쓰러짐`); return true;
+    case 'special':
+      if (e.text.includes('다시 일어선다')) { const m = e.text.match(/부활! (.+)이\(가\)/); setDead(m ? m[1] : e.who, false); }
+      logLine('sp', `  ✦ ${e.who}: ${e.text}`); return true;
+    case 'summon': drawEnemies(e.summoned, true); logLine('sp', `  ✦ ${e.who}이(가) ${e.summoned.map((x) => x.name).join(', ')}을(를) 불러냈다`); return true;
+    case 'result': logLine('res', e.win ? `승리 (${e.rounds}라운드)` : `패배…`); return true;
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function playFloor() {
+  const ex = EX!;
+  const token = ++playToken;
+  phase = 'playing';
+  renderDctl();
+  document.getElementById('floorTitle')!.textContent = floorTitle(ex);
+  const r = ex.runFloor();
+  lastFloor = r;
+  for (const e of r.log) {
+    if (token !== playToken) return;
+    const shown = applyEvent(e);
+    if (shown && speed !== 0) {
+      // 웨이브 시작·전투 결과 줄은 조금 더 오래 보여줌
+      const pause = e.t === 'wave' || e.t === 'result' ? 2.2 : 1;
+      await sleep((speed === 1 ? 480 : 220) * pause);
+    }
+  }
+  if (token !== playToken) return;
+  syncPartyFromEx();
+  if (r.story) logLine('story', r.story);
+  afterFloor(r);
+}
+
+function afterFloor(r: FloorResult) {
+  const ex = EX!;
+  if (!r.win) { phase = 'done'; logLine('de', '파티가 전멸했다…'); renderDctl(); return; }
+  logLine('hl', `${runLabel(r.floor)} 클리어${ex.repeating ? ` (${ex.floorsCleared}/${ex.settings.repeatCount})` : ''} · 파티 평균 HP ${Math.round(ex.avgHpPct)}%`);
+  const reason = ex.autoStopReason();
+  if (reason && reason !== 'bossAhead') { ex.finish(reason); phase = 'done'; renderDctl(); return; }
+  if (reason === 'bossAhead') { phase = 'bossAsk'; renderDctl(); return; }
+  if (ex.settings.auto) {
+    phase = 'between'; renderDctl();
+    const t = playToken;
+    setTimeout(() => { if (t === playToken && phase === 'between' && EX?.settings.auto) { ex.next(); playFloor(); } }, speed === 0 ? 150 : speed === 1 ? 1600 : 900);
+    return;
+  }
+  phase = 'between'; renderDctl();
+}
+
+function renderDctl() {
+  const el = document.getElementById('dctl');
+  if (!el || !EX) return;
+  const ex = EX;
+  const autoBox = `<label class="chk"><input type="checkbox" data-a="toggleAuto" ${ex.settings.auto ? 'checked' : ''}> ${ex.repeating ? '자동 반복' : '자동 진행'}</label>`;
+  if (phase === 'playing') el.innerHTML = `<span class="mute">전투 중…</span>${autoBox}`;
+  else if (phase === 'done') el.innerHTML = `<button class="btn" data-a="endRun">결과 보기</button>`;
+  else if (phase === 'bossAsk') el.innerHTML = `<span>다음은 <b>보스 층</b>입니다. 파티 평균 HP ${Math.round(ex.avgHpPct)}%</span><button class="btn danger" data-a="nextFloor">보스 도전</button><button class="btn ghost" data-a="retreat">귀환</button>`;
+  else {
+    const atEnd = !!ex.daily || !!ex.settings.raid || (!ex.repeating && ex.floor >= (regionOf(ex.settings.startFloor).floors?.[1] ?? MAX_FLOOR));
+    el.innerHTML = atEnd
+      ? `<span>${ex.settings.raid ? (ex.raidKilled ? '벨리알을 쓰러뜨렸다!' : '전투 종료') : ex.daily ? '보상을 챙겼다!' : `${esc(regionOf(ex.floor).name)}의 끝까지 왔다!`}</span><button class="btn" data-a="retreat">귀환</button>`
+      : `<button class="btn" data-a="nextFloor">${ex.repeating ? `${localFloor(ex.floor)}층 다시` : `${localFloor(ex.floor + 1)}층으로`}</button><button class="btn ghost" data-a="retreat">귀환</button>${autoBox}`;
+  }
+}
+
+function startDailyRun(id: string, stage: number) {
+  const s = S!;
+  const ex = G.startDaily(s, id, stage, []);
+  if (typeof ex === 'string') { toast(ex, true); return; }
+  EX = ex;
+  saveGame(s);
+  units = {};
+  screen = 'dungeon';
+  render();
+  drawParty();
+  playFloor();
+}
+function startTowerRun() {
+  const s = S!;
+  const ex = G.startTower(s);
+  if (typeof ex === 'string') { toast(ex, true); return; }
+  EX = ex;
+  saveGame(s);
+  units = {};
+  screen = 'dungeon';
+  render();
+  drawParty();
+  playFloor();
+}
+function startRun() {
+  const s = S!;
+  const settings: ExpeditionSettings = { ...s.settings, potions: gatePotions };
+  if (settings.targetFloor < settings.startFloor) settings.targetFloor = settings.startFloor;
+  const ex = G.startExpedition(s, settings);
+  if (typeof ex === 'string') { toast(ex, true); return; }
+  EX = ex;
+  saveGame(s);
+  gatePotions = [];
+  units = {};
+  screen = 'dungeon';
+  render();
+  drawParty();
+  if (ex.settings.potions.length) logLine('sp', `물약을 마셨다: ${ex.settings.potions.map((id) => POTIONS.find((p) => p.id === id)!.name).join(', ')}`);
+  playFloor();
+}
+
+function endRun() {
+  if (!EX || !S) return;
+  playToken++;
+  summary = G.finishExpedition(S, EX);
+  EX = null;
+  screen = 'result';
+  commit();
+}
+
+function viewResult() {
+  const r = summary!;
+  return `<div class="wrap" style="max-width:760px">
+    <h2 style="margin-top:24px">${esc(r.reason)}</h2>
+    <p class="mute">${r.daily ? esc(r.daily) : r.repeat ? `${floorName(r.floor)} ${r.runs}회 반복` : `${floorName(r.floor)}까지 진행`}${r.newMaxFloor ? ' · 최고 기록 갱신!' : ''}${r.reason.startsWith('파티 전멸') ? (r.insured ? ' · 보험 덕분에 잃은 건 없다.' : ' · 골드·장비는 절반만 건졌다.') : ''} · 마을에 돌아와 모두 회복했다</p>
+    ${r.towerLines ? `<div class="panel raidres">${r.towerLines.map((l) => `<div>${esc(l)}</div>`).join('')}<div class="row" style="gap:8px;margin-top:8px"><button class="btn sm" data-a="towerGo">다시 도전</button><button class="btn ghost sm" data-a="go" data-to="tower">무한 탑으로</button></div></div>` : ''}
+    ${r.raidLines ? `<div class="panel raidres">${r.raidLines.map((l) => `<div>${esc(l)}</div>`).join('')}<button class="btn ghost sm" data-a="go" data-to="raid" style="margin-top:8px">레이드로 돌아가기</button></div>` : ''}
+    <div class="sum" style="margin:14px 0;${r.raidLines || r.towerLines ? 'display:none' : ''}">
+      <div><span class="small mute">골드</span><b style="color:var(--gold)">+${fmt(r.gold)}</b></div>
+      <div><span class="small mute">경험치</span><b>+${fmt(r.exp)}</b></div>
+      <div><span class="small mute">강화석</span><b>+${r.stones}</b></div>
+      <div><span class="small mute">축복 주문서</span><b>+${r.blessings}</b></div>
+      <div><span class="small mute">제련석</span><b>+${r.refineStones ?? 0}</b></div>
+      ${r.cores ? `<div><span class="small mute">군단장의 핵</span><b>+${r.cores}</b></div>` : ''}
+    </div>
+    ${r.levelUps.length ? `<div class="panel"><h3>레벨 업</h3><p>${r.levelUps.map((l) => `${esc(l.name)} Lv.${l.to}`).join(' · ')}</p></div>` : ''}
+    ${r.equips.length ? `<div class="sec"><h3>획득 장비</h3><div class="items">${r.equips.map((e) => `<div class="item"><div>${equipLine(e)}</div></div>`).join('')}</div></div>` : ''}
+    ${r.report ? reportPanel(r) : ''}
+    ${r.dailyRef ? dailyResultPanel(r.dailyRef) : ''}
+    <div class="row" style="margin-top:18px"><button class="btn ${r.dailyRef ? 'ghost' : ''}" data-a="go" data-to="town">마을로</button></div>
+  </div>`;
+}
+
+const fmtK = (n: number) => (n >= 1e8 ? `${(n / 1e8).toFixed(1)}억` : n >= 1e5 ? `${Math.round(n / 1e4).toLocaleString('ko-KR')}만` : fmt(Math.round(n)));
+function reportPanel(r: G.ExpeditionSummary) {
+  const rep = r.report!;
+  const ms = rep.members;
+  const maxD = Math.max(1, ...ms.map((m) => m.dealt)), maxT = Math.max(1, ...ms.map((m) => m.taken));
+  const chars = Object.fromEntries((S?.roster ?? []).map((c) => [c.uid, c]));
+  const rows = ms.map((m) => {
+    const c = chars[m.id];
+    const magP = m.taken ? Math.round((m.takenMag / m.taken) * 100) : 0;
+    return `<tr><td class="rn">${c ? `<span class="ico">${avatar(c, 22)}</span>` : ''}${esc(m.name)}${m.deaths ? ` <span class="dead">💀${m.deaths > 1 ? m.deaths : ''}</span>` : ''}</td>
+      <td><div class="rbar"><i style="width:${(m.dealt / maxD) * 100}%"></i></div>${fmtK(m.dealt)}</td>
+      <td><div class="rbar t"><i style="width:${(m.taken / maxT) * 100}%"></i></div>${fmtK(m.taken)}${m.taken ? ` <span class="small mute">마법 ${magP}%</span>` : ''}</td>
+      <td>${fmtK(m.healed + m.shielded)}</td></tr>`;
+  }).join('');
+  const hit = Object.entries(rep.hitters).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const totT = Object.values(rep.hitters).reduce((a, b) => a + b, 0) || 1;
+  const diag = r.diag ?? [];
+  return `<details class="panel report" ${r.lost ? 'open' : ''}><summary><h3>전투 리포트</h3><span class="small mute">${rep.fights.length}번 싸움 · ${r.lost ? '패배 분석 포함' : '단원별 기록'}</span></summary>
+    <div class="rtbl"><table><thead><tr><th>단원</th><th>준 피해</th><th>받은 피해</th><th>회복</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${hit.length ? `<p class="small" style="margin:10px 0 4px"><b>가장 아팠던 공격</b></p><ol class="hitlist">${hit.map(([k, v]) => `<li>${esc(k)} <span class="mute">${fmtK(v)} (${Math.round((v / totT) * 100)}%)</span></li>`).join('')}</ol>` : ''}
+    ${diag.length ? `<div class="diag ${r.lost ? 'bad' : ''}"><b>${r.lost ? '패배 분석' : '개선 팁'}</b><ul>${diag.map((x) => `<li>${x}</li>`).join('')}</ul></div>` : r.lost ? '' : ''}
+  </details>`;
+}
+
+function dailyResultPanel(ref: { id: string; stage: number; won: boolean }) {
+  const s = S!;
+  const d = DAILY_BY_ID[ref.id];
+  const left = G.dailyLeft(s, d.id);
+  const cleared = G.dailyState(s).cleared[d.id] ?? 0;
+  const next = ref.stage + 1;
+  const nextOpen = next <= DAILY_STAGES && G.stageOpen(s, d, next);
+  const canSweep = cleared >= ref.stage;
+  return `<div class="panel dres">
+    <div class="row" style="justify-content:space-between"><h3 style="margin:0">${esc(d.name)}</h3><span class="tag ${left ? '' : 'mute'}">오늘 남은 입장 ${left}/${DAILY_LIMIT}</span></div>
+    ${ref.won && canSweep ? `<p class="small" style="margin:6px 0 0;color:var(--ok)">✔ ${ref.stage}단계 <b>소탕 가능</b> — 이제 전투 없이 바로 보상을 받을 수 있어요</p>` : ''}
+    <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
+      ${canSweep ? `<button class="btn" data-a="dailySweep" data-id="${d.id}" data-v="${ref.stage}" ${left ? '' : 'disabled'}>${ref.stage}단계 소탕</button>` : ''}
+      <button class="btn ${canSweep ? 'ghost' : ''}" data-a="dailyGo" data-id="${d.id}" data-v="${ref.stage}" ${left ? '' : 'disabled'}>${ref.stage}단계 다시 도전</button>
+      ${ref.won && nextOpen ? `<button class="btn ghost" data-a="dailyGo" data-id="${d.id}" data-v="${next}" ${left ? '' : 'disabled'}>${next}단계 도전</button>` : ''}
+      <button class="btn ghost" data-a="go" data-to="daily">일일 던전 목록</button>
+    </div>
+    ${left ? '' : '<p class="small mute" style="margin:6px 0 0">오늘 입장 횟수를 다 썼어요 (자정 초기화)</p>'}
+  </div>`;
+}
+
+// ───────── 모달 ─────────
+function viewCharModal(uid: string) {
+  const s = S!;
+  const c = G.byUid(s, uid);
+  if (!c) return '';
+  const { stats, extra } = finalStats(c);
+  const merc = c.mercId ? MERC_BY_ID[c.mercId] : null;
+  const inParty = s.party.includes(c.uid);
+  const skills = c.skillSlots.map((sl, i) => `<div class="sitem"><span class="n">${i + 1}</span><span class="t">${skillTip(sl.skillId)} <span class="small mute">MP ${SKILLS[sl.skillId].mp}${condText(sl.condition)}</span></span>
+    <button class="btn ghost sm" data-a="skillUp" data-uid="${esc(uid)}" data-i="${i}" aria-label="위로" ${i === 0 ? 'disabled' : ''}>↑</button><button class="btn ghost sm" data-a="skillDown" data-uid="${esc(uid)}" data-i="${i}" aria-label="아래로" ${i === c.skillSlots.length - 1 ? 'disabled' : ''}>↓</button></div>`).join('');
+  const passives = JOBS[c.jobId].passives.map((p) => `<div class="sitem"><span class="t"><b>${esc(p.name)}</b> <span class="small mute">${esc(p.desc)}</span></span><span class="small ${p.level <= c.level ? '' : 'mute'}">${p.level <= c.level ? '습득' : `Lv.${p.level}`}</span></div>`).join('');
+  const nextSkills = JOBS[c.jobId].skills.filter((x) => x.level > c.level).map((x) => `${skillTip(x.skillId)}(Lv.${x.level})`).join(', ');
+  const slots = (['weapon', 'armor', 'accessory'] as EquipSlot[]).map((sl) => {
+    const e = c.equipment[sl];
+    const cands = s.inventory.filter((x) => EQUIP_BY_ID[x.baseId].slot === sl && G.canWear(c, x));
+    return `<div class="item"><div><span class="small mute">${SLOT_NAME[sl]}</span><br>${e ? equipLine(e) + enhanceCtl(e) : '<span class="mute">비어 있음</span>'}</div>
+      <div class="grid" style="gap:6px">${e ? `<button class="btn ghost sm" data-a="unequip" data-uid="${esc(uid)}" data-slot="${sl}">해제</button>` : ''}
+      ${cands.length ? `<select data-a="equipSel" data-uid="${esc(uid)}" aria-label="${SLOT_NAME[sl]} 장착"><option value="">장착할 장비…</option>${cands.map((x) => `<option value="${esc(x.uid)}">${esc(EQUIP_BY_ID[x.baseId].name)}${x.enhance ? ` +${x.enhance}` : ''} (${RARITY_NAME[x.rarity]})</option>`).join('')}</select>` : ''}</div></div>`;
+  }).join('');
+  const traits = [...c.traitIds, ...(c.uniqueTraitId ? [c.uniqueTraitId] : [])].map((t) => `<div class="sitem"><span class="t"><b>${esc(t)}</b> <span class="small mute">${esc(TRAITS[t]?.desc ?? '')}${c.awakening >= 5 ? ' (×1.5)' : ''}</span></span></div>`).join('') || '<p class="small mute">특성 없음 · 각성 3단계에서 하나 생깁니다</p>';
+  const advCard = (j: JobId, can: boolean) => {
+    const jd = JOBS[j];
+    const apt = Object.entries(jd.aptMult ?? {}).map(([k, v]) => `${STAT_LABEL[k as StatKey]} ${(v as number) >= 1 ? '+' : ''}${Math.round(((v as number) - 1) * 100)}%`).join(', ');
+    const from = ({ 2: 20, 3: 50, 4: 70, 5: 90 } as Record<number, number>)[jd.tier] ?? 1;
+    const sk = jd.skills.filter((x) => x.level >= from).map((x) => `${skillTip(x.skillId)} <span class="small mute">Lv.${x.level}</span>`).join(' · ');
+    const pa = jd.passives.filter((x) => x.level >= from).map((x) => `${tip(x.desc, esc(x.name), 'sk')} <span class="small mute">Lv.${x.level}</span>`).join(' · ');
+    return `<div class="advc"><h3>${esc(jd.name)}</h3><p class="small">${esc(jd.desc)}</p>
+      <div class="small mute">성장 성향: ${apt}</div>
+      <div class="small">새 스킬: ${sk}</div>${pa ? `<div class="small">패시브: ${pa}</div>` : ''}
+      ${can ? `<button class="btn" data-a="advance" data-uid="${esc(uid)}" data-job="${j}">${esc(jd.name)}(으)로 전직</button>` : ''}</div>`;
+  };
+  const advOpts = advanceOptions(c.jobId);
+  const advLv = JOBS[c.jobId].tier < 5 ? ADVANCE_AT[JOBS[c.jobId].tier as 1 | 2 | 3 | 4] : 0;
+  const adv = !advOpts.length ? '' : canAdvance(c)
+    ? `<div class="sec"><h3>${JOBS[c.jobId].tier + 1}차 전직 가능!${advOpts.length > 1 ? ' 하나를 골라주세요' : ''}</h3><p class="small mute">스킬 이름을 누르거나 마우스를 올리면 효과가 보여요. 전직은 되돌릴 수 없어요.</p><div class="advs">${advOpts.map((j) => advCard(j, true)).join('')}</div></div>`
+    : `<details class="sec"><summary>Lv.${advLv} ${JOBS[c.jobId].tier + 1}차 전직 미리보기</summary><div class="advs">${advOpts.map((j) => advCard(j, false)).join('')}</div></details>`;
+  const ex = [['회피', extra.evade, '%'], ['스킬 데미지', extra.skillDmg, '%'], ['회복량', extra.healPower, '%'], ['받는 피해', extra.dmgTaken, '%']].filter(([, v]) => v).map(([n, v, u]) => `${n} ${Number(v) > 0 ? '+' : ''}${v}${u}`).join(' · ');
+  return `<div class="modal" data-a="closeModal"><div class="mbox" role="dialog" aria-modal="true" aria-label="${esc(c.name)}" data-stop>
+    <div class="mhead"><div class="ico">${avatar(c)}</div><div style="flex:1"><h2>${esc(c.name)} ${stars(c.grade)}</h2>
+      <div class="mute small"><b class="cp">전투력 ${fmt(charPower(c))}</b> · ${GRADE_NAME[c.grade]} · ${esc(JOBS[c.jobId].name)} · Lv.${c.level}${c.awakening ? ` · 각성 ${c.awakening}/5` : ''}${merc ? ` · ${esc(merc.desc)}` : ''}</div></div>
+      <button class="btn ghost sm" data-a="closeModal" aria-label="닫기">닫기</button></div>
+    <p class="small" style="margin:0 0 10px">${esc(JOBS[c.jobId].desc)}</p>
+    <div class="grid" style="gap:6px"><div class="small mute">경험치 ${fmt(c.exp)} / ${fmt(expToNext(c.level))}${c.level >= levelCap(c) ? (JOBS[c.jobId].tier < 5 ? ' · 전직 후 성장 가능' : ' · 최고 레벨') : ''}</div><div class="bar xp"><i style="width:${pctW(c.exp, expToNext(c.level))}"></i></div>
+</div>
+    <div class="sec"><div class="stats">${STAT_KEYS.map((k) => `<div><span>${STAT_LABEL[k]}</span><b>${Math.round(stats[k])}${k === 'crit' ? '%' : ''}</b></div>`).join('')}</div>${ex ? `<div class="small mute">${ex}</div>` : ''}</div>
+    ${adv}
+    <div class="sec"><h3>특성</h3>${traits}</div>
+    <div class="sec"><div class="row" style="justify-content:space-between"><h3>장비</h3><span class="row" style="gap:6px"><button class="btn ghost sm" data-a="unequipAll" data-uid="${esc(uid)}">전체 해제</button><button class="btn sm" data-a="autoEquip" data-uid="${esc(uid)}">자동 장착</button></span></div><p class="small mute" style="margin:0">자동 장착: 가방 장비 중 전투력이 가장 높아지는 걸로 바꿔요. 전체 해제: 끼고 있는 장비를 모두 가방에 넣어요.</p><div class="items">${slots}</div>${setStatus(c)}</div>
+    <div class="sec"><h3>스킬 우선순위</h3><p class="small mute">위에서부터 조건이 맞고 MP가 되는 스킬을 씁니다.${nextSkills ? ` 다음 해금: ${nextSkills}` : ''}</p><div class="slist">${skills}</div></div>
+    <div class="sec"><h3>패시브</h3><div class="slist">${passives}</div></div>
+    <div class="row" style="margin-top:16px">
+      <button class="btn ${inParty ? 'ghost' : ''}" data-a="toggleParty" data-uid="${esc(uid)}">${inParty ? '파티에서 빼기' : '파티에 넣기'}</button>
+      ${confirmDismiss === uid
+        ? '' : `<button class="btn danger sm" data-a="askDismiss" data-uid="${esc(uid)}">방출</button>`}
+    </div>
+    ${confirmDismiss === uid ? `<div class="confirm" role="alertdialog" aria-label="방출 확인">
+      <p><b>${esc(c.name)}</b>을(를) 정말 방출할까요?</p>${c.isHero ? '<p class="small" style="color:var(--gold)">주인공은 길드에서 다시 고용할 수 없어요.</p>' : ''}
+      <p class="small mute">레벨 ${c.level}${c.awakening ? `, 각성 ${c.awakening}단계` : ''}는 사라지고 되돌릴 수 없어요. 끼고 있던 장비는 가방으로 돌아옵니다.</p>
+      <div class="row"><button class="btn danger" data-a="dismiss" data-uid="${esc(uid)}">방출하기</button><button class="btn ghost" data-a="cancelDismiss">취소</button></div>
+    </div>` : ''}
+  </div></div>`;
+}
+function condText(cond?: { type: string; [k: string]: any }) {
+  if (!cond) return '';
+  switch (cond.type) {
+    case 'allyHpBelow': return ` · 아군 HP ${cond.pct}% 미만`;
+    case 'selfHpBelow': return cond.pct > 100 ? '' : ` · 자신 HP ${cond.pct}% 미만`;
+    case 'enemyCount': return ` · 적 ${cond.min}명 이상`;
+    case 'bossOnly': return ' · 보스전';
+    case 'notActive': return ' · 효과 없을 때';
+    default: return '';
+  }
+}
+
+function viewSaveModal() {
+  return `<div class="modal" data-a="closeModal"><div class="mbox" role="dialog" aria-modal="true" aria-label="저장 관리" data-stop>
+    <div class="mhead"><h2 style="flex:1">저장 관리</h2><button class="btn ghost sm" data-a="closeModal">닫기</button></div>
+    <p class="small mute">${remoteReady() ? '계정에 자동 저장되고 있어요. 다른 기기에서도 이어할 수 있습니다.' : '이 브라우저에 자동 저장되고 있어요. 다른 곳에서 이어하려면 세이브 코드를 복사해 두세요.'}</p>
+    ${S ? `<div class="field"><label for="saveOut">세이브 코드</label><textarea id="saveOut" rows="3" readonly>${esc(exportSave(S))}</textarea></div><div class="row" style="margin:8px 0 16px"><button class="btn sm" data-a="copySave">복사</button></div>` : ''}
+    <div class="field"><label for="saveIn">세이브 코드 붙여넣기</label><textarea id="saveIn" rows="3"></textarea></div>
+    <div class="row" style="margin-top:8px"><button class="btn sm" data-a="importSave">불러오기</button>${S ? '<button class="btn danger sm" data-a="wipe">처음부터 다시</button>' : ''}</div>
+  </div></div>`;
+}
+
+// ───────── 렌더 ─────────
+/** 다시 그려도 스크롤 위치 유지 (같은 창·같은 화면일 때) */
+let lastView = '';
+function keepScroll(draw: () => void) {
+  const key = screen;
+  const sameScreen = key === lastView;
+  const prevModal = lastModalKey;
+  const winY = window.scrollY;
+  const boxY = document.querySelector('.mbox')?.scrollTop ?? 0;
+  draw();
+  lastView = key;
+  const box = document.querySelector('.mbox');
+  if (box && modal && prevModal === JSON.stringify(modal)) box.scrollTop = boxY;
+  if (sameScreen && Math.abs(window.scrollY - winY) > 1) window.scrollTo(0, winY);
+}
+function render() { keepScroll(renderNow); }
+function renderNow() {
+  if (screen === 'dungeon') {
+    if (!document.getElementById('log')) app.innerHTML = topbar() + viewDungeon();
+    else { const t = document.querySelector('.top'); if (t) t.outerHTML = topbar(); }
+    renderModal(); renderDctl(); renderToast();
+    return;
+  }
+  const body = !S || screen === 'title' ? viewTitle()
+    : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
+    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : viewResult();
+  app.innerHTML = (screen === 'title' ? '' : topbar()) + body;
+  renderModal();
+  renderToast();
+  checkPower();
+}
+
+/** 전투력 변동 알림: 마을 화면에서 파티 전투력이 바뀌면 +/− 표시 */
+let pwRef: { s: unknown; v: number } | null = null;
+let pwPop: { from: number; to: number } | null = null;
+let pwTimer = 0;
+function checkPower() {
+  if (!S || screen === 'title' || screen === 'dungeon') { if (!S) pwRef = null; renderPower(); return; }
+  const v = G.statePower(S);
+  if (pwRef && pwRef.s === S && pwRef.v !== v) {
+    pwPop = { from: pwPop ? pwPop.from : pwRef.v, to: v };
+    if (pwPop.from === pwPop.to) pwPop = null;
+    clearTimeout(pwTimer);
+    pwTimer = window.setTimeout(() => { pwPop = null; renderPower(); }, 2400);
+  }
+  pwRef = { s: S, v };
+  renderPower();
+}
+function renderPower() {
+  document.querySelector('.pwpop')?.remove();
+  if (!pwPop || !S || screen === 'title') return;
+  const d = pwPop.to - pwPop.from, up = d > 0;
+  app.insertAdjacentHTML('beforeend', `<div class="pwpop ${up ? 'up' : 'down'}" role="status"><span class="small">전투력</span> ${fmt(pwPop.from)} → <b>${fmt(pwPop.to)}</b> <em>${up ? '▲' : '▼'} ${up ? '+' : '−'}${fmt(Math.abs(d))}</em></div>`);
+}
+function renderModal() {
+  const boxY = document.querySelector('.mbox')?.scrollTop;
+  const sameModal = modal && lastModalKey === JSON.stringify(modal);
+  document.querySelector('.modal')?.remove();
+  lastModalKey = modal ? JSON.stringify(modal) : '';
+  if (!modal) return;
+  app.insertAdjacentHTML('beforeend', modal.kind === 'char' ? viewCharModal(modal.uid) : viewSaveModal());
+  if (sameModal && boxY != null) { const b = document.querySelector('.mbox'); if (b) b.scrollTop = boxY; }
+}
+let lastModalKey = '';
+
+// ───────── 이벤트 ─────────
+app.addEventListener('click', (ev) => {
+  const target = ev.target as HTMLElement;
+  // 툴팁: 탭으로 열고 닫기 (버튼 안의 태그는 버튼 동작 우선)
+  const tipEl = target.closest<HTMLElement>('[data-tip]');
+  document.querySelectorAll('.tip-on').forEach((x) => { if (x !== tipEl) x.classList.remove('tip-on'); });
+  if (tipEl && !tipEl.closest('button')) { tipEl.classList.toggle('tip-on'); return; }
+  const el = target.closest<HTMLElement>('[data-a]');
+  if (!el) return;
+  if (el.dataset.a === 'closeModal' && target.closest('[data-stop]') && !target.closest('button')) return;
+  if (el.tagName === 'SELECT') return;
+  const d = el.dataset;
+  const s = S;
+  switch (d.a) {
+    case 'newGame': {
+      const name = (document.getElementById('heroName') as HTMLInputElement).value.trim().slice(0, 8) || '용사';
+      S = G.newGame(name); screen = 'town'; commit(); break;
+    }
+    case 'continue': S = lastSave; screen = 'town'; commit(); break;
+    case 'go': if (d.to === 'forge' && screen === 'raid') forgeSet = RAID_SET;
+      screen = d.to as Screen; modal = null; boardConfirm = null; if (screen === 'gate') gateRegion = null; render(); window.scrollTo(0, 0); break;
+    case 'openChar': confirmDismiss = null; modal = { kind: 'char', uid: d.uid! }; renderModal(); break;
+    case 'openSave': modal = { kind: 'save' }; renderModal(); break;
+    case 'closeModal': modal = null; render(); break;
+    case 'refresh': case 'refreshAll': {
+      const which = d.a === 'refresh' ? { kind: 'one' as const, i: Number(d.i) } : { kind: 'all' as const };
+      if (rareTargets(which).length) { boardConfirm = which; render(); document.querySelector('.confirm')?.scrollIntoView({ block: 'nearest' }); }
+      else doRefresh(which);
+      break;
+    }
+    case 'confirmRefresh': if (boardConfirm) doRefresh(boardConfirm); break;
+    case 'cancelRefresh': boardConfirm = null; render(); break;
+    case 'lock': G.toggleLock(s!, Number(d.i)); boardConfirm = null; commit(); break;
+    case 'hire': commit(G.hireSlot(s!, Number(d.i))); break;
+    case 'upgradeGuild': commit(G.upgradeGuild(s!)); break;
+    case 'toggleParty': commit(G.togglePartyMember(s!, d.uid!)); break;
+    case 'setRow': commit(G.setRow(s!, d.uid!, d.v as Row)); break;
+    case 'setTarget': commit(G.setTarget(s!, d.uid!, d.v as TargetPref)); break;
+    case 'askDismiss': confirmDismiss = d.uid!; renderModal(); document.querySelector('.confirm')?.scrollIntoView({ block: 'nearest' }); break;
+    case 'cancelDismiss': confirmDismiss = null; renderModal(); break;
+    case 'dismiss': confirmDismiss = null; modal = null; commit(G.dismiss(s!, d.uid!)); break;
+    case 'advance': commit(G.advance(s!, d.uid!, d.job as any)); break;
+    case 'skillUp': G.moveSkill(s!, d.uid!, Number(d.i), -1); commit(); break;
+    case 'skillDown': G.moveSkill(s!, d.uid!, Number(d.i), 1); commit(); break;
+    case 'unequipE': commit(G.unequip(s!, d.uid!, d.slot as EquipSlot)); break;
+    case 'unequip': commit(G.unequip(s!, d.uid!, d.slot as EquipSlot)); break;
+    case 'enhance': commit(G.enhanceEquip(s!, d.e!, useBlessing)); if (s && s.blessings === 0) useBlessing = false; break;
+    case 'dismantle': commit(G.dismantle(s!, d.e!)); break;
+    case 'toggleBless': useBlessing = (el as HTMLInputElement).checked; render(); break;
+    case 'buyPotion': commit(G.buyPotion(s!, d.id!, Number(d.n ?? 1))); break;
+    case 'buyBless': commit(G.buyBlessing(s!, Number(d.n ?? 1))); break;
+    case 'buyEquip': commit(G.buyEquip(s!, d.id!, Number(d.r) as Rarity)); break;
+    case 'sell': commit(G.sellEquip(s!, d.e!)); break;
+    case 'pickPotion': {
+      const id = d.id!;
+      if (gatePotions.includes(id)) gatePotions = gatePotions.filter((x) => x !== id);
+      else if (gatePotions.length < MAX_POTIONS) gatePotions.push(id);
+      else toast(`물약은 최대 ${MAX_POTIONS}종까지`, true);
+      render(); break;
+    }
+    case 'depart': startRun(); break;
+    case 'pickFloor': if (s) { s.settings.startFloor = Number(d.v); if (s.settings.targetFloor < s.settings.startFloor) s.settings.targetFloor = Math.min(MAX_FLOOR, s.settings.startFloor + 2); commit(); } break;
+    case 'unequipAll': commit(G.unequipAll(s!, d.uid!)); break;
+    case 'unequipParty': commit(G.unequipParty(s!)); break;
+    case 'autoEquip': commit(G.autoEquip(s!, d.uid!)); break;
+    case 'autoEquipParty': commit(G.autoEquipParty(s!)); break;
+    case 'buyDeal': commit(G.buyDeal(s!, Number(d.i))); break;
+    case 'buyStones': commit(G.buyStones(s!, Number(d.n))); break;
+    case 'train': commit(G.train(s!, d.uid!)); break;
+    case 'reroll': commit(G.rerollTrait(s!, d.uid!, Number(d.i))); break;
+    case 'refine': commit(G.refine(s!, d.e!)); break;
+    case 'craft': commit(G.craftSet(s!, d.id!)); break;
+    case 'forgeSet': forgeSet = d.v!; render(); break;
+    case 'forgeJob': forgeJob = d.v as BaseJob; render(); break;
+    case 'buyEgg': commit(G.buyEggs(s!, Number(d.n ?? 1))); break;
+    case 'petUse': commit(G.setActivePet(s!, d.id!)); break;
+    case 'petMerge': commit(G.mergePet(s!, d.id!)); break;
+    case 'petSell': commit(G.sellPet(s!, d.id!)); break;
+    case 'optLock': commit(G.toggleOptionLock(s!, d.e!, Number(d.i))); break;
+    case 'refineView': refineView = d.v as GroupView; render(); break;
+    case 'partyIn': commit(G.togglePartyMember(s!, d.uid!)); break;
+    case 'partyOut': commit(G.togglePartyMember(s!, d.uid!)); break;
+    case 'partyFilter': partyFilter = d.v as PartyFilter; render(); break;
+    case 'bulkR': { const r = Number(d.r) as Rarity; if (bulkR.has(r)) bulkR.delete(r); else bulkR.add(r); render(); break; }
+    case 'bulkKeep': bulkKeepEnh = (el as HTMLInputElement).checked; render(); break;
+    case 'bulkSell': case 'bulkDis': {
+      if (el.dataset.confirm !== '1') { el.dataset.confirm = '1'; el.textContent = '한 번 더 누르면 실행'; break; }
+      const f = { rarities: [...bulkR], keepEnhanced: bulkKeepEnh };
+      commit(d.a === 'bulkSell' ? G.bulkSell(s!, f) : G.bulkDismantle(s!, f)); break;
+    }
+    case 'towerGo': startTowerRun(); break;
+    case 'claimQuest': commit(G.claimQuest(s!)); break;
+    case 'whFilter': whFilter = d.v as WhFilter; render(); break;
+    case 'whOpen': whOpen = whOpen === d.e ? null : d.e!; render(); break;
+    case 'smithView': smithView = d.v as GroupView; render(); break;
+    case 'setMode': if (s) { s.settings.mode = d.v as 'advance' | 'repeat'; commit(); } break;
+    case 'raidDiff': raidDiff = d.v as RaidDiff; render(); break;
+    case 'raidGo': startRaidRun(); break;
+    case 'dailyStage': dailyStage[d.id!] = Number(d.v); render(); break;
+    case 'dailySweep': commit(G.sweepDaily(s!, d.id!, Number(d.v))); break;
+    case 'dailyGo': startDailyRun(d.id!, Number(d.v)); break;
+    case 'pickRegion': if (s) {
+      gateRegion = d.v || null;
+      const r = REGIONS.find((x) => x.id === gateRegion);
+      if (r?.floors) { s.settings.startFloor = Math.max(r.floors[0], Math.min(r.floors[1], G.maxStartFloor(s))); s.settings.targetFloor = Math.min(r.floors[1], s.settings.startFloor + 2); }
+      render(); window.scrollTo(0, 0);
+    } break;
+    case 'speed': speed = Number(d.v) as 1 | 2 | 0; document.querySelectorAll('.speed button').forEach((b) => b.classList.toggle('on', (b as HTMLElement).dataset.v === d.v)); break;
+    case 'toggleAuto':
+      if (EX) {
+        EX.settings.auto = (el as HTMLInputElement).checked;
+        if (EX.settings.auto && phase === 'between' && lastFloor) afterFloor(lastFloor);
+      }
+      break;
+    case 'nextFloor': if (EX) { EX.next(); playFloor(); } break;
+    case 'retreat': if (EX) { EX.finish('manual'); phase = 'done'; endRun(); } break;
+    case 'endRun': endRun(); break;
+    case 'copySave': {
+      const t = document.getElementById('saveOut') as HTMLTextAreaElement;
+      navigator.clipboard?.writeText(t.value).then(() => toast('복사했어요'), () => { t.select(); toast('코드를 선택했어요. 직접 복사해 주세요'); });
+      break;
+    }
+    case 'importSave': {
+      const v = (document.getElementById('saveIn') as HTMLTextAreaElement).value;
+      const loaded = importSave(v);
+      if (!loaded) { toast('코드를 읽을 수 없어요', true); break; }
+      S = loaded; modal = null; screen = 'town'; commit({ ok: true, msg: '불러왔어요' }); break;
+    }
+    case 'wipe':
+      if (el.dataset.confirm !== '1') { el.dataset.confirm = '1'; el.textContent = '정말 지울까요? 한 번 더 누르기'; break; }
+      wipeSave(); S = null; lastSave = null; modal = null; screen = 'title'; render(); break;
+  }
+});
+
+app.addEventListener('change', (ev) => {
+  const el = ev.target as HTMLElement;
+  const key = el.dataset.g as keyof ExpeditionSettings | undefined;
+  if (key && S) {
+    const st = S.settings as any;
+    if (el instanceof HTMLInputElement && el.type === 'checkbox') st[key] = el.checked;
+    else if (key === 'auto') st.auto = (el as HTMLSelectElement).value === '1';
+    else st[key] = Number((el as HTMLSelectElement).value);
+    if (key === 'startFloor' && st.targetFloor < st.startFloor) st.targetFloor = Math.min(MAX_FLOOR, st.startFloor + 2);
+    commit();
+    return;
+  }
+  if (el.dataset.a === 'equipToSel' && S) {
+    const v = (el as HTMLSelectElement).value;
+    if (v) commit(G.equipTo(S, el.dataset.e!, v));
+    return;
+  }
+  if (el.dataset.a === 'equipSel' && S) {
+    const v = (el as HTMLSelectElement).value;
+    if (v) commit(G.equip(S, el.dataset.uid!, v));
+  }
+});
+
+app.addEventListener('toggle', (ev) => {
+  const el = ev.target as HTMLElement;
+  if (el.hasAttribute?.('data-bulk')) bulkOpen = (el as HTMLDetailsElement).open;
+  if (el.hasAttribute?.('data-drops')) dropOpen = (el as HTMLDetailsElement).open;
+}, true);
+
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && modal) { modal = null; render(); }
+});
+
+// ───────── 시작 ─────────
+async function boot() {
+  render();
+  await initRemote();
+  lastSave = await loadGame();
+  render();
+}
+boot();

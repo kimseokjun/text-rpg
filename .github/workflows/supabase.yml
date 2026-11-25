@@ -25,7 +25,7 @@ jobs:
       - name: DB migrations
         run: supabase db push --remote --include-all --yes -p "$SUPABASE_DB_PASSWORD" || supabase db push --linked --include-all -p "$SUPABASE_DB_PASSWORD"
       - name: Push auth config
-        run: yes | supabase config push --project-ref "$PROJECT_REF" || echo "::warning::config push 실패 — 대시보드에서 이메일 확인 끄기 필요"
+        run: supabase config push --yes || echo "::warning::config push 실패 — 대시보드에서 이메일 확인 끄기 필요"
       - name: Deploy functions
         run: |
           if [ -d supabase/functions ] && [ "$(ls -A supabase/functions 2>/dev/null)" ]; then supabase functions deploy --project-ref "$PROJECT_REF" --use-api; else echo "함수 없음"; fi

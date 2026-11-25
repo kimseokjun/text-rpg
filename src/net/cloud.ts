@@ -123,7 +123,7 @@ export async function sendChat(body: string, channel = 'global'): Promise<string
   const t = body.trim().slice(0, 200);
   if (!t) return null;
   const { error } = await sb.from('chat_messages').insert({ body: t, user_id: session.user.id, channel });
-  if (error) return /too fast/.test(error.message) ? '너무 빨라요. 잠깐 쉬었다 보내주세요' : '전송 실패';
+  if (error) return /too fast/.test(error.message) ? '너무 빨라요. 잠깐 쉬었다 보내주세요' : /muted/.test(error.message) ? '채팅이 금지된 계정이에요' : '전송 실패';
   return null;
 }
 
@@ -291,4 +291,55 @@ let onInvite: ((p: { from: string; room: string; floor: number }) => void) | nul
 export function setInviteHandler(h: typeof onInvite) { onInvite = h; }
 export function sendInvite(to: string, room: string, floor: number) {
   presCh?.send({ type: 'broadcast', event: 'invite', payload: { to, from: username, room, floor } });
+}
+
+// ───────── 접속 기록 · 활동 로그 ─────────
+export let isAdmin = false;
+export async function touch(login = false) {
+  if (!sb || !session) return;
+  await sb.rpc('touch', { p_login: login });
+  const { data } = await sb.from('profiles').select('is_admin').eq('id', session.user.id).maybeSingle();
+  isAdmin = !!(data as { is_admin?: boolean } | null)?.is_admin;
+}
+const evQueue: { kind: string; detail: string }[] = [];
+let evTimer = 0;
+export function logEvent(kind: string, detail = '') {
+  if (!sb || !session) return;
+  evQueue.push({ kind: kind.slice(0, 32), detail: detail.slice(0, 300) });
+  clearTimeout(evTimer);
+  evTimer = window.setTimeout(flushEvents, 2000);
+}
+async function flushEvents() {
+  if (!sb || !session || !evQueue.length) return;
+  const batch = evQueue.splice(0, 50).map((e) => ({ ...e, user_id: session!.user.id }));
+  await sb.from('events').insert(batch);
+}
+
+// ───────── 관리자 ─────────
+export interface AdminUser { id: string; username: string; created_at: string; last_seen: string; login_count: number; is_admin: boolean; muted: boolean; day: number | null; max_floor: number | null; power: number | null; gold: number | null; tower_best: number; saved_at: string | null; events: number; chats: number }
+export interface EventRow { id: number; user_id: string; username: string; kind: string; detail: string; created_at: string }
+export const adminStats = async () => (sb ? (await sb.rpc('admin_stats')).data as any : null);
+export const adminUsers = async () => (sb ? ((await sb.rpc('admin_users')).data ?? []) as AdminUser[] : []);
+export const adminUserSave = async (id: string) => (sb ? (await sb.rpc('admin_user_save', { p_user: id })).data as any : null);
+export async function adminEvents(opts: { user?: string; kind?: string; limit?: number } = {}): Promise<EventRow[]> {
+  if (!sb) return [];
+  let q = sb.from('events').select('*').order('id', { ascending: false }).limit(opts.limit ?? 200);
+  if (opts.user) q = q.eq('user_id', opts.user);
+  if (opts.kind) q = q.eq('kind', opts.kind);
+  return ((await q).data ?? []) as EventRow[];
+}
+export async function adminChats(limit = 150): Promise<(ChatMsg & { channel: string })[]> {
+  if (!sb) return [];
+  return ((await sb.from('chat_messages').select('id, user_id, username, body, created_at, channel').order('id', { ascending: false }).limit(limit)).data ?? []) as (ChatMsg & { channel: string })[];
+}
+export async function adminDeleteChat(id: number) { if (sb) await sb.from('chat_messages').delete().eq('id', id); }
+export async function adminGift(user: string, g: { gold: number; stones: number; blessings: number; refineStones: number; cores: number; scales: number }): Promise<string | null> {
+  if (!sb) return '서버 없음';
+  const { error } = await sb.rpc('admin_gift', { p_user: user, p_gold: g.gold, p_stones: g.stones, p_bless: g.blessings, p_refine: g.refineStones, p_cores: g.cores, p_scales: g.scales });
+  return error ? (/no save/.test(error.message) ? '서버 세이브가 없는 계정이에요' : error.message) : null;
+}
+export async function adminSet(user: string, muted: boolean, admin: boolean): Promise<string | null> {
+  if (!sb) return '서버 없음';
+  const { error } = await sb.rpc('admin_set', { p_user: user, p_muted: muted, p_admin: admin });
+  return error ? error.message : null;
 }

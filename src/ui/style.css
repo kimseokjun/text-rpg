@@ -417,3 +417,19 @@ svg.px{image-rendering:pixelated;flex:none}
 .codex.r1b{border-left-color:var(--r1)}.codex.r2b{border-left-color:var(--r2)}.codex.r3b{border-left-color:var(--r3)}.codex.r4b{border-left-color:var(--r4)}.codex.r5b{border-left-color:var(--r5)}
 .codex.none .ico{filter:grayscale(1) brightness(.6)}
 .codex .ico{width:48px;height:48px}
+.adbars{display:flex;align-items:flex-end;gap:4px;height:130px;padding-top:16px}
+.adbars .ab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;position:relative;min-width:0}
+.adbars .ab i{display:block;width:100%;max-width:22px;background:var(--lapis);border-radius:4px 4px 0 0;min-height:2px}
+.adbars .ab span{font-size:10px;color:var(--mute);margin-top:2px;white-space:nowrap}
+.adbars .ab b{position:absolute;top:-2px;font-size:10px}
+.adtbl tr[data-a]{cursor:pointer}.adtbl tr.on td{background:#e0b04018}
+.adtbl tr[data-a]:hover td{background:#ffffff08}
+.adlog{display:flex;flex-direction:column;gap:2px;max-height:320px;overflow-y:auto;font-size:13px}
+.adlog.big{max-height:none}
+.evr{display:flex;gap:8px;align-items:baseline;padding:5px 0;border-bottom:1px solid #ffffff0d;flex-wrap:wrap}
+.evr .ct{color:var(--mute);font-size:12px;min-width:84px}
+.evr .ed{flex:1;min-width:160px;color:var(--ink)}
+.adgift{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;margin-top:6px}
+.adgift label{display:flex;flex-direction:column;gap:2px}
+.adgift input{width:96px;min-height:36px}
+.addetail{border-color:var(--gold)}

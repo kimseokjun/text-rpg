@@ -1,0 +1,20 @@
+name: Admin · 관리자 지정
+on:
+  workflow_dispatch:
+    inputs:
+      username: { description: '관리자로 지정할 아이디', required: true }
+jobs:
+  grant:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          NAME: ${{ inputs.username }}
+        run: |
+          ESC=$(printf "%s" "$NAME" | sed "s/'/''/g")
+          Q="update public.profiles set is_admin = true where lower(username) = lower('$ESC') returning username, is_admin"
+          BODY=$(jq -n --arg q "$Q" '{query: $q}')
+          curl -sS -X POST "https://api.supabase.com/v1/projects/$REF/database/query" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$BODY" | tee out.json
+          echo
+          if [ "$(jq 'length' out.json 2>/dev/null)" = "0" ]; then echo "::error::없는 아이디"; exit 1; fi

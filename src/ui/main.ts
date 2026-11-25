@@ -33,7 +33,7 @@ import { townScene } from './art';
 import { charSprite } from './pixel';
 import { equipKind, equipSprite, itemSprite, monsterSprite, petSprite } from './sprites';
 
-type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex';
+type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex' | 'admin';
 
 let S: G.GameState | null = null;
 let screen: Screen = 'title';
@@ -78,9 +78,14 @@ let chatDraft = '';
 let friends: Cloud.Friend[] = [];
 let friendDraft = '';
 let socialOn = false;
+let touchTimer = 0;
 async function startSocial() {
   if (!CLOUD || !Cloud.session || socialOn) return;
   socialOn = true;
+  Cloud.touch(true).then(() => { if (screen === 'town') render(); });
+  Cloud.logEvent('login', navigator.userAgent.includes('Mobile') ? '모바일' : 'PC');
+  clearInterval(touchTimer);
+  touchTimer = window.setInterval(() => Cloud.touch(false), 180000);
   chatMsgs = await Cloud.loadChat();
   friends = await Cloud.loadFriends();
   Cloud.subscribeChat((m) => {
@@ -107,7 +112,7 @@ function renderInvite() {
   app.insertAdjacentHTML('beforeend', `<div class="invite" role="alertdialog"><b>${esc(invitePending.from)}</b>님이 멀티 던전(${esc(floorName(invitePending.floor))})에 초대했어요<div class="row" style="gap:6px;margin-top:8px"><button class="btn sm" data-a="mInviteJoin" data-v="${esc(invitePending.room)}">참가</button><button class="btn ghost sm" data-a="mInviteNo">거절</button></div></div>`);
 }
 Cloud.setInviteHandler((p) => { invitePending = p; renderInvite(); });
-function stopSocial() { Cloud.leaveRealtime(); socialOn = false; chatOpen = false; chatMsgs = []; friends = []; renderChat(); }
+function stopSocial() { clearInterval(touchTimer); Cloud.leaveRealtime(); socialOn = false; chatOpen = false; chatMsgs = []; friends = []; renderChat(); }
 const msgHtml = (m: Cloud.ChatMsg) => `<div class="cmsg ${m.user_id === Cloud.session?.user.id ? 'mine' : ''}"><span class="cn">${esc(m.username)}</span><span class="cb">${esc(m.body)}</span><span class="ct">${hhmm(m.created_at)}</span></div>`;
 const hhmm = (t: string) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 function renderChat(scrollBottom = false) {
@@ -154,7 +159,11 @@ async function submitFriend() {
   renderChat();
 }
 
+/** 활동 로그로 남길 행동 (관리자 대시보드) */
+let curAction = '';
+const LOG_ACTIONS = new Set(['hire', 'upgradeGuild', 'advance', 'enhance', 'buyEquip', 'buyDeal', 'train', 'reroll', 'refine', 'craft', 'buyEgg', 'petSellLow', 'claimQuest', 'dailySweep', 'buyStones']);
 function commit(r?: G.Result) {
+  if (CLOUD && r?.ok && LOG_ACTIONS.has(curAction)) Cloud.logEvent(curAction, r.msg ?? '');
   if (r && !r.ok) toast(r.msg, true);
   else if (r?.msg) toast(r.msg);
   if (S) saveGame(S);
@@ -264,6 +273,7 @@ async function submitAuth() {
   lastSave = await loadGame();
   render();
   startSocial();
+  if (authMode === 'signup') Cloud.logEvent('signup', '');
   toast(authMode === 'login' ? `${Cloud.username}님 어서 오세요` : '가입 완료!');
 }
 function viewTitle() {
@@ -287,6 +297,7 @@ function viewTitle() {
 const SIGN_ICON: Record<string, () => string> = {
   guild: () => charSprite('warrior', '길드', 2, { size: 34 }),
   rank: () => equipSprite('accessory', 7, { size: 34 }),
+  admin: () => itemSprite('refine', { size: 34 }),
   smith: () => equipSprite('sword', 3, { size: 34 }),
   refinery: () => itemSprite('refine', { size: 34 }),
   pets: () => itemSprite('egg', { size: 34 }),
@@ -323,6 +334,7 @@ function viewTown() {
     ['shop', '잡화점', `물약 ${Object.values(s.potions).reduce((a, b) => a + b, 0)}개 보유`],
     ['storage', '창고', `장비 ${allEquips().length}개 · 재료 보기`],
     ...(CLOUD ? [['rank', '명예의 전당', '무한 탑 · 전투력 · 레이드 순위'] as [string, string, string]] : []),
+    ...(CLOUD && Cloud.isAdmin ? [['admin', '관리자', '회원 · 활동 로그 · 채팅 · 지급'] as [string, string, string]] : []),
   ];
   return `<div class="wrap">
     <div class="scene">${townScene()}</div>
@@ -914,6 +926,7 @@ async function wbAttack() {
   wbBusy = false;
   if (r?.error) { toast(r.error, true); await loadWB(true); render(); return; }
   wbLast = r;
+  Cloud.logEvent('worldboss', `피해 ${r.dealt}${r.killedNow ? ' · 막타!' : ''}`);
   toast(`월드보스에게 ${fmt(r.dealt)} 피해!`);
   await loadWB(true);
   render();
@@ -1083,6 +1096,7 @@ async function finishMulti() {
   const lost = ex.stopReason === 'wipe';
   summary = { reason: lost ? `멀티 던전 · ${localFloor(ex.floor)}층에서 전멸` : `멀티 던전 · ${room.result.cleared}층 돌파!`, daily: `${room.host_name}의 방 · 협동 보너스 +20%`, report: ex.report, lost, diag: [], insured: true, floor: ex.floor, repeat: false, runs: ex.floorsCleared,
     gold: r?.error ? 0 : rw.gold, exp: r?.error ? 0 : rw.exp, stones: r?.error ? 0 : rw.stones, blessings: r?.error ? 0 : rw.blessings, refineStones: r?.error ? 0 : rw.refineStones, shards: 0, cores: r?.error ? 0 : rw.cores, equips, levelUps: ups, bosses: [], newMaxFloor: false } as unknown as G.ExpeditionSummary;
+  Cloud.logEvent('multi', `${(summary as G.ExpeditionSummary).reason} · ${room.host_name}의 방`);
   myRoom = null; roomSt = null; multiRoom = null; Cloud.watchRoom(null, () => {});
   screen = 'result';
   commit();
@@ -1116,6 +1130,84 @@ function viewCodex() {
     <div class="codexgrid">${cards}</div>
   </div>`;
 }
+
+// ───────── 관리자 대시보드 ─────────
+const KIND_NAME: Record<string, string> = { login: '접속', signup: '회원가입', run: '던전', tower: '무한 탑', raid: '레이드', daily: '일일 던전', worldboss: '월드보스', multi: '멀티 던전', hire: '용병 고용', upgradeGuild: '길드 강화', advance: '전직', enhance: '강화', buyEquip: '장비 구매', buyDeal: '특가 구매', train: '훈련', reroll: '특성 재설정', refine: '제련', craft: '세트 제작', buyEgg: '펫 알', petSellLow: '펫 정리', claimQuest: '목표 보상', dailySweep: '소탕', buyStones: '강화석 구매', admin_gift: '관리자 지급' };
+let adTab: 'over' | 'users' | 'log' | 'chat' = 'over';
+let adStats: any = null, adUsers: Cloud.AdminUser[] = [], adEvents: Cloud.EventRow[] = [], adChats: (Cloud.ChatMsg & { channel: string })[] = [];
+let adSel: string | null = null, adSave: any = null, adSelEvents: Cloud.EventRow[] = [];
+let adSort: 'seen' | 'joined' | 'power' | 'floor' = 'seen', adQ = '', adKind = '';
+let adLoading = false, adAt: Record<string, number> = {};
+const ago = (t?: string | null) => { if (!t) return '-'; const m = Math.floor((Date.now() - Date.parse(t)) / 60000); return m < 1 ? '방금' : m < 60 ? `${m}분 전` : m < 1440 ? `${Math.floor(m / 60)}시간 전` : `${Math.floor(m / 1440)}일 전`; };
+const ymd = (t?: string | null) => (t ? new Date(Date.parse(t) + 9 * 3600_000).toISOString().slice(0, 16).replace('T', ' ') : '-');
+async function adLoad(tab = adTab, force = false) {
+  if (adLoading || (!force && Date.now() - (adAt[tab] ?? 0) < 20000)) return;
+  adLoading = true; render();
+  try {
+    if (tab === 'over') adStats = await Cloud.adminStats();
+    if (tab === 'users' || tab === 'over') adUsers = await Cloud.adminUsers();
+    if (tab === 'log') adEvents = await Cloud.adminEvents({ kind: adKind || undefined, limit: 300 });
+    if (tab === 'chat') adChats = await Cloud.adminChats(200);
+  } catch { toast('불러오기 실패', true); }
+  adAt[tab] = Date.now(); adLoading = false;
+  if (screen === 'admin') render();
+}
+async function adOpenUser(id: string) {
+  adSel = id; adSave = null; adSelEvents = []; render();
+  const [sv, ev] = await Promise.all([Cloud.adminUserSave(id), Cloud.adminEvents({ user: id, limit: 60 })]);
+  adSave = sv; adSelEvents = ev; render();
+}
+const bars = (rows: { d: string; n: number }[]) => {
+  const max = Math.max(1, ...rows.map((r) => r.n));
+  return `<div class="adbars">${rows.map((r) => `<div class="ab" title="${r.d}: ${r.n}"><i style="height:${(r.n / max) * 100}%"></i><span>${r.d.slice(5)}</span><b>${r.n}</b></div>`).join('') || '<p class="small mute">데이터 없음</p>'}</div>`;
+};
+function viewAdmin() {
+  if (!Cloud.isAdmin) return `<div class="wrap">${backBtn()}<h2>관리자</h2><p class="mute">관리자만 볼 수 있어요.</p></div>`;
+  if (!adAt[adTab] && !adLoading) setTimeout(() => adLoad(adTab), 0);
+  const tabs: [typeof adTab, string][] = [['over', '개요'], ['users', `회원 ${adUsers.length || ''}`], ['log', '활동 로그'], ['chat', '채팅']];
+  let body = '';
+  if (adTab === 'over') {
+    const st = adStats;
+    const online = Object.keys(Cloud.online).length;
+    const tiles: [string, unknown][] = st ? [['전체 회원', st.users], ['지금 접속', online], ['24시간 접속', st.active24], ['7일 접속', st.active7], ['신규 가입 (24h)', st.new24], ['활동 (24h)', st.events24], ['채팅 (24h)', st.chats24], ['멀티 방 (24h)', st.rooms24]] : [];
+    const kinds = st ? Object.entries(st.kinds as Record<string, number>).sort((a, b) => b[1] - a[1]) : [];
+    const top = [...adUsers].filter((u) => u.power).sort((a, b) => (b.power ?? 0) - (a.power ?? 0)).slice(0, 5);
+    body = !st ? '<p class="mute">불러오는 중…</p>' : `
+      <div class="sum">${tiles.map(([k, v]) => `<div><span class="small mute">${k}</span><b>${fmt(Number(v) || 0)}</b></div>`).join('')}</div>
+      ${st.wb ? `<div class="panel"><h3 style="margin-top:0">월드보스 (시즌 ${st.wb.season})</h3><div class="bar e big"><i style="width:${Math.max(0, (st.wb.hp / st.wb.max_hp) * 100)}%"></i></div><p class="small">${st.wb.killed_at ? `처치됨 · ${ymd(st.wb.killed_at)}` : `HP ${fmt(st.wb.hp)} / ${fmt(st.wb.max_hp)}`}</p></div>` : ''}
+      <div class="grid2"><div class="panel"><h3 style="margin-top:0">일별 가입 (14일)</h3>${bars(st.signups)}</div><div class="panel"><h3 style="margin-top:0">일별 활동 유저 (14일)</h3>${bars(st.dau)}</div></div>
+      <div class="grid2"><div class="panel"><h3 style="margin-top:0">24시간 행동</h3>${kinds.map(([k, n]) => `<div class="row" style="justify-content:space-between"><span>${esc(KIND_NAME[k] ?? k)}</span><b>${fmt(n)}</b></div>`).join('') || '<p class="small mute">없음</p>'}</div>
+        <div class="panel"><h3 style="margin-top:0">전투력 TOP 5</h3>${top.map((u, i) => `<div class="row" style="justify-content:space-between"><span>${i + 1}. ${esc(u.username)}</span><b>${fmt(u.power ?? 0)}</b></div>`).join('') || '<p class="small mute">없음</p>'}</div></div>`;
+  } else if (adTab === 'users') {
+    const q = adQ.trim().toLowerCase();
+    const list = adUsers.filter((u) => !q || u.username.toLowerCase().includes(q)).sort((a, b) => adSort === 'joined' ? Date.parse(b.created_at) - Date.parse(a.created_at) : adSort === 'power' ? (b.power ?? 0) - (a.power ?? 0) : adSort === 'floor' ? (b.max_floor ?? 0) - (a.max_floor ?? 0) : Date.parse(b.last_seen) - Date.parse(a.last_seen));
+    const sel = adUsers.find((u) => u.id === adSel);
+    const sv = adSave;
+    const detail = sel ? `<div class="panel addetail"><div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap"><h3 style="margin:0"><span class="dot ${Cloud.online[sel.id] ? 'on' : ''}"></span> ${esc(sel.username)} ${sel.is_admin ? '<span class="tag">관리자</span>' : ''} ${sel.muted ? '<span class="tag mute">채팅 금지</span>' : ''}</h3><button class="btn ghost sm" data-a="adClose">닫기</button></div>
+      <div class="sum" style="margin:8px 0">${[['가입', ymd(sel.created_at)], ['마지막 접속', `${ago(sel.last_seen)}`], ['접속 횟수', sel.login_count], ['마지막 저장', ago(sel.saved_at)], ['일차', sel.day ?? '-'], ['최고 층', sel.max_floor ? floorName(sel.max_floor) : '-'], ['전투력', fmt(sel.power ?? 0)], ['무한 탑', `${sel.tower_best}층`], ['골드', fmt(sel.gold ?? 0)], ['활동 · 채팅', `${sel.events} · ${sel.chats}`]].map(([k, v]) => `<div><span class="small mute">${k}</span><b style="font-size:16px">${esc(String(v))}</b></div>`).join('')}</div>
+      ${sv ? `<p class="small"><b>재화</b> 강화석 ${fmt(sv.stones ?? 0)} · 축복 ${fmt(sv.blessings ?? 0)} · 제련석 ${fmt(sv.refineStones ?? 0)} · 핵 ${fmt(sv.cores ?? 0)} · 벨리알 파편 ${fmt(sv.scales ?? 0)} · 펫 ${(sv.pets ?? []).length}마리 · 단원 ${(sv.roster ?? []).length}명</p>
+        <p class="small"><b>출전 파티</b> ${(sv.party ?? []).map((u: string) => (sv.roster ?? []).find((c: Character) => c.uid === u)).filter(Boolean).map((c: Character) => `${esc(c.name)} (${esc(JOBS[c.jobId]?.name ?? c.jobId)} Lv.${c.level})`).join(' · ') || '-'}</p>` : '<p class="small mute">세이브 불러오는 중…</p>'}
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin:8px 0"><button class="btn ghost sm" data-a="adMute" data-v="${sel.id}">${sel.muted ? '채팅 금지 해제' : '채팅 금지'}</button>${sel.id !== Cloud.session?.user.id ? `<button class="btn ghost sm" data-a="adAdmin" data-v="${sel.id}">${sel.is_admin ? '관리자 해제' : '관리자 지정'}</button>` : ''}</div>
+      <form class="adgift" data-form="adgift"><b class="small">재료 지급</b>${[['gold', '골드'], ['stones', '강화석'], ['blessings', '축복'], ['refineStones', '제련석'], ['cores', '핵'], ['scales', '벨리알 파편']].map(([k, n]) => `<label class="small">${n}<input type="number" min="0" step="1" name="${k}" value="0" inputmode="numeric"></label>`).join('')}<button class="btn sm" type="submit">지급</button></form>
+      <p class="small mute" style="margin:2px 0 8px">지급하면 그 계정 서버 세이브에 바로 더해져요. 접속 중이면 새로고침해야 보여요 (그 전에 저장되면 덮어써짐).</p>
+      <h4 style="margin:8px 0 4px">최근 활동</h4><div class="adlog">${adSelEvents.map(evRow).join('') || '<p class="small mute">없음</p>'}</div></div>` : '';
+    body = `${detail}
+      <div class="row" style="gap:8px;flex-wrap:wrap;margin:8px 0"><input id="adQ" placeholder="아이디 검색" value="${esc(adQ)}" style="flex:1;min-width:140px"><div class="seg mini" role="group" aria-label="정렬">${([['seen', '최근 접속'], ['joined', '가입순'], ['power', '전투력'], ['floor', '진행']] as const).map(([k, n]) => `<button class="${adSort === k ? 'on' : ''}" data-a="adSort" data-v="${k}">${n}</button>`).join('')}</div></div>
+      <div class="rtbl"><table class="adtbl"><thead><tr><th>아이디</th><th>마지막 접속</th><th>가입</th><th>접속</th><th>진행</th><th>전투력</th><th>탑</th></tr></thead><tbody>
+      ${list.map((u) => `<tr data-a="adUser" data-v="${u.id}" class="${u.id === adSel ? 'on' : ''}"><td><span class="dot ${Cloud.online[u.id] ? 'on' : ''}"></span> <b>${esc(u.username)}</b>${u.is_admin ? ' 👑' : ''}${u.muted ? ' 🔇' : ''}</td><td>${ago(u.last_seen)}</td><td>${ymd(u.created_at).slice(5, 10)}</td><td>${u.login_count}</td><td>${u.max_floor ? esc(floorName(u.max_floor)) : '-'}</td><td>${fmt(u.power ?? 0)}</td><td>${u.tower_best}</td></tr>`).join('')}</tbody></table></div>`;
+  } else if (adTab === 'log') {
+    body = `<div class="row" style="gap:8px;flex-wrap:wrap;margin:8px 0"><select id="adKind" data-ad="kind"><option value="">전체 행동</option>${Object.entries(KIND_NAME).map(([k, n]) => `<option value="${k}" ${adKind === k ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select><span class="small mute">최근 ${adEvents.length}건</span></div>
+      <div class="adlog big">${adEvents.map(evRow).join('') || '<p class="small mute">기록 없음</p>'}</div>`;
+  } else {
+    body = `<div class="adlog big">${adChats.map((m) => `<div class="evr"><span class="ct">${ymd(m.created_at).slice(5)}</span><span class="tag ${m.channel === 'global' ? '' : 'mute'}">${m.channel === 'global' ? '전체' : '방'}</span><b>${esc(m.username)}</b><span class="ed">${esc(m.body)}</span><button class="btn ghost sm" data-a="adDelChat" data-v="${m.id}" aria-label="삭제">삭제</button></div>`).join('') || '<p class="small mute">메시지 없음</p>'}</div>`;
+  }
+  return `<div class="wrap">${backBtn()}
+    <div class="row" style="justify-content:space-between;align-items:center"><h2>관리자 대시보드</h2><button class="btn ghost sm" data-a="adRefresh" ${adLoading ? 'disabled' : ''}>${adLoading ? '불러오는 중…' : '새로고침'}</button></div>
+    <div class="tabs" role="group" aria-label="관리자 메뉴">${tabs.map(([k, n]) => `<button class="${adTab === k ? 'on' : ''}" data-a="adTab" data-v="${k}">${n}</button>`).join('')}</div>
+    ${body}
+  </div>`;
+}
+const evRow = (e: Cloud.EventRow) => `<div class="evr"><span class="ct">${ymd(e.created_at).slice(5)}</span><b>${esc(e.username)}</b><span class="tag">${esc(KIND_NAME[e.kind] ?? e.kind)}</span><span class="ed">${esc(e.detail)}</span></div>`;
 
 function viewTower() {
   const s = S!;
@@ -1565,7 +1657,9 @@ function endRun() {
   if (!EX || !S) return;
   if (EX.settings.multi) { finishMulti(); return; }
   playToken++;
+  const ex0 = EX;
   summary = G.finishExpedition(S, EX);
+  if (CLOUD) Cloud.logEvent(ex0.settings.tower ? 'tower' : ex0.settings.raid ? 'raid' : ex0.settings.daily ? 'daily' : 'run', `${summary.reason} · ${summary.daily ?? floorName(ex0.floor)} · 골드 ${summary.gold}`);
   EX = null;
   screen = 'result';
   commit();
@@ -1748,7 +1842,7 @@ function renderNow() {
   }
   const body = !S || screen === 'title' ? viewTitle()
     : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
-    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : viewResult();
+    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'admin' ? viewAdmin() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : viewResult();
   app.innerHTML = (screen === 'title' ? '' : topbar()) + body;
   document.querySelector('.hubtabs .on')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
   renderModal();
@@ -1804,6 +1898,7 @@ app.addEventListener('click', (ev) => {
   if (el.tagName === 'SELECT') return;
   const d = el.dataset;
   const s = S;
+  curAction = d.a ?? '';
   switch (d.a) {
     case 'newGame': {
       const name = (document.getElementById('heroName') as HTMLInputElement).value.trim().slice(0, 8) || '용사';
@@ -1916,6 +2011,14 @@ app.addEventListener('click', (ev) => {
     case 'mInviteJoin': (async () => { invitePending = null; renderInvite(); const e = await Cloud.joinRoom(d.v!); if (e) { toast(e, true); return; } screen = 'multi'; await enterRoom(d.v!); render(); })(); break;
     case 'mInviteNo': invitePending = null; renderInvite(); break;
     case 'codexGrade': codexGrade = Number(d.v) as Grade | 0; render(); break;
+    case 'adTab': adTab = d.v as typeof adTab; render(); adLoad(adTab); break;
+    case 'adRefresh': adLoad(adTab, true); break;
+    case 'adSort': adSort = d.v as typeof adSort; render(); break;
+    case 'adUser': adOpenUser(d.v!); break;
+    case 'adClose': adSel = null; render(); break;
+    case 'adMute': { const u = adUsers.find((x) => x.id === d.v); if (u) Cloud.adminSet(u.id, !u.muted, u.is_admin).then((e) => { if (e) toast(e, true); else { u.muted = !u.muted; toast(u.muted ? '채팅 금지' : '채팅 금지 해제'); render(); } }); break; }
+    case 'adAdmin': { const u = adUsers.find((x) => x.id === d.v); if (u) Cloud.adminSet(u.id, u.muted, !u.is_admin).then((e) => { if (e) toast(e, true); else { u.is_admin = !u.is_admin; toast(u.is_admin ? '관리자 지정' : '관리자 해제'); render(); } }); break; }
+    case 'adDelChat': Cloud.adminDeleteChat(Number(d.v)).then(() => { adChats = adChats.filter((m) => m.id !== Number(d.v)); chatMsgs = chatMsgs.filter((m) => m.id !== Number(d.v)); render(); toast('삭제했어요'); }); break;
     case 'claimQuest': commit(G.claimQuest(s!)); break;
     case 'whFilter': whFilter = d.v as WhFilter; render(); break;
     case 'whOpen': whOpen = whOpen === d.e ? null : d.e!; render(); break;
@@ -1964,11 +2067,20 @@ app.addEventListener('input', (ev) => {
   if (t.id === 'chatIn') chatDraft = t.value;
   if (t.id === 'friendIn') friendDraft = t.value;
   if (t.id === 'roomIn') roomDraft = t.value;
+  if (t.id === 'adQ') { adQ = t.value; const pos = t.selectionStart; render(); const n = document.getElementById('adQ') as HTMLInputElement | null; if (n) { n.focus(); n.setSelectionRange(pos, pos); } }
 });
 app.addEventListener('submit', (ev) => {
   const f = ev.target as HTMLElement;
   if (f.dataset.form === 'auth') { ev.preventDefault(); if (!authBusy) submitAuth(); }
   if (f.dataset.form === 'chat') { ev.preventDefault(); submitChat(); }
+  if (f.dataset.form === 'adgift' && adSel) {
+    ev.preventDefault();
+    const fd = new FormData(f as HTMLFormElement);
+    const g = Object.fromEntries(['gold', 'stones', 'blessings', 'refineStones', 'cores', 'scales'].map((k) => [k, Math.max(0, Math.floor(Number(fd.get(k)) || 0))])) as { gold: number; stones: number; blessings: number; refineStones: number; cores: number; scales: number };
+    if (!Object.values(g).some((v) => v > 0)) { toast('지급할 수량을 넣어주세요', true); return; }
+    const who = adUsers.find((u) => u.id === adSel)?.username ?? '';
+    Cloud.adminGift(adSel, g).then((e) => { if (e) toast(e, true); else { toast(`${who}에게 지급 완료`); if (adSel === Cloud.session?.user.id) toast('내 계정에 지급했어요. 새로고침하면 반영돼요'); adOpenUser(adSel!); adLoad('users', true); } });
+  }
   if (f.dataset.form === 'room') {
     ev.preventDefault();
     const inp = document.getElementById('roomIn') as HTMLInputElement; const v = inp.value; if (!v.trim() || !myRoom) return;
@@ -1980,6 +2092,7 @@ app.addEventListener('submit', (ev) => {
 app.addEventListener('change', (ev) => {
   const sel = ev.target as HTMLSelectElement;
   if (sel.dataset?.m === 'floor') { mFloor = Number(sel.value); return; }
+  if (sel.dataset?.ad === 'kind') { adKind = sel.value; adLoad('log', true); return; }
   const el = ev.target as HTMLElement;
   const key = el.dataset.g as keyof ExpeditionSettings | undefined;
   if (key && S) {

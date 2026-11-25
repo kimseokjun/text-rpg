@@ -94,3 +94,75 @@ export async function fetchRanks(kind: RankKind, raidWeek: number): Promise<{ to
   }
   return { top: (data ?? []) as RankRow[], mine };
 }
+
+// ───────── 채팅 ─────────
+export interface ChatMsg { id: number; user_id: string; username: string; body: string; created_at: string }
+let chatCh: ReturnType<SupabaseClient['channel']> | null = null;
+export async function loadChat(): Promise<ChatMsg[]> {
+  if (!sb || !session) return [];
+  const { data } = await sb.from('chat_messages').select('id, user_id, username, body, created_at').eq('channel', 'global').order('id', { ascending: false }).limit(60);
+  return ((data ?? []) as ChatMsg[]).reverse();
+}
+export function subscribeChat(onMsg: (m: ChatMsg) => void, onFriends: () => void) {
+  if (!sb || !session || chatCh) return;
+  chatCh = sb.channel('db-changes')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (p) => onMsg(p.new as ChatMsg))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, () => onFriends())
+    .subscribe();
+}
+export async function sendChat(body: string): Promise<string | null> {
+  if (!sb || !session) return '로그인이 필요해요';
+  const t = body.trim().slice(0, 200);
+  if (!t) return null;
+  const { error } = await sb.from('chat_messages').insert({ body: t, user_id: session.user.id });
+  if (error) return /too fast/.test(error.message) ? '너무 빨라요. 잠깐 쉬었다 보내주세요' : '전송 실패';
+  return null;
+}
+
+// ───────── 접속 중 (presence) ─────────
+let presCh: ReturnType<SupabaseClient['channel']> | null = null;
+export let online: Record<string, string> = {}; // user_id → username
+export function joinPresence(onChange: () => void) {
+  if (!sb || !session || presCh) return;
+  presCh = sb.channel('online', { config: { presence: { key: session.user.id } } });
+  presCh.on('presence', { event: 'sync' }, () => {
+    const st = presCh!.presenceState() as Record<string, { username?: string }[]>;
+    online = Object.fromEntries(Object.entries(st).map(([k, v]) => [k, v[0]?.username ?? '']));
+    onChange();
+  }).subscribe(async (status) => { if (status === 'SUBSCRIBED') await presCh!.track({ username }); });
+}
+export function leaveRealtime() {
+  if (!sb) return;
+  if (chatCh) { sb.removeChannel(chatCh); chatCh = null; }
+  if (presCh) { sb.removeChannel(presCh); presCh = null; }
+  online = {};
+}
+
+// ───────── 친구 ─────────
+export interface Friend { id: number; other: string; username: string; status: 'pending' | 'accepted'; incoming: boolean; power: number; tower_best: number }
+export async function loadFriends(): Promise<Friend[]> {
+  if (!sb || !session) return [];
+  const me = session.user.id;
+  const { data } = await sb.from('friendships').select('id, requester, addressee, status');
+  const rows = (data ?? []) as { id: number; requester: string; addressee: string; status: 'pending' | 'accepted' }[];
+  const ids = rows.map((r) => (r.requester === me ? r.addressee : r.requester));
+  if (!ids.length) return [];
+  const [p, rk] = await Promise.all([
+    sb.from('profiles').select('id, username').in('id', ids),
+    sb.from('ranks').select('user_id, power, tower_best').in('user_id', ids),
+  ]);
+  const name = Object.fromEntries(((p.data ?? []) as { id: string; username: string }[]).map((x) => [x.id, x.username]));
+  const rr = Object.fromEntries(((rk.data ?? []) as { user_id: string; power: number; tower_best: number }[]).map((x) => [x.user_id, x]));
+  return rows.map((r) => { const o = r.requester === me ? r.addressee : r.requester; return { id: r.id, other: o, username: name[o] ?? '?', status: r.status, incoming: r.addressee === me, power: rr[o]?.power ?? 0, tower_best: rr[o]?.tower_best ?? 0 }; });
+}
+export async function requestFriend(name: string): Promise<string | null> {
+  if (!sb || !session) return '로그인이 필요해요';
+  const { data } = await sb.from('profiles').select('id').eq('username', name.trim()).maybeSingle();
+  if (!data) return '그런 아이디가 없어요';
+  if (data.id === session.user.id) return '자기 자신은 추가할 수 없어요';
+  const { error } = await sb.from('friendships').insert({ requester: session.user.id, addressee: data.id });
+  if (error) return /duplicate|unique/i.test(error.message) ? '이미 친구이거나 요청 중이에요' : '요청 실패';
+  return null;
+}
+export async function acceptFriend(id: number) { if (sb) await sb.from('friendships').update({ status: 'accepted' }).eq('id', id); }
+export async function removeFriend(id: number) { if (sb) await sb.from('friendships').delete().eq('id', id); }

@@ -65,6 +65,84 @@ function renderToast() {
   document.querySelector('.toast')?.remove();
   if (toastMsg) app.insertAdjacentHTML('beforeend', `<div class="toast ${toastMsg.bad ? 'bad' : ''}" role="status">${esc(toastMsg.text)}</div>`);
 }
+// ───────── 채팅·친구 (서버 버전) ─────────
+let chatOpen = false;
+let chatTab: 'chat' | 'friends' = 'chat';
+let chatMsgs: Cloud.ChatMsg[] = [];
+let chatUnread = 0;
+let chatDraft = '';
+let friends: Cloud.Friend[] = [];
+let friendDraft = '';
+let socialOn = false;
+async function startSocial() {
+  if (!CLOUD || !Cloud.session || socialOn) return;
+  socialOn = true;
+  chatMsgs = await Cloud.loadChat();
+  friends = await Cloud.loadFriends();
+  Cloud.subscribeChat((m) => {
+    if (chatMsgs.some((x) => x.id === m.id)) return;
+    chatMsgs.push(m); if (chatMsgs.length > 100) chatMsgs.shift();
+    const list = document.querySelector('.chatbox .clist:not(.flist)');
+    if (chatOpen && chatTab === 'chat' && list) {
+      const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+      list.querySelector('p.small.mute')?.remove();
+      list.insertAdjacentHTML('beforeend', msgHtml(m));
+      if (atBottom || m.user_id === Cloud.session?.user.id) list.scrollTop = list.scrollHeight;
+      return;
+    }
+    chatUnread++;
+    renderChat();
+  }, async () => { friends = await Cloud.loadFriends(); if (!(chatOpen && chatTab === 'chat')) renderChat(); });
+  Cloud.joinPresence(() => { const el = document.querySelector('.chatbox .onl'); if (el) el.textContent = `접속 ${Object.keys(Cloud.online).length}명`; else renderChat(); });
+  renderChat();
+}
+function stopSocial() { Cloud.leaveRealtime(); socialOn = false; chatOpen = false; chatMsgs = []; friends = []; renderChat(); }
+const msgHtml = (m: Cloud.ChatMsg) => `<div class="cmsg ${m.user_id === Cloud.session?.user.id ? 'mine' : ''}"><span class="cn">${esc(m.username)}</span><span class="cb">${esc(m.body)}</span><span class="ct">${hhmm(m.created_at)}</span></div>`;
+const hhmm = (t: string) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+function renderChat(scrollBottom = false) {
+  const box = document.querySelector('.chatbox .clist');
+  const atBottom = box ? box.scrollHeight - box.scrollTop - box.clientHeight < 40 : true;
+  document.querySelector('.chatfab')?.remove();
+  document.querySelector('.chatbox')?.remove();
+  if (!CLOUD || !Cloud.session || !socialOn || screen === 'title') return;
+  const onlineN = Object.keys(Cloud.online).length;
+  const pending = friends.filter((f) => f.status === 'pending' && f.incoming).length;
+  if (!chatOpen) {
+    app.insertAdjacentHTML('beforeend', `<button class="chatfab" data-a="chatToggle" aria-label="채팅 열기">💬${chatUnread + pending ? `<span class="badge">${Math.min(99, chatUnread + pending)}</span>` : ''}</button>`);
+    return;
+  }
+  const body = chatTab === 'chat'
+    ? `<div class="clist">${chatMsgs.map(msgHtml).join('') || '<p class="small mute">첫 메시지를 남겨보세요.</p>'}</div>
+      <form class="cin" data-form="chat"><input id="chatIn" maxlength="200" placeholder="메시지 (200자)" value="${esc(chatDraft)}" autocomplete="off"><button class="btn sm" type="submit">보내기</button></form>`
+    : `<div class="clist flist">
+        <form class="cin" data-form="friend"><input id="friendIn" maxlength="12" placeholder="친구 아이디" value="${esc(friendDraft)}" autocomplete="off"><button class="btn sm" type="submit">친구 요청</button></form>
+        ${friends.filter((f) => f.status === 'pending' && f.incoming).map((f) => `<div class="frow"><b>${esc(f.username)}</b><span class="small mute">친구 요청</span><button class="btn sm" data-a="friendAccept" data-v="${f.id}">수락</button><button class="btn ghost sm" data-a="friendRemove" data-v="${f.id}">거절</button></div>`).join('')}
+        ${friends.filter((f) => f.status === 'accepted').sort((a, b) => Number(!!Cloud.online[b.other]) - Number(!!Cloud.online[a.other])).map((f) => `<div class="frow"><span class="dot ${Cloud.online[f.other] ? 'on' : ''}" title="${Cloud.online[f.other] ? '접속 중' : '오프라인'}"></span><b>${esc(f.username)}</b><span class="small mute">전투력 ${fmt(f.power)} · 탑 ${f.tower_best}층</span><button class="btn ghost sm" data-a="friendRemove" data-v="${f.id}" aria-label="친구 삭제">✕</button></div>`).join('')}
+        ${friends.filter((f) => f.status === 'pending' && !f.incoming).map((f) => `<div class="frow"><b>${esc(f.username)}</b><span class="small mute">수락 대기 중</span><button class="btn ghost sm" data-a="friendRemove" data-v="${f.id}">취소</button></div>`).join('')}
+        ${friends.length ? '' : '<p class="small mute">아이디로 친구를 추가해 보세요.</p>'}
+      </div>`;
+  app.insertAdjacentHTML('beforeend', `<section class="chatbox" aria-label="채팅">
+    <div class="chead"><div class="tabs"><button class="${chatTab === 'chat' ? 'on' : ''}" data-a="chatTab" data-v="chat">전체 채팅</button><button class="${chatTab === 'friends' ? 'on' : ''}" data-a="chatTab" data-v="friends">친구${pending ? ` (${pending})` : ''}</button></div><span class="small mute onl">접속 ${onlineN}명</span><button class="btn ghost sm" data-a="chatToggle" aria-label="채팅 닫기">✕</button></div>
+    ${body}</section>`);
+  const nb = document.querySelector('.chatbox .clist');
+  if (nb && chatTab === 'chat' && (scrollBottom ? atBottom : true)) nb.scrollTop = nb.scrollHeight;
+}
+async function submitChat() {
+  const v = (document.getElementById('chatIn') as HTMLInputElement)?.value ?? '';
+  if (!v.trim()) return;
+  chatDraft = '';
+  const inp = document.getElementById('chatIn') as HTMLInputElement | null;
+  if (inp) inp.value = '';
+  const err = await Cloud.sendChat(v);
+  if (err) { chatDraft = v; if (inp) inp.value = v; toast(err, true); }
+}
+async function submitFriend() {
+  const v = (document.getElementById('friendIn') as HTMLInputElement)?.value ?? '';
+  const err = await Cloud.requestFriend(v);
+  if (err) { friendDraft = v; toast(err, true); } else { friendDraft = ''; toast('친구 요청을 보냈어요'); friends = await Cloud.loadFriends(); }
+  renderChat();
+}
+
 function commit(r?: G.Result) {
   if (r && !r.ok) toast(r.msg, true);
   else if (r?.msg) toast(r.msg);
@@ -172,6 +250,7 @@ async function submitAuth() {
   if (err) { authErr = err; render(); return; }
   lastSave = await loadGame();
   render();
+  startSocial();
   toast(authMode === 'login' ? `${Cloud.username}님 어서 오세요` : '가입 완료!');
 }
 function viewTitle() {
@@ -1391,6 +1470,7 @@ function renderNow() {
   renderModal();
   renderToast();
   checkPower();
+  renderChat();
 }
 
 /** 전투력 변동 알림: 마을 화면에서 파티 전투력이 바뀌면 +/− 표시 */
@@ -1518,9 +1598,13 @@ app.addEventListener('click', (ev) => {
     }
     case 'towerGo': startTowerRun(); break;
     case 'authMode': authMode = d.v as 'login' | 'signup'; authErr = ''; render(); break;
-    case 'logout': Cloud.signOut().then(() => { S = null; lastSave = null; screen = 'title'; render(); }); break;
+    case 'logout': stopSocial(); Cloud.signOut().then(() => { S = null; lastSave = null; screen = 'title'; render(); }); break;
     case 'rankKind': rankKind = d.v as Cloud.RankKind; render(); break;
     case 'rankRefresh': loadRanks(true); break;
+    case 'chatToggle': chatOpen = !chatOpen; if (chatOpen && chatTab === 'chat') chatUnread = 0; renderChat(); break;
+    case 'chatTab': chatTab = d.v as 'chat' | 'friends'; if (chatTab === 'chat') chatUnread = 0; renderChat(); break;
+    case 'friendAccept': Cloud.acceptFriend(Number(d.v)).then(async () => { friends = await Cloud.loadFriends(); renderChat(); toast('친구가 됐어요'); }); break;
+    case 'friendRemove': Cloud.removeFriend(Number(d.v)).then(async () => { friends = await Cloud.loadFriends(); renderChat(); }); break;
     case 'claimQuest': commit(G.claimQuest(s!)); break;
     case 'whFilter': whFilter = d.v as WhFilter; render(); break;
     case 'whOpen': whOpen = whOpen === d.e ? null : d.e!; render(); break;
@@ -1564,9 +1648,16 @@ app.addEventListener('click', (ev) => {
   }
 });
 
+app.addEventListener('input', (ev) => {
+  const t = ev.target as HTMLInputElement;
+  if (t.id === 'chatIn') chatDraft = t.value;
+  if (t.id === 'friendIn') friendDraft = t.value;
+});
 app.addEventListener('submit', (ev) => {
   const f = ev.target as HTMLElement;
   if (f.dataset.form === 'auth') { ev.preventDefault(); if (!authBusy) submitAuth(); }
+  if (f.dataset.form === 'chat') { ev.preventDefault(); submitChat(); }
+  if (f.dataset.form === 'friend') { ev.preventDefault(); submitFriend(); }
 });
 app.addEventListener('change', (ev) => {
   const el = ev.target as HTMLElement;
@@ -1607,5 +1698,6 @@ async function boot() {
   await initRemote();
   lastSave = await loadGame();
   render();
+  startSocial();
 }
 boot();

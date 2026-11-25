@@ -358,3 +358,21 @@ svg.px{image-rendering:pixelated;flex:none}
 .ranklist .rk{width:28px;text-align:center;font-weight:800;color:var(--mute)}
 .ranklist .rk.top1{color:#f5c542}.ranklist .rk.top2{color:#c9d1d9}.ranklist .rk.top3{color:#d08a4a}
 .ranklist .rv{margin-left:auto;font-weight:700;color:var(--gold)}
+.chatfab{position:fixed;right:16px;bottom:16px;z-index:55;width:56px;height:56px;border-radius:50%;border:1px solid var(--line);background:var(--lapis);color:#fff;font-size:24px;cursor:pointer;box-shadow:0 6px 20px #0008}
+.chatfab .badge{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--bad);font-size:12px;font-weight:800;line-height:20px}
+.chatbox{position:fixed;right:12px;bottom:12px;z-index:55;width:min(380px,calc(100vw - 24px));height:min(520px,70vh);display:flex;flex-direction:column;background:#1b1622f5;border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 30px #000a}
+.chatbox .chead{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line)}
+.chatbox .chead .tabs{margin:0;flex:1}
+.chatbox .clist{flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:6px}
+.cmsg{display:flex;flex-wrap:wrap;gap:2px 8px;font-size:14px;line-height:1.4}
+.cmsg .cn{font-weight:700;color:var(--gold)}
+.cmsg.mine .cn{color:#7fb3ff}
+.cmsg .cb{flex-basis:100%;word-break:break-word}
+.cmsg .ct{font-size:11px;color:var(--mute)}
+.chatbox .cin{display:flex;gap:6px;padding:8px 10px;border-top:1px solid var(--line)}
+.chatbox .flist .cin{border:0;padding:0 0 6px}
+.chatbox .cin input{flex:1;min-width:0;min-height:40px}
+.frow{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #ffffff0d;flex-wrap:wrap}
+.frow .small{flex:1}
+.dot{width:9px;height:9px;border-radius:50%;background:#555}
+.dot.on{background:var(--ok)}

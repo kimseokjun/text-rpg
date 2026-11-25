@@ -22,6 +22,8 @@ const PRIORITY = [
   'poisonArrow', 'rapidFire', 'fireball', 'aimedShot', 'holyLight', 'smash',
   // 보호막은 기본 맨 끝 (원하는 위치로 올려서 사용)
   'divineBarrier', 'barrier',
+  // 방해 스킬: 평소엔 안 쓰고, 4인 레이드에서 직접 골라 보스 시전 끊기
+  'shieldBash', 'frostBind', 'silenceArrow', 'sealPrayer',
 ];
 
 export function defaultSkillSlots(c: Character): SkillSlot[] {

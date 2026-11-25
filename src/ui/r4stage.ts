@@ -43,6 +43,7 @@ const snow = () => `<div class="r4snow" aria-hidden="true">${Array.from({ length
 // ── 위치 ──
 const PARTY_POS = [{ x: 35, y: 85 }, { x: 27, y: 94 }, { x: 19, y: 83 }, { x: 11, y: 92 }];
 const BOSS_POS = { x: 72, y: 90 };
+const ADD_POS = [{ x: 56, y: 76 }, { x: 58, y: 100 }, { x: 54, y: 88 }];
 
 let host: HTMLElement | null = null;
 let H: StageHelpers | null = null;
@@ -51,12 +52,14 @@ const idEl = new Map<string, HTMLElement>(); // id → 유닛
 
 export function mountStage(el: HTMLElement, st: R4State, h: StageHelpers) {
   host = el; H = h; elOf.clear(); idEl.clear();
-  const party = st.units.filter((u) => !u.boss), boss = st.units.find((u) => u.boss)!;
+  const party = st.units.filter((u) => !u.boss && u.owner), boss = st.units.find((u) => u.boss)!;
   el.innerHTML = `${background()}${snow()}
     <div class="r4top"><div class="r4order2" id="r4order"></div><div class="r4banner" id="r4banner"></div></div>
     <div class="r4round" id="r4round"></div>
+    <div class="r4cast" id="r4cast"></div>
     ${party.map((u, i) => unitHtml(u, PARTY_POS[i % 4], false)).join('')}
     ${unitHtml(boss, BOSS_POS, true)}
+    ${st.units.filter((u) => !u.boss && !u.owner).map((u, i) => unitHtml(u, ADD_POS[i % 3], false, true)).join('')}
     <div class="r4fx" id="r4fx"></div>
     <div class="r4panel" id="r4panel"></div>`;
   for (const u of st.units) {
@@ -65,23 +68,38 @@ export function mountStage(el: HTMLElement, st: R4State, h: StageHelpers) {
   }
   updateStage(st);
 }
-function unitHtml(u: R4Unit, p: { x: number; y: number }, boss: boolean) {
+function unitHtml(u: R4Unit, p: { x: number; y: number }, boss: boolean, add = false) {
   const h = H!;
-  return `<div class="r4unit ${boss ? 'boss' : ''} ${u.owner === h.me ? 'me' : ''}" data-uid="${h.esc(u.id)}" style="left:${p.x}%;top:${p.y}%">
+  return `<div class="r4unit ${boss ? 'boss' : ''} ${add ? 'add' : ''} ${u.owner === h.me ? 'me' : ''}" data-uid="${h.esc(u.id)}" data-owner="${h.esc(u.owner ?? '')}" style="left:${p.x}%;top:${p.y}%">
     <div class="r4arrow">▼</div>
     <div class="r4hp"><i></i></div>${boss ? '' : '<div class="r4mp"><i></i></div>'}
-    <div class="r4spr">${h.icon(u, boss ? 160 : 64)}</div>
+    <div class="r4spr">${h.icon(u, boss ? 160 : add ? 52 : 64)}</div>
     <div class="r4name">${h.esc(u.name)}${!boss && u.ownerName ? ` <span>${h.esc(u.ownerName)}</span>` : ''}</div>
   </div>`;
 }
 export const stageMounted = () => !!host && document.body.contains(host);
 
+/** 소환된 졸개 유닛을 무대에 추가 (이름 기준, id는 나중에 채움) */
+function addUnit(u: R4Unit) {
+  if (!host || elOf.get(u.name)?.isConnected) return elOf.get(u.name)!;
+  const n = host.querySelectorAll('.r4unit.add:not(.dead)').length;
+  const wrap = document.createElement('div');
+  wrap.innerHTML = unitHtml(u, ADD_POS[n % 3], false, true);
+  const e = wrap.firstElementChild as HTMLElement;
+  host.querySelector('#r4fx')!.before(e);
+  e.animate([{ opacity: 0, transform: 'translate(-50%,-50%) scale(.3)' }, { opacity: 1, transform: 'translate(-50%,-50%) scale(1)' }], { duration: 400 });
+  elOf.set(u.name, e); if (u.id) idEl.set(u.id, e);
+  return e;
+}
 export function updateStage(st: R4State) {
   if (!host || !H) return;
   const by = Object.fromEntries(st.units.map((u) => [u.id, u]));
   for (const u of st.units) {
-    const e = idEl.get(u.id);
+    let e = idEl.get(u.id);
+    if (!e && !u.boss && !u.owner && u.alive) { e = elOf.get(u.name)?.isConnected ? elOf.get(u.name)! : addUnit(u); e.dataset.uid = u.id; idEl.set(u.id, e); }
     if (!e) continue;
+    e.classList.toggle('marked', st.boss?.mark === u.id);
+    if (u.boss) { e.classList.toggle('casting', !!st.boss?.cast); e.classList.toggle('groggy', !!st.boss?.groggy); e.classList.toggle('enraged', !!st.boss?.enraged); }
     setBar(e, u.hp, u.maxHp, u.mp, u.maxMp);
     e.classList.toggle('dead', !u.alive);
     e.classList.toggle('turn', st.turn === u.id);
@@ -91,6 +109,27 @@ export function updateStage(st: R4State) {
   host.querySelector('#r4round')!.textContent = `ROUND ${st.round}`;
   const boss = st.units.find((u) => u.boss);
   if (boss) host.querySelector('.r4unit.boss .r4hp')?.setAttribute('data-pct', `${(boss.hp / boss.maxHp * 100).toFixed(1)}%`);
+  // 시전바 + 무력화 게이지
+  const cb = host.querySelector<HTMLElement>('#r4cast')!;
+  const bs = st.boss;
+  if (bs?.cast) {
+    cb.className = 'r4cast on';
+    cb.innerHTML = `<div class="r4ct"><b>☠ ${H.esc(bs.cast.name)}</b><span>${bs.cast.left}턴 뒤 발동</span></div>
+      <div class="r4gauge" role="progressbar" aria-label="무력화 게이지" aria-valuenow="${bs.cast.gauge}" aria-valuemax="${bs.cast.max}"><i style="width:${(bs.cast.gauge / bs.cast.max) * 100}%"></i><span>무력화 ${bs.cast.gauge}/${bs.cast.max}</span></div>
+      <div class="r4chint">기절·침묵 스킬로 게이지를 0으로!</div>`;
+  } else if (bs?.groggy) { cb.className = 'r4cast on groggy'; cb.innerHTML = '<div class="r4ct"><b>💫 그로기!</b><span>받는 피해 +50% · 지금 몰아치세요</span></div>'; }
+  else { cb.className = 'r4cast'; cb.innerHTML = ''; }
+  host.querySelector('#r4round')!.innerHTML = `ROUND ${st.round}${bs ? ` <span class="r4phase">${'◆'.repeat(bs.phase)}${'◇'.repeat(4 - bs.phase)}${bs.enraged ? ' 광폭' : ''}</span>` : ''}`;
+}
+/** 빠른 채팅 말풍선 (주인 캐릭터 머리 위) */
+export function speech(owner: string, text: string) {
+  if (!host) return;
+  const e = [...idEl.values()].find((x) => x.dataset.owner === owner);
+  if (!e) return;
+  e.querySelector('.r4say')?.remove();
+  const d = document.createElement('div'); d.className = 'r4say'; d.textContent = text;
+  e.appendChild(d);
+  d.animate([{ opacity: 0, transform: 'translate(-50%,6px)' }, { opacity: 1, transform: 'translate(-50%,0)', offset: 0.08 }, { opacity: 1, offset: 0.85 }, { opacity: 0 }], { duration: 3200 }).onfinish = () => d.remove();
 }
 function setBar(e: HTMLElement, hp: number, max: number, mp?: number, maxMp?: number) {
   const i = e.querySelector<HTMLElement>('.r4hp i');
@@ -242,7 +281,69 @@ async function run(events: BattleEvent[], fast: boolean) {
       case 'death': { const t = elOf.get(e.who); if (t) { t.classList.add('dead'); t.querySelector('.r4spr')?.animate([{ transform: 'rotate(0)', opacity: 1 }, { transform: 'rotate(-80deg) translateY(10px)', opacity: 0.4 }], { duration: 500, fill: 'forwards' }); } if (!fast) await sleep(300); break; }
       case 'special': { const t = elOf.get(e.who); if (t) { floatText(t, '✦', 'stat'); burst(t.classList.contains('boss') ? 'dark' : 'holy', t, true); if (t.classList.contains('boss')) bossFlash(); } if (/다시 일어선다/.test(e.text)) for (const [n, el] of elOf) if (e.text.includes(n)) { el.classList.remove('dead'); el.querySelector('.r4spr')?.getAnimations().forEach((a) => a.cancel()); } if (!fast) await sleep(220); break; }
       case 'stunned': { const t = elOf.get(e.who); if (t) floatText(t, '기절', 'stat'); break; }
+      case 'summon': { for (const s of e.summoned) addUnit({ id: '', name: s.name, hp: s.hp, maxHp: s.maxHp, mp: 0, maxMp: 0, alive: true }); if (!fast) await sleep(350); break; }
+      case 'raid': await raidFx(e, fast); break;
     }
+  }
+}
+function bigText(text: string, cls: string, ms = 1600) {
+  host!.querySelectorAll('.fx.bigtxt').forEach((x) => x.remove());
+  const r = host!.getBoundingClientRect();
+  const d = fxEl(`bigtxt ${cls}`, r.width / 2, r.height * 0.42, H!.esc(text));
+  d.animate([{ opacity: 0, transform: 'translate(-50%,-50%) scale(1.6)' }, { opacity: 1, transform: 'translate(-50%,-50%) scale(1)', offset: 0.12 }, { opacity: 1, offset: 0.8 }, { opacity: 0, transform: 'translate(-50%,-50%) scale(.95)' }], { duration: ms, easing: 'ease-out' }).onfinish = () => d.remove();
+}
+function screenTint(color: string, ms: number, peak = 0.6) {
+  const f = fxEl('screenflash', 0, 0);
+  f.style.background = color;
+  f.animate([{ opacity: 0 }, { opacity: peak, offset: 0.25 }, { opacity: 0 }], { duration: ms }).onfinish = () => f.remove();
+}
+const bossEl = () => host!.querySelector<HTMLElement>('.r4unit.boss');
+const partyEls = () => [...host!.querySelectorAll<HTMLElement>('.r4unit:not(.boss):not(.add):not(.dead)')];
+async function raidFx(e: Extract<BattleEvent, { t: 'raid' }>, fast: boolean) {
+  const b = bossEl();
+  const wait = (ms: number) => (fast ? Promise.resolve() : sleep(ms));
+  switch (e.kind) {
+    case 'cast': {
+      bigText('☠ 심연의 붕괴 시전!', 'danger', 1800); screenTint('#a0102080', 900, 0.7);
+      if (b) { b.classList.add('casting'); burst('dark', b, true); }
+      host!.animate([{ transform: 'translate(0,0)' }, { transform: 'translate(4px,-3px)' }, { transform: 'translate(-4px,3px)' }, { transform: 'translate(0,0)' }], { duration: 300, iterations: 2 });
+      await wait(900); break;
+    }
+    case 'castTick': { if (b) { floatText(b, '시전 중…', 'stat'); burst('dark', b); } screenTint('#80102060', 600, 0.4); await wait(350); break; }
+    case 'interrupt': {
+      const who = e.target ? elOf.get(e.target) : null;
+      if (b) { if (who) await projectile('ice', who, b); burst('ice', b, true); floatText(b, `무력화 ${e.value ?? ''}`, 'gauge'); shake(b, false); }
+      await wait(300); break;
+    }
+    case 'break': {
+      bigText('무력화 성공!', 'good', 1800); screenTint('#ffffffaa', 500, 0.8);
+      if (b) { b.classList.remove('casting'); b.classList.add('groggy'); shake(b, true); b.querySelector('.r4spr')?.animate([{ transform: 'rotate(0)' }, { transform: 'rotate(8deg) translateY(10px)', offset: 0.3 }, { transform: 'rotate(4deg) translateY(6px)', offset: 0.8 }, { transform: 'rotate(0)' }], { duration: 1200 }); }
+      await wait(900); break;
+    }
+    case 'wipe': {
+      bigText('☠ 심연의 붕괴', 'danger', 1600);
+      const r = host!.getBoundingClientRect();
+      const d = fxEl('wipeboom', r.width * 0.7, r.height * 0.6);
+      d.animate([{ transform: 'translate(-50%,-50%) scale(.1)', opacity: 1 }, { transform: 'translate(-50%,-50%) scale(9)', opacity: 0.95, offset: 0.6 }, { transform: 'translate(-50%,-50%) scale(12)', opacity: 0 }], { duration: 1300, easing: 'ease-in' }).onfinish = () => d.remove();
+      screenTint('#200030', 1400, 0.9);
+      if (b) b.classList.remove('casting');
+      host!.animate([{ transform: 'translate(0,0)' }, { transform: 'translate(8px,-5px)' }, { transform: 'translate(-8px,5px)' }, { transform: 'translate(0,0)' }], { duration: 260, iterations: 4 });
+      await wait(1100); break;
+    }
+    case 'mark': { const t = e.target ? elOf.get(e.target) : null; if (t) { t.classList.add('marked'); burst('dark', t); floatText(t, '☠ 표식', 'danger'); } await wait(500); break; }
+    case 'markHit': { const t = e.target ? elOf.get(e.target) : null; if (t) { t.classList.remove('marked'); burst('dark', t, true); burst('fire', t, true); shake(t, true); } screenTint('#40004080', 500, 0.5); await wait(400); break; }
+    case 'phase': { if (b) { burst('dark', b, true); bossFlash(); } if (e.text.length < 30) floatText(b ?? host!, '페이즈 전환', 'danger'); await wait(500); break; }
+    case 'enrage': { bigText('광폭화!', 'danger', 1600); screenTint('#ff000070', 900, 0.6); if (b) { b.classList.add('enraged'); burst('fire', b, true); } await wait(700); break; }
+    case 'groggy': { if (b) floatText(b, '💫 그로기', 'gauge'); await wait(400); break; }
+    case 'curse': { for (const p of partyEls()) { burst('dark', p); floatText(p, '저주', 'poison'); } await wait(400); break; }
+    case 'breath': {
+      const r = host!.getBoundingClientRect();
+      const d = fxEl('breathwave', r.width * 0.62, r.height * 0.62);
+      d.animate([{ transform: 'translate(-50%,-50%) scaleX(.1)', opacity: 0.9 }, { transform: 'translate(-100%,-50%) scaleX(1)', opacity: 0.8, offset: 0.6 }, { transform: 'translate(-110%,-50%) scaleX(1.05)', opacity: 0 }], { duration: 700, easing: 'ease-out' }).onfinish = () => d.remove();
+      await wait(300); break;
+    }
+    case 'smash': { const t = e.target ? elOf.get(e.target) : null; if (t) { const c = center(t); const d = fxEl('warnzone', c.x, c.y + 24); d.animate([{ opacity: 0, transform: 'translate(-50%,-50%) scale(.6)' }, { opacity: 0.9, transform: 'translate(-50%,-50%) scale(1)' }, { opacity: 0 }], { duration: 600 }).onfinish = () => d.remove(); } await wait(250); break; }
+    case 'summon': await wait(200); break;
   }
 }
 function showSkillName(actor: HTMLElement, name: string, kind: Kind) {

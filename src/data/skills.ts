@@ -65,10 +65,15 @@ export const SKILLS: Record<string, SkillDef> = {
     id: 'poisonArrow', name: '독화살', mp: 7,
     effects: [{ type: 'damage', scale: 'atk', power: 1.0, target: 'single', status: { type: 'poison', turns: 3, chance: 80 } }],
   },
+  // ── 방해 스킬 (각 기본 직업 15레벨): 4인 레이드 전멸기 끊기 ──
+  shieldBash: { id: 'shieldBash', name: '방패 치기', mp: 10, effects: [{ type: 'damage', scale: 'atk', power: 1.2, target: 'single', status: { type: 'stun', turns: 1, chance: 50 }, interrupt: 40 }] },
+  frostBind: { id: 'frostBind', name: '빙결', mp: 12, effects: [{ type: 'damage', scale: 'mag', power: 1.2, target: 'single', status: { type: 'stun', turns: 1, chance: 45 }, interrupt: 40 }] },
+  silenceArrow: { id: 'silenceArrow', name: '침묵 화살', mp: 10, effects: [{ type: 'damage', scale: 'atk', power: 1.3, target: 'single', status: { type: 'silence', turns: 2, chance: 60 }, interrupt: 35 }] },
+  sealPrayer: { id: 'sealPrayer', name: '봉인의 기도', mp: 10, effects: [{ type: 'debuff', target: 'single', mods: [], turns: 1, status: { type: 'silence', turns: 2, chance: 75 }, interrupt: 35 }] },
   vitalShot: { id: 'vitalShot', name: '급소 사격', mp: 12, effects: [{ type: 'damage', scale: 'atk', power: 1.8, target: 'single', guaranteedCrit: true }] },
   trap: {
     id: 'trap', name: '함정 설치', mp: 10,
-    effects: [{ type: 'debuff', target: 'single', mods: [], turns: 1, status: { type: 'stun', turns: 1, chance: 70 } }],
+    effects: [{ type: 'debuff', target: 'single', mods: [], turns: 1, status: { type: 'stun', turns: 1, chance: 70 }, interrupt: 40 }],
   },
   summonWolf: {
     id: 'summonWolf', name: '늑대 소환', mp: 14,
@@ -159,7 +164,7 @@ export const SKILLS: Record<string, SkillDef> = {
   },
   chainLightning: {
     id: 'chainLightning', name: '연쇄 번개', mp: 36,
-    effects: [{ type: 'damage', scale: 'mag', power: 3.0, target: 'all', status: { type: 'stun', turns: 1, chance: 15 } }],
+    effects: [{ type: 'damage', scale: 'mag', power: 3.0, target: 'all', status: { type: 'stun', turns: 1, chance: 15 }, interrupt: 15 }],
   },
   deathCurse: {
     id: 'deathCurse', name: '죽음의 저주', mp: 28,
@@ -172,7 +177,7 @@ export const SKILLS: Record<string, SkillDef> = {
   },
   stampede: {
     id: 'stampede', name: '대지의 진군', mp: 28,
-    effects: [{ type: 'damage', scale: 'atk', power: 2.0, target: 'all', status: { type: 'stun', turns: 1, chance: 25 } }],
+    effects: [{ type: 'damage', scale: 'atk', power: 2.0, target: 'all', status: { type: 'stun', turns: 1, chance: 25 }, interrupt: 15 }],
   },
   holyBlade: {
     id: 'holyBlade', name: '성검 일섬', mp: 26,
@@ -304,7 +309,7 @@ export const SKILLS: Record<string, SkillDef> = {
 // ───────── 스킬 설명 (툴팁용, 효과 정의에서 자동 생성) ─────────
 const STAT_KO: Record<string, string> = { hp: 'HP', mp: 'MP', atk: '공격력', mag: '마력', def: '방어력', res: '마법저항', agi: '민첩', crit: '치명타율', dmgTaken: '받는 피해' };
 const SCALE_KO = { atk: '공격력', mag: '마력', 'atk+mag': '공격력+마력' } as const;
-const STATUS_KO = { poison: '독', burn: '화상', stun: '기절' } as const;
+const STATUS_KO = { poison: '독', burn: '화상', stun: '기절', silence: '침묵' } as const;
 const pctText = (v: number) => `${Math.round(v * 100)}%`;
 
 export function describeSkill(sk: SkillDef): string {
@@ -318,6 +323,7 @@ export function describeSkill(sk: SkillDef): string {
         if (e.hpCostPct) t += ` (자신 HP ${e.hpCostPct}% 소모)`;
         if (e.lifestealPct) t += `, 준 피해의 ${e.lifestealPct}% 회복`;
         if (e.status) t += `, ${e.status.chance}% 확률로 ${STATUS_KO[e.status.type]} ${e.status.turns}턴`;
+        if (e.interrupt) t += ` · 레이드 보스 시전 끊기 ${e.interrupt}`;
         return t;
       }
       case 'heal': return `${e.target === 'party' ? '아군 전체' : 'HP가 가장 낮은 아군'} 최대 HP ${e.pctMaxHp}% 회복`;
@@ -333,7 +339,7 @@ export function describeSkill(sk: SkillDef): string {
         const who = e.target === 'all' ? '적 전체' : '적 하나';
         const mods = e.mods.map((m) => `${STAT_KO[m.key] ?? m.key} ${m.value}%`).join(', ');
         const st = e.status ? `${e.status.chance}% 확률로 ${STATUS_KO[e.status.type]} ${e.status.turns}턴` : '';
-        return `${who}${mods ? ` ${e.turns}턴간 ${mods}` : ''}${mods && st ? ', ' : ' '}${st}`.trim();
+        return `${who}${mods ? ` ${e.turns}턴간 ${mods}` : ''}${mods && st ? ', ' : ' '}${st}${e.interrupt ? ` · 레이드 보스 시전 끊기 ${e.interrupt}` : ''}`.trim();
       }
       case 'taunt': return `${e.turns}턴간 적의 공격을 자신에게 끌어옴`;
       case 'summon': return `소환`;

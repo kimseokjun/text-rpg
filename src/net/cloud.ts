@@ -405,7 +405,7 @@ export function joinR4(code: string, onSync: (m: R4Presence[]) => void, onMsg: (
   let me: R4Presence | null = null;
   const members = () => Object.values(ch.presenceState() as Record<string, R4Presence[]>).map((v) => v[0]).filter(Boolean);
   ch.on('presence', { event: 'sync' }, () => onSync(members()));
-  for (const ev of ['char', 'begin', 'tick', 'choose', 'end', 'abort', 'kick', 'diff']) ch.on('broadcast', { event: ev }, (m) => onMsg(ev, m.payload));
+  for (const ev of ['char', 'begin', 'tick', 'choose', 'end', 'abort', 'kick', 'diff', 'qc']) ch.on('broadcast', { event: ev }, (m) => onMsg(ev, m.payload));
   ch.subscribe(async (status) => { if (status === 'SUBSCRIBED' && me) await ch.track(me); });
   return {
     send: (event, payload) => { ch.send({ type: 'broadcast', event, payload }); },

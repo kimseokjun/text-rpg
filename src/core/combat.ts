@@ -86,7 +86,7 @@ export function fromMonster(def: MonsterDef, floor: number, tune?: number): Comb
 }
 
 /** 버프·조건부 효과를 반영한 현재 스탯 */
-function eff(c: Combatant): { stats: Stats; extra: Extras } {
+export function eff(c: Combatant): { stats: Stats; extra: Extras } {
   const mods: Modifier[] = c.buffs.flatMap((b) => b.mods);
   const hp = pctOf(c);
   for (const m of c.conditional) {
@@ -200,6 +200,7 @@ export function takeTurn(ctx: BattleContext, c: Combatant, forced?: string) {
     return;
   }
   act(ctx, c, forced);
+  if (c.status.silence && --c.status.silence.turns <= 0) delete c.status.silence;
   // 늑대 소환: 추가 공격 (야수왕 패시브면 2배)
   if (c.alive && c.buffs.some((b) => b.flag === 'extraHit')) {
     const t = pickFoe(ctx, c);
@@ -223,14 +224,16 @@ export function takeTurn(ctx: BattleContext, c: Combatant, forced?: string) {
   }
 }
 /** 수동 전투: 이 캐릭터가 지금 쓸 수 있는 스킬 (MP·사용 가능 여부) */
-export function usableSkills(ctx: BattleContext, c: Combatant): { skillId: string; name: string; mp: number; ok: boolean; why?: string }[] {
+/** 스킬의 시전 끊기 위력 (레이드 무력화 게이지) */
+export const skillInterrupt = (sk: SkillDef) => sk.effects.reduce((a, e) => a + ((e.type === 'damage' || e.type === 'debuff') ? e.interrupt ?? 0 : 0), 0);
+export function usableSkills(ctx: BattleContext, c: Combatant): { skillId: string; name: string; mp: number; ok: boolean; why?: string; interrupt: number }[] {
   return c.slots.map((slot) => {
     const sk = SKILLS[slot.skillId];
     if (!sk) return null;
     const cost = mpCost(ctx, c, sk);
-    const why = c.mp < cost ? 'MP 부족' : !skillUsable(ctx, c, sk) ? '지금은 못 써요' : isActive(ctx, c, sk) ? '이미 걸려 있어요' : undefined;
-    return { skillId: slot.skillId, name: sk.name, mp: cost, ok: c.mp >= cost && skillUsable(ctx, c, sk), why };
-  }).filter(Boolean) as { skillId: string; name: string; mp: number; ok: boolean; why?: string }[];
+    const why = c.status.silence ? '침묵' : c.mp < cost ? 'MP 부족' : !skillUsable(ctx, c, sk) ? '지금은 못 써요' : isActive(ctx, c, sk) ? '이미 걸려 있어요' : undefined;
+    return { skillId: slot.skillId, name: sk.name, mp: cost, ok: !c.status.silence && c.mp >= cost && skillUsable(ctx, c, sk), why, interrupt: skillInterrupt(sk) };
+  }).filter(Boolean) as { skillId: string; name: string; mp: number; ok: boolean; why?: string; interrupt: number }[];
 }
 export const endRound = (ctx: BattleContext) => endOfRound(ctx);
 
@@ -295,6 +298,8 @@ function act(ctx: BattleContext, c: Combatant, forced?: string) {
     ctx.log.push({ t: 'special', who: c.name, text: c.mdef.phase2.text });
   }
 
+  // 침묵: 스킬 없이 일반 공격만
+  if (c.status.silence) forced = 'attack';
   // 직접 고른 행동 (수동 전투)
   if (forced && forced !== 'attack') {
     const sk = SKILLS[forced];
@@ -367,13 +372,13 @@ function skillUsable(ctx: BattleContext, c: Combatant, sk: SkillDef): boolean {
 }
 
 // ───────── 대상 선택 ─────────
-function pickFoe(ctx: BattleContext, c: Combatant, prefer?: 'lowest'): Combatant | undefined {
+export function pickFoe(ctx: BattleContext, c: Combatant, prefer?: 'lowest'): Combatant | undefined {
   const list = alive(foes(ctx, c));
   if (!list.length) return;
   const lowest = (l: Combatant[]) => l.reduce((a, b) => (pctOf(a) <= pctOf(b) ? a : b));
   if (c.side === 'party' && !ctx.pvp) {
     // 보물 고블린이 있으면 먼저 노림 (도망가기 전에)
-    const gob = list.find((e) => e.passives.has('flee'));
+    const gob = list.find((e) => e.passives.has('flee') || e.tags.has('priority'));
     if (gob) return gob;
     // 우선순위: 보스 우선 = 보스 → 엘리트, 잡몹 우선 = 보스 아닌 적, 자동 = HP 비율 낮은 적
     if (c.pref === 'boss') {
@@ -466,18 +471,18 @@ function useSkill(ctx: BattleContext, c: Combatant, sk: SkillDef) {
   }
 }
 
-function addBuff(t: Combatant, b: Buff) {
+export function addBuff(t: Combatant, b: Buff) {
   t.buffs = t.buffs.filter((x) => x.id !== b.id);
   t.buffs.push({ ...b });
 }
 
 function applyStatus(ctx: BattleContext, src: Combatant, t: Combatant, s: { type: StatusType; turns: number; chance: number }) {
   if (!t.alive || !ctx.rng.chance(s.chance)) return;
-  if (s.type === 'stun' && t.tags.has('boss')) return; // 보스 기절 면역
+  if ((s.type === 'stun' || s.type === 'silence') && t.tags.has('boss')) return; // 보스 기절·침묵 면역 (레이드는 무력화 게이지로)
   const st = eff(src).stats;
   const power = s.type === 'poison' ? st.atk * 0.35 : s.type === 'burn' ? Math.max(st.mag, st.atk) * 0.35 : 0;
   t.status[s.type] = { turns: s.turns, power };
-  const label = { poison: '독', burn: '화상', stun: '기절' }[s.type];
+  const label = { poison: '독', burn: '화상', stun: '기절', silence: '침묵' }[s.type];
   ctx.log.push({ t: 'status', to: t.name, status: s.type, label });
 }
 
@@ -486,7 +491,7 @@ function applyStatus(ctx: BattleContext, src: Combatant, t: Combatant, s: { type
 export const DEF_K = 1.2;
 export const defRef = (level: number) => 7 + 1.84 * (level - 1);
 export const mitigation = (def: number, level: number) => { const k = DEF_K * defRef(level); return k / (k + Math.max(0, def)); };
-function dealDamage(ctx: BattleContext, a: Combatant, t: Combatant, e: Extract<SkillEffect, { type: 'damage' }>, isNormal: boolean) {
+export function dealDamage(ctx: BattleContext, a: Combatant, t: Combatant, e: Extract<SkillEffect, { type: 'damage' }>, isNormal: boolean) {
   const { rng, log } = ctx;
   const sa = eff(a), st = eff(t);
   const scaleVal = e.scale === 'atk' ? sa.stats.atk : e.scale === 'mag' ? sa.stats.mag : sa.stats.atk + sa.stats.mag;
@@ -527,7 +532,7 @@ function dealDamage(ctx: BattleContext, a: Combatant, t: Combatant, e: Extract<S
 }
 
 /** 피해 적용 (마나 실드·최후의 방벽·불굴·반사·부활 처리). 실제 깎인 HP 반환 */
-function applyHpLoss(ctx: BattleContext, t: Combatant, dmg: number, src: Combatant | null, crit = false): number {
+export function applyHpLoss(ctx: BattleContext, t: Combatant, dmg: number, src: Combatant | null, crit = false): number {
   const { log } = ctx;
   // 최후의 방벽: 아군이 쓰러질 공격을 대신 맞음
   if (src && (t.side === 'party' || (ctx.pvp && t.char)) && dmg >= t.hp) {
@@ -589,7 +594,7 @@ function applyHpLoss(ctx: BattleContext, t: Combatant, dmg: number, src: Combata
   return Math.max(0, before - Math.max(0, t.hp));
 }
 
-function heal(ctx: BattleContext, src: Combatant, t: Combatant, amount: number) {
+export function heal(ctx: BattleContext, src: Combatant, t: Combatant, amount: number) {
   if (!t.alive) return;
   if (ctx.pvp) amount *= PVP_HEAL;
   const v = Math.round(Math.min(amount, t.maxHp - t.hp));

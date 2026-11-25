@@ -23,6 +23,7 @@ export function formatEvent(e: BattleEvent): string | null {
     case 'special': return `   ✦ ${e.who}: ${e.text}`;
     case 'summon': return `   ✦ ${e.who}이(가) ${e.summoned.map((x) => x.name).join(', ')}을(를) 불러낸다`;
     case 'result': return e.win ? `── 승리 (${e.rounds}라운드)` : `── 패배 (${e.rounds}라운드)`;
+    case 'raid': return `   ✦ ${e.text}`;
   }
 }
 

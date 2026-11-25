@@ -49,7 +49,7 @@ export type FifthJob = 'titan' | 'bloodGod' | 'starSage' | 'deathLord' | 'godsla
 export type JobId = BaseJob | AdvJob | ThirdJob | FourthJob | FifthJob;
 
 // ───────── 스킬 ─────────
-export type StatusType = 'poison' | 'burn' | 'stun';
+export type StatusType = 'poison' | 'burn' | 'stun' | 'silence';
 
 export type SkillEffect =
   | {
@@ -64,11 +64,13 @@ export type SkillEffect =
       hpCostPct?: number;       // 시전자 HP 소모 %
       lifestealPct?: number;
       status?: { type: StatusType; turns: number; chance: number };
+      /** 레이드 보스 시전 끊기 (무력화 게이지 감소량) */
+      interrupt?: number;
     }
   | { type: 'heal'; target: 'lowestAlly' | 'party'; pctMaxHp: number }
   | { type: 'shield'; target: 'party' | 'lowestAlly'; pctMaxHp: number; turns: number }
   | { type: 'buff'; target: 'self' | 'party'; mods: Modifier[]; turns: number; flag?: BuffFlag }
-  | { type: 'debuff'; target: 'single' | 'all'; mods: Modifier[]; turns: number; status?: { type: StatusType; turns: number; chance: number } }
+  | { type: 'debuff'; target: 'single' | 'all'; mods: Modifier[]; turns: number; status?: { type: StatusType; turns: number; chance: number }; interrupt?: number }
   | { type: 'taunt'; turns: number }
   | { type: 'summon'; monsterId: string; count: number };
 
@@ -204,4 +206,7 @@ export type BattleEvent =
   | { t: 'death'; who: string; side: 'party' | 'enemy' }
   | { t: 'special'; who: string; text: string }
   | { t: 'summon'; who: string; summoned: UnitSnap[] }
-  | { t: 'result'; win: boolean; rounds: number };
+  | { t: 'result'; win: boolean; rounds: number }
+  /** 4인 레이드 보스 기믹 */
+  | { t: 'raid'; kind: RaidFx; text: string; who?: string; target?: string; value?: number };
+export type RaidFx = 'cast' | 'castTick' | 'interrupt' | 'break' | 'wipe' | 'mark' | 'markHit' | 'phase' | 'curse' | 'enrage' | 'groggy' | 'summon' | 'smash' | 'breath';

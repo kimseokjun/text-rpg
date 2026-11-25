@@ -25,7 +25,7 @@ import { slotsFor } from '../server/multi';
 import { DEFAULT_SETTINGS, Expedition } from '../core/dungeon';
 import { Raid4Battle, type R4Member, type R4State } from '../core/raid4battle';
 import { mountStage, playEvents, setBanner, setPanel, stageMounted, updateStage } from './r4stage';
-import { ATTEND, CHESTS, dRewardText } from '../data/missions';
+import { CHESTS, dRewardText } from '../data/missions';
 import { ACHS, ACH_CAT, ACH_MAX_PTS, ACH_MS, ACH_REWARD, TITLES, TITLE_BY_ID, achPoints, achReady, unlockedTitles, type AchCat } from '../data/achievements';
 import { R4, R4_DIFFS, R4_MAX, R4_ROUNDS, R4_TURN_SEC, r4Reward, type R4Diff } from '../data/raid4';
 import { Rng } from '../core/rng';
@@ -405,17 +405,14 @@ function questPanel() {
     <div class="row" style="justify-content:space-between;gap:10px;align-items:center"><div><b>${ok ? '✔ ' : ''}${esc(q.title)}</b>${q.hint ? `<div class="small mute">${esc(q.hint)}</div>` : ''}</div>
     <button class="btn sm ${ok ? '' : 'ghost'}" data-a="claimQuest" ${ok ? '' : 'disabled'}>${ok ? '보상 받기' : '진행 중'}</button></div></div>`;
 }
-/** 오늘의 할 일: 출석 + 일일 미션 */
+/** 오늘의 할 일: 파견 보상 + 일일 미션 */
 let todoOpen = true;
 function todoPanel() {
   const s = S!;
   const st = G.missionState(s);
-  const attended = G.attendedToday(s), day = G.attendDay(s);
   const list = st.list.filter((m) => !m.cloud || CLOUD);
   const maxPts = list.reduce((a, m) => a + m.pts, 0);
-  const ready = st.chests.filter((c) => c.ready).length + (attended ? 0 : 1);
-  const week = Math.floor((day - 1) / 7) * 7;
-  const days = ATTEND.slice(week, week + 7).map((r, i) => { const d = week + i + 1; const done = d < day || (d === day && attended); const big = d % 7 === 0; return `<div class="attd ${done ? 'done' : ''} ${d === day && !attended ? 'now' : ''} ${big ? 'big' : ''}" title="${esc(dRewardText(r))}"><b>${d}일</b><span>${big ? '🎁' : done ? '✔' : '·'}</span></div>`; }).join('');
+  const ready = st.chests.filter((c) => c.ready).length;
   const idle = G.idlePending(s), ir = G.idleRate(s);
   const ih = Math.floor(idle.hours), im = Math.floor((idle.hours - ih) * 60);
   const idleOk = idle.hours >= 1 / 6;
@@ -423,9 +420,6 @@ function todoPanel() {
     <div class="idle"><div><b>⏳ 파견 보상</b> <span class="small mute">${ih}시간 ${im}분 쌓임 (최대 ${G.IDLE_CAP_H}시간 · 마왕숲 ${ir.floor}층 기준)</span>
       <div class="small">${fmt(idle.gold)}G · 경험치 ${fmt(idle.exp)} · 강화석 ${idle.stones} <span class="mute">(시간당 ${fmt(ir.gold)}G · ${fmt(ir.exp)} · ${ir.stones})</span></div></div>
       <button class="btn sm ${idleOk ? '' : 'ghost'}" data-a="idleClaim" ${idleOk ? '' : 'disabled'}>받기</button></div>
-    <div class="attrow"><div class="attdays">${days}</div>
-      <div class="attact"><div class="small">${attended ? `출석 ${day}일째 완료` : `출석 ${day}일째 보상`}: <b>${esc(dRewardText(ATTEND[day - 1]))}</b></div>
-      <button class="btn sm" data-a="attend" ${attended ? 'disabled' : ''}>${attended ? '내일 또 와요' : '출석하기'}</button></div></div>
     <div class="mlist">${list.map((m) => `<div class="mrow ${m.done ? 'done' : ''}"><span>${m.done ? '✔' : '○'} ${esc(m.name)}</span><span class="small mute">${m.have}/${m.need} · ${m.pts}점</span></div>`).join('')}</div>
     <div class="chests"><div class="bar xp"><i style="width:${Math.min(100, (st.pts / Math.max(1, CHESTS[CHESTS.length - 1].pts)) * 100)}%"></i></div>
       <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px"><span class="small">오늘 <b>${st.pts}</b>/${maxPts}점</span>${st.chests.map((c) => `<button class="btn sm ${c.ready ? '' : 'ghost'}" data-a="chest" data-v="${c.i}" ${c.ready ? '' : 'disabled'} title="${esc(dRewardText(c.reward))}">${c.claimed ? '✔ ' : '🎁 '}${c.pts}점</button>`).join('')}</div>
@@ -3003,7 +2997,6 @@ app.addEventListener('click', (ev) => {
     case 'mailSend': sendMailItem(d.e!); break;
     case 'mailClaim': claimMails([Number(d.v)]); break;
     case 'mailClaimAll': claimMails(mailbox.map((m) => m.id)); break;
-    case 'attend': commit(G.attend(s!)); break;
     case 'idleClaim': commit(G.claimIdle(s!)); break;
     case 'guestToggle': commit(G.toggleGuest(s!)); break;
     case 'guestFriend': guestLoad(d.v!); break;

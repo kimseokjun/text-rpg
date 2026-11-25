@@ -9,7 +9,7 @@ import { charPower, partyPower } from '../core/power';
 /** 업적 판정에 필요한 상태만 (GameState와 순환 참조 피하려고 따로 정의) */
 export interface AchState {
   maxFloor: number; roster: Character[]; party: string[]; inventory: Equip[]; pets: Pet[];
-  cnt?: Record<string, number>; tower?: { best: number }; att?: { n: number };
+  cnt?: Record<string, number>; tower?: { best: number };
   cards?: Record<string, OwnedCard>; codex?: string[]; bossesKilled: string[];
   ach?: Record<string, number>; achMs?: number; title?: string;
 }
@@ -34,7 +34,6 @@ export const TITLES: Title[] = [
   { id: 'duelist', name: '불패의 결투가', tone: 5, mods: [pm('agi', 3)], desc: '민첩 +3%' },
   { id: 'hellConq', name: '지옥 정복자', tone: 5, mods: [pm('raidDmg', 5)], desc: '레이드 보스 피해 +5%' },
   { id: 'loyal', name: '의리의 동료', tone: 4, mods: [pm('healPower', 5)], desc: '회복량 +5%' },
-  { id: 'regular', name: '개근상', tone: 4, mods: [pm('expGain', 10)], desc: '경험치 +10%' },
   { id: 'tycoon', name: '대부호', tone: 4, mods: [pm('goldGain', 8)], desc: '골드 획득 +8%' },
   { id: 'achiever', name: '업적의 달인', tone: 5, mods: [pm('atk', 1), pm('mag', 1), pm('hp', 1), pm('def', 1)], desc: '공격력·마력·생명력·방어 +1%' },
 ];
@@ -90,7 +89,6 @@ export const ACHS: AchDef[] = [
   { id: 'lend', cat: 'social', name: '친구에게 단원 빌려주기', unit: '회', goals: [1, 10, 50], titles: { 2: 'loyal' }, get: (s) => c(s, 'lent') },
   { id: 'multi', cat: 'social', name: '파티 던전', unit: '회', goals: [10, 50, 200], get: (s) => c(s, 'multi') },
   // 일상
-  { id: 'attend', cat: 'life', name: '출석', unit: '일', goals: [7, 28, 100], titles: { 2: 'regular' }, get: (s) => s.att?.n ?? 0 },
   { id: 'goldEarn', cat: 'life', name: '골드 벌이', unit: 'G', goals: [1e6, 1e7, 1e8, 1e9], titles: { 3: 'tycoon' }, get: (s) => c(s, 'goldEarn') },
   { id: 'buy', cat: 'life', name: '단골손님', unit: '회', goals: [10, 100, 500], get: (s) => c(s, 'buy') },
 ];

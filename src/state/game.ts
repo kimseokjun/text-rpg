@@ -8,7 +8,7 @@ import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Character, type 
 import { EQUIP_BASES, EQUIP_BY_ID, OPTION_POOL, OPTION_SLOTS, POTIONS, MAX_POTIONS, RARITY_MULT, TIER_INFO, refineGoldCost, refineStoneCost, rollOption, rollLine, rollLines, POT_NAME, POT_UP, POT_PITY, addRuneCost } from '../data/items';
 import { MAX_FLOOR, MONSTERS, floorName, regionOf } from '../data/monsters';
 import { R4, r4Reward, r4Today, type R4Diff } from '../data/raid4';
-import { ATTEND, CHESTS, MISSIONS, dRewardText, type DReward } from '../data/missions';
+import { CHESTS, MISSIONS, dRewardText, type DReward } from '../data/missions';
 import { CRAFT_COST, MYTH_CRAFT_COST, MYTH_SET, RAID_CRAFT_COST, RAID_SET } from '../data/sets';
 import { DAILY_BY_ID, DAILY_LIMIT, dailyReward, kstDate, type DailyDef } from '../data/daily';
 import { rewardScale } from '../data/monsters';
@@ -1062,6 +1062,7 @@ export function migrate(raw: any): GameState | null {
   s.boardLocks ??= s.board.map(() => false);
   if (!s.deals) s.deals = []; ensureShopDay(s); s.news ??= []; s.bossesKilled ??= [];
   for (const c of s.roster) syncSkillSlots(c);
+  if (s.title && !TITLE_BY_ID[s.title]) delete s.title;
   return s;
 }
 
@@ -1279,15 +1280,6 @@ function giveDReward(s: GameState, r: DReward): string {
   let extra = '';
   if (r.egg) { const p = addPet(s, hatch(rngOf(s), r.egg as Grade)); extra = ` · ${PET_GRADE_NAME[p.grade]} ${PET_BY_ID[p.kind].name} 부화!`; }
   return dRewardText(r) + extra;
-}
-export const attendedToday = (s: GameState) => s.att?.last === kstDate();
-/** 오늘 출석하면 받을 날짜 번호 (1~28) */
-export const attendDay = (s: GameState) => attendedToday(s) ? s.att!.n : ((s.att?.n ?? 0) % 28) + 1;
-export function attend(s: GameState): Result {
-  if (attendedToday(s)) return fail('오늘은 이미 출석했어요');
-  const n = ((s.att?.n ?? 0) % 28) + 1;
-  s.att = { last: kstDate(), n };
-  return { ok: true, msg: `출석 ${n}일째! ${giveDReward(s, ATTEND[n - 1])}` };
 }
 /** 일일 미션 상태 (날짜가 바뀌면 오늘 기준으로 다시 셈) */
 export function missionState(s: GameState) {

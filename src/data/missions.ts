@@ -1,20 +1,9 @@
-/** 출석(28일 주기 누적) · 일일 미션(포인트 → 상자 3개). 날짜는 한국 시간 */
+/** 일일 미션(포인트 → 상자 3개). 날짜는 한국 시간 */
 export interface DReward { gold?: number; stones?: number; blessings?: number; refineStones?: number; runes?: number; cores?: number; cardPacks?: number; mythEss?: number; egg?: number }
 export const dRewardText = (r: DReward) => [
   r.gold && `${r.gold.toLocaleString('ko-KR')}G`, r.stones && `강화석 ${r.stones}`, r.blessings && `축복 ${r.blessings}`, r.refineStones && `제련석 ${r.refineStones}`,
   r.runes && `룬석 ${r.runes}`, r.cores && `핵 ${r.cores}`, r.cardPacks && `카드 팩 ${r.cardPacks}`, r.mythEss && `신화의 정수 ${r.mythEss}`, r.egg && `${['', '', '', '희귀', '영웅', '전설'][r.egg]} 이상 펫 알`,
 ].filter(Boolean).join(' · ');
-
-/** 출석 28일: 7일마다 큰 보상 */
-export const ATTEND: DReward[] = Array.from({ length: 28 }, (_, i) => {
-  const d = i + 1, w = Math.floor(i / 7);
-  if (d === 7) return { cardPacks: 3, runes: 10, gold: 200000 };
-  if (d === 14) return { mythEss: 15, egg: 4 };
-  if (d === 21) return { cardPacks: 5, refineStones: 30, gold: 400000 };
-  if (d === 28) return { mythEss: 40, egg: 5, cardPacks: 5 };
-  const cyc = d % 3;
-  return cyc === 1 ? { gold: 50000 * (w + 1), stones: 20 } : cyc === 2 ? { refineStones: 8 + w * 2, blessings: 2 } : { runes: 3 + w, cores: 20 + w * 10 };
-});
 
 export interface Mission { id: string; name: string; key: string; need: number; pts: number; cloud?: boolean }
 /** key = 게임 안 누적 카운터 (s.cnt) */

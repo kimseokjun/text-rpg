@@ -443,6 +443,7 @@ function dealDamage(ctx: BattleContext, a: Combatant, t: Combatant, e: Extract<S
   const sa = eff(a), st = eff(t);
   const scaleVal = e.scale === 'atk' ? sa.stats.atk : e.scale === 'mag' ? sa.stats.mag : sa.stats.atk + sa.stats.mag;
   let raw = scaleVal * e.power * (1 + (isNormal ? sa.extra.normalDmg : sa.extra.skillDmg) / 100);
+  if (sa.extra.physDmg && e.scale !== 'mag') raw *= 1 + (e.scale === 'atk' ? sa.extra.physDmg : sa.extra.physDmg / 2) / 100;
   if (e.undeadBonus && (t.tags.has('undead') || t.tags.has('demon'))) raw *= 1 + e.undeadBonus;
   if (sa.extra.bossDmg && (t.tags.has('boss') || t.tags.has('elite'))) raw *= 1 + sa.extra.bossDmg / 100;
   if (sa.extra.raidDmg && t.tags.has('raid')) raw *= 1 + sa.extra.raidDmg / 100;

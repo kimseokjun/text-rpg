@@ -10,7 +10,7 @@ export const SETS: SetDef[] = [
     three: [pct('dmgTaken', -12), pct('hp', 10)], threeText: '받는 피해 -12%, 최대 HP +10%' },
   { id: 'blood', name: '혈월', desc: '붉은 달이 뜨는 밤, 피의 백작이 내린 저주받은 무구.',
     two: [pct('atk', 12)], twoText: '공격력 +12%',
-    three: [pct('normalDmg', 30), flat('crit', 8), flat('critDmg', 0.3)], threeText: '일반 공격 +30%, 치명 +8%p, 치명 배율 +30%p' },
+    three: [pct('physDmg', 20), flat('crit', 8), flat('critDmg', 0.3)], threeText: '물리 피해 +20% (스킬·평타 모두), 치명 +8%p, 치명 배율 +30%p' },
   { id: 'grim', name: '금서', desc: '불타지 않는 금서의 장정으로 엮은 장비. 읽는 자의 정신을 갉아먹는다.',
     two: [pct('mag', 12), flat('resPierce', 15)], twoText: '마력 +12%, 마저 무시 15%',
     three: [pct('skillDmg', 25), pct('mpCost', -20)], threeText: '스킬 데미지 +25%, MP 소모 -20%' },

@@ -15,7 +15,7 @@ export function charPower(c: Character, shared: Modifier[] = []): number {
   const crit = Math.min(100, s.crit) / 100;
   const hit = 1 - Math.min(50, Math.max(0, (monAgi - s.agi) * 0.3)) / 100;
   const heal = JOBS[c.jobId].base === 'priest' ? 1 + e.healPower / 100 : 1;
-  const off = Math.max(s.atk, s.mag) * (1 + crit * (0.5 + e.critDmg)) * (1 + e.skillDmg / 100) * hit * heal;
+  const off = Math.max(s.atk, s.mag) * (1 + crit * (0.5 + e.critDmg)) * (1 + e.skillDmg / 100) * (s.atk >= s.mag ? 1 + e.physDmg / 100 : 1) * hit * heal;
   const taken = 0.5 * mitigation(s.def, c.level) + 0.5 * mitigation(s.res, c.level);
   const evade = Math.min(50, e.evade + Math.max(0, (s.agi - monAgi) * 0.3)) / 100;
   const dur = s.hp / taken / (1 - evade) / Math.max(0.2, 1 + e.dmgTaken / 100);

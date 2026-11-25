@@ -281,7 +281,7 @@ function equipLine(e: Equip) {
   return `<span class="eico r${e.rarity}e ${b.set ? 'setico' : ''}">${equipIcon(e)}</span><span class="iname r${e.rarity}">${esc(b.name)}${e.enhance ? ` +${e.enhance}` : ''}</span>${b.set ? ` <span class="settag">${esc(SET_BY_ID[b.set].name)} 세트</span>` : ''} <span class="small mute">${RARITY_NAME[e.rarity]}${b.jobs ? ` · ${b.jobs.map((j) => JOBS[j].name).join('/')}` : ''}</span><div class="istat">${st}${opt ? ` · ${opt}` : ''}</div>`;
 }
 const STAT_LABEL: Record<StatKey, string> = { hp: 'HP', mp: 'MP', atk: '공격', mag: '마력', def: '방어', res: '마저', agi: '민첩', crit: '치명' };
-const MOD_LABEL: Record<string, string> = { ...STAT_LABEL, healPower: '회복량', skillDmg: '스킬 데미지', bossDmg: '보스 피해', resPierce: '마저 무시', defPierce: '방어 무시', magTaken: '받는 마법 피해' };
+const MOD_LABEL: Record<string, string> = { ...STAT_LABEL, healPower: '회복량', skillDmg: '스킬 데미지', physDmg: '물리 피해', normalDmg: '일반 공격', bossDmg: '보스 피해', resPierce: '마저 무시', defPierce: '방어 무시', magTaken: '받는 마법 피해' };
 function optText(o: { key: string; kind: string; value: number }) {
   const unit = o.kind === 'pct' || o.key === 'resPierce' || o.key === 'defPierce' ? '%' : o.key === 'crit' ? '%p' : '';
   return `${MOD_LABEL[o.key] ?? o.key} ${o.value >= 0 ? '+' : ''}${o.value}${unit}`;

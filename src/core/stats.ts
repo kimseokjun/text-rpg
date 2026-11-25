@@ -87,7 +87,7 @@ export function collectMods(c: Character): CharMods {
 
 export type Extras = Record<ExtraKey, number>;
 export const zeroExtras = (): Extras => ({
-  goldGain: 0, itemGain: 0, expGain: 0, healPower: 0, skillDmg: 0, normalDmg: 0, mpCost: 0,
+  goldGain: 0, itemGain: 0, expGain: 0, healPower: 0, skillDmg: 0, normalDmg: 0, physDmg: 0, mpCost: 0,
   floorRegen: 0, dmgTaken: 0, evade: 0, critDmg: 0, aggro: 0, hireCost: 0,
   bossDmg: 0, resPierce: 0, defPierce: 0, magTaken: 0, raidDmg: 0,
 });

@@ -10,6 +10,7 @@ export type ExtraKey =
   | 'healPower'  // 회복량 %
   | 'skillDmg'   // 스킬 데미지 %
   | 'normalDmg'  // 일반공격 데미지 %
+  | 'physDmg'    // 물리(공격력 계수) 피해 % — 스킬·평타 모두
   | 'mpCost'     // MP 소모 %
   | 'floorRegen' // 층 클리어 회복 %p
   | 'dmgTaken'   // 받는 피해 %

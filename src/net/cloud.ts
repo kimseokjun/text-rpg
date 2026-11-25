@@ -67,3 +67,30 @@ export async function saveCloud(state: unknown, day: number, power: number): Pro
   const { error } = await sb.from('saves').upsert({ user_id: session.user.id, data: state, day, power, updated_at: new Date().toISOString() });
   return !error;
 }
+
+/** 랭킹 */
+export interface RankRow { username: string; power: number; tower_best: number; raid_best: number; max_floor: number }
+export type RankKind = 'tower_best' | 'power' | 'raid_best';
+export async function pushRank(r: { power: number; tower_best: number; raid_best: number; raid_week: number; max_floor: number }) {
+  if (!sb || !session) return;
+  await sb.from('ranks').upsert({ user_id: session.user.id, ...r });
+}
+export async function fetchRanks(kind: RankKind, raidWeek: number): Promise<{ top: RankRow[]; mine: number | null } | null> {
+  if (!sb) return null;
+  let q = sb.from('ranks').select('username, power, tower_best, raid_best, max_floor').gt(kind, 0).order(kind, { ascending: false }).limit(50);
+  if (kind === 'raid_best') q = q.eq('raid_week', raidWeek);
+  const { data, error } = await q;
+  if (error) return null;
+  let mine: number | null = null;
+  if (session) {
+    const me = await sb.from('ranks').select('power, tower_best, raid_best, raid_week').eq('user_id', session.user.id).maybeSingle();
+    const v = me.data ? (me.data as any)[kind] as number : 0;
+    if (v > 0 && (kind !== 'raid_best' || me.data!.raid_week === raidWeek)) {
+      let c = sb.from('ranks').select('user_id', { count: 'exact', head: true }).gt(kind, v);
+      if (kind === 'raid_best') c = c.eq('raid_week', raidWeek);
+      const r = await c;
+      mine = (r.count ?? 0) + 1;
+    }
+  }
+  return { top: (data ?? []) as RankRow[], mine };
+}

@@ -7,7 +7,7 @@ import { finalStats, expToNext, STAT_KEYS } from '../core/stats';
 import { BOARD_SIZE, enhanceCost, enhanceRate, refreshSlotCost, rosterLimit } from '../core/town';
 import { equipStats } from '../core/stats';
 import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Row, type TargetPref, type UnitSnap, type BaseJob, type BattleEvent, type JobId, type Character, type Equip, type EquipSlot, type Rarity, type StatKey } from '../core/types';
-import { MILESTONE_SCALES, RAID_DIFF, RAID_DIFFS, RAID_DIFF_NAME, RAID_LIMIT, RAID_ROUNDS, nextResetText, raidForm, raidMaxHp, type RaidDiff } from '../data/raid';
+import { raidWeek, MILESTONE_SCALES, RAID_DIFF, RAID_DIFFS, RAID_DIFF_NAME, RAID_LIMIT, RAID_ROUNDS, nextResetText, raidForm, raidMaxHp, type RaidDiff } from '../data/raid';
 import { DAILIES, DAILY_BY_ID, DAILY_LIMIT, DAILY_STAGES, dailyReward } from '../data/daily';
 import { CRAFT_COST, RAID_CRAFT_COST, RAID_SET, SETS, SET_BASES, SET_BY_ID, SET_DROP_CHANCE, SET_RARITY, SHARD_CHANCE } from '../data/sets';
 import { EGG_ODDS, EGG_PRICE, PET_BY_ID, PET_GRADE_NAME, PET_GRADE_PCT, PET_MAX_STARS, petEffectText, petSellPrice, type Pet } from '../data/pets';
@@ -29,7 +29,7 @@ import { townScene } from './art';
 import { charSprite } from './pixel';
 import { equipKind, equipSprite, itemSprite, monsterSprite, petSprite } from './sprites';
 
-type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower';
+type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank';
 
 let S: G.GameState | null = null;
 let screen: Screen = 'title';
@@ -194,6 +194,7 @@ function viewTitle() {
 
 const SIGN_ICON: Record<string, () => string> = {
   guild: () => charSprite('warrior', '길드', 2, { size: 34 }),
+  rank: () => equipSprite('accessory', 7, { size: 34 }),
   smith: () => equipSprite('sword', 3, { size: 34 }),
   refinery: () => itemSprite('refine', { size: 34 }),
   pets: () => itemSprite('egg', { size: 34 }),
@@ -229,6 +230,7 @@ function viewTown() {
     ['pets', '펫 우리', G.activePet(s) ? `${PET_BY_ID[G.activePet(s)!.kind].name} 동행 · ${s.pets.length}마리` : `펫 알 ${fmt(EGG_PRICE)}G`],
     ['shop', '잡화점', `물약 ${Object.values(s.potions).reduce((a, b) => a + b, 0)}개 보유`],
     ['storage', '창고', `장비 ${allEquips().length}개 · 재료 보기`],
+    ...(CLOUD ? [['rank', '명예의 전당', '무한 탑 · 전투력 · 레이드 순위'] as [string, string, string]] : []),
   ];
   return `<div class="wrap">
     <div class="scene">${townScene()}</div>
@@ -725,6 +727,34 @@ function startRaidRun() {
 }
 
 const unlockShort = (f: number) => `${regionOf(f).name.includes('성') ? '성' : '숲'} ${localFloor(f)}층`;
+
+let rankKind: Cloud.RankKind = 'tower_best';
+let rankData: { kind: string; top: Cloud.RankRow[]; mine: number | null; at: number } | null = null;
+let rankLoading = false;
+async function loadRanks(force = false) {
+  if (rankLoading) return;
+  if (!force && rankData && rankData.kind === rankKind && Date.now() - rankData.at < 30000) return;
+  rankLoading = true; render();
+  const r = await Cloud.fetchRanks(rankKind, raidWeek());
+  rankLoading = false;
+  rankData = r ? { kind: rankKind, ...r, at: Date.now() } : { kind: rankKind, top: [], mine: null, at: Date.now() };
+  if (!r) toast('랭킹을 불러오지 못했어요', true);
+  if (screen === 'rank') render();
+}
+function viewRank() {
+  const kinds: [Cloud.RankKind, string][] = [['tower_best', '무한 탑'], ['power', '파티 전투력'], ['raid_best', '이번 주 레이드']];
+  if (!rankData || rankData.kind !== rankKind) setTimeout(() => loadRanks(), 0);
+  const val = (r: Cloud.RankRow) => rankKind === 'tower_best' ? `${r.tower_best}층` : rankKind === 'power' ? fmt(r.power) : fmt(r.raid_best);
+  const rows = rankData && rankData.kind === rankKind ? rankData.top.map((r, i) => `<li class="${r.username === Cloud.username ? 'me' : ''}"><span class="rk ${i < 3 ? `top${i + 1}` : ''}">${i + 1}</span><b>${esc(r.username)}</b><span class="rv">${val(r)}</span></li>`).join('') : '';
+  const mine = rankData?.kind === rankKind ? rankData.mine : null;
+  return `<div class="wrap">${backBtn()}
+    <h2>명예의 전당</h2>
+    <div class="tabs" role="group" aria-label="랭킹 종류">${kinds.map(([k, n]) => `<button class="${rankKind === k ? 'on' : ''}" data-a="rankKind" data-v="${k}">${n}</button>`).join('')}</div>
+    <p class="small mute">${rankKind === 'tower_best' ? '무한 탑 최고 돌파 층' : rankKind === 'power' ? '출전 파티 전투력 (저장할 때 갱신)' : `이번 주(${raidForm().name}) 한 번 도전에서 넣은 최고 피해`} · 내 순위 <b>${mine ? `${mine}위` : '기록 없음'}</b>
+      <button class="btn ghost sm" data-a="rankRefresh" ${rankLoading ? 'disabled' : ''}>${rankLoading ? '불러오는 중…' : '새로고침'}</button></p>
+    <ol class="ranklist">${rows || `<p class="mute">${rankLoading ? '불러오는 중…' : '아직 기록이 없어요.'}</p>`}</ol>
+  </div>`;
+}
 
 function viewTower() {
   const s = S!;
@@ -1356,7 +1386,7 @@ function renderNow() {
   }
   const body = !S || screen === 'title' ? viewTitle()
     : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
-    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : viewResult();
+    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'rank' ? viewRank() : viewResult();
   app.innerHTML = (screen === 'title' ? '' : topbar()) + body;
   renderModal();
   renderToast();
@@ -1489,6 +1519,8 @@ app.addEventListener('click', (ev) => {
     case 'towerGo': startTowerRun(); break;
     case 'authMode': authMode = d.v as 'login' | 'signup'; authErr = ''; render(); break;
     case 'logout': Cloud.signOut().then(() => { S = null; lastSave = null; screen = 'title'; render(); }); break;
+    case 'rankKind': rankKind = d.v as Cloud.RankKind; render(); break;
+    case 'rankRefresh': loadRanks(true); break;
     case 'claimQuest': commit(G.claimQuest(s!)); break;
     case 'whFilter': whFilter = d.v as WhFilter; render(); break;
     case 'whOpen': whOpen = whOpen === d.e ? null : d.e!; render(); break;

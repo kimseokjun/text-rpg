@@ -1,5 +1,5 @@
 import { migrate, statePower, type GameState } from './game';
-import { CLOUD, initSession, loadCloud, saveCloud, session } from '../net/cloud';
+import { CLOUD, initSession, loadCloud, pushRank, saveCloud, session } from '../net/cloud';
 
 /**
  * 저장: 아티팩트 db(계정별 비공개 문서)가 있으면 거기에, 항상 localStorage에도.
@@ -65,7 +65,7 @@ export function saveGame(s: GameState) {
     if (!session) return;
     try { localStorage.setItem(`${LS_KEY}-${session.user.id}`, json); } catch { /* 무시 */ }
     clearTimeout(cloudTimer);
-    cloudTimer = window.setTimeout(async () => { cloudStatus = 'saving'; cloudStatus = (await saveCloud(JSON.parse(json), s.day, statePower(s))) ? 'saved' : 'error'; }, 1200);
+    cloudTimer = window.setTimeout(async () => { cloudStatus = 'saving'; const pw = statePower(s); cloudStatus = (await saveCloud(JSON.parse(json), s.day, pw)) ? 'saved' : 'error'; pushRank({ power: pw, tower_best: s.tower?.best ?? 0, raid_best: s.raid?.best ?? 0, raid_week: s.raid?.week ?? 0, max_floor: s.maxFloor }).catch(() => {}); }, 1200);
     return;
   }
   try { localStorage.setItem(LS_KEY, json); } catch { /* 무시 */ }

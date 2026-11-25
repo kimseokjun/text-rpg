@@ -352,3 +352,9 @@ svg.px{image-rendering:pixelated;flex:none}
 .trow .tg{display:flex;flex-direction:column;gap:2px}
 .trow .tr{grid-column:2;color:var(--gold)}
 .tlist{margin-top:10px}
+.ranklist{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.ranklist li{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:var(--panel);border:1px solid var(--line)}
+.ranklist li.me{border-color:var(--gold)}
+.ranklist .rk{width:28px;text-align:center;font-weight:800;color:var(--mute)}
+.ranklist .rk.top1{color:#f5c542}.ranklist .rk.top2{color:#c9d1d9}.ranklist .rk.top3{color:#d08a4a}
+.ranklist .rv{margin-left:auto;font-weight:700;color:var(--gold)}

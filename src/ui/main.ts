@@ -1,5 +1,5 @@
 import './style.css';
-import { canAdvance, levelCap, syncSkillSlots } from '../core/character';
+import { canAdvance, levelCap, syncSkillSlots, MAX_TRANSCEND } from '../core/character';
 import { mitigation, rowOf } from '../core/combat';
 import { charPower, floorPower, hasHealer, noHealerFactor, partyPower, powerLevel } from '../core/power';
 import type { ExpeditionSettings, FloorResult } from '../core/dungeon';
@@ -10,7 +10,7 @@ import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Row, type Target
 import { raidWeek, MILESTONE_SCALES, RAID_DIFF, RAID_DIFFS, RAID_DIFF_NAME, RAID_LIMIT, RAID_ROUNDS, nextResetText, raidForm, raidMaxHp, type RaidDiff } from '../data/raid';
 import { DAILIES, DAILY_BY_ID, DAILY_LIMIT, DAILY_STAGES, dailyReward } from '../data/daily';
 import { CRAFT_COST, MYTH_CRAFT_COST, MYTH_SET, RAID_CRAFT_COST, RAID_SET, SETS, SET_BASES, SET_BY_ID, SET_DROP_CHANCE, SET_RARITY, SHARD_CHANCE } from '../data/sets';
-import { PET_KINDS, EGG_ODDS, EGG_PRICE, PET_BY_ID, PET_GRADE_NAME, PET_GRADE_PCT, PET_MAX_STARS, petEffectText, petSellPrice, type Pet } from '../data/pets';
+import { PET_KINDS, EGG_ODDS, EGG_PRICE, PET_BY_ID, PET_GRADE_NAME, PET_GRADE_PCT, PET_MAX_STARS, PET_EVO_GOLD, petName, petEffectText, petSellPrice, type Pet } from '../data/pets';
 import { EQUIP_BASES, EQUIP_BY_ID, MAX_POTIONS, OPTION_SLOTS, POTIONS, REFINE_CHANCE, tierOfFloor, POT_NAME, POT_UP, POT_PITY } from '../data/items';
 import { ADVANCE_AT, JOBS, advanceOptions } from '../data/jobs';
 import { MERCENARIES, MERC_BY_ID } from '../data/mercenaries';
@@ -249,7 +249,7 @@ function charCard(c: Character, opts: { act?: string; inParty?: boolean } = {}) 
     ${canAdvance(c) ? '<span class="advbadge" title="전직할 수 있어요">⚡ 전직!</span>' : ''}
     <div class="ico">${avatar(c)}</div>
     <div class="cinfo">
-      <div class="cname">${esc(c.name)} ${stars(c.grade)}${c.awakening ? `<span class="small g5">각성 ${c.awakening}</span>` : ''}</div>
+      <div class="cname">${esc(c.name)} ${stars(c.grade)}${awkTag(c)}</div>
       <div class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} · <span class="cp">전투력 ${fmt(charPower(c))}</span>${c.isHero ? ' · 주인공' : merc ? ` · ${esc(merc.desc)}` : ''}</div>
       ${traits ? `<div class="tags">${traits}</div>` : ''}
     </div>
@@ -293,6 +293,8 @@ function matBar() {
 }
 const backBtn = () => `<div class="back"><button class="btn ghost sm" data-a="go" data-to="town">← 마을로</button></div>${hubTabs()}`;
 
+/** 각성·초월 표시 */
+const awkTag = (c: Character) => c.transcend ? `<span class="small trs">초월 ${c.transcend}</span>` : c.awakening ? `<span class="small g5">각성 ${c.awakening}</span>` : '';
 /** 도트 아이콘 */
 const avatar = (c: Character, size = 44) => charSprite(JOBS[c.jobId].base, c.name, JOBS[c.jobId].tier, { size });
 const equipIcon = (e: Equip, size = 34) => { const b = EQUIP_BY_ID[e.baseId]; return equipSprite(equipKind(b.slot, b.jobs?.[0]), b.tier, { size, set: b.set }); };
@@ -484,7 +486,7 @@ function pcard(c: Character, inParty: boolean, full: boolean) {
   const tactics = inParty ? tacticsCtl(c) : '';
   return `<div class="pcard ${inParty ? 'inparty' : ''} ${inParty ? `row-${row}` : ''}">
     <div class="ico">${avatar(c)}</div>
-    <div class="cinfo"><div class="cname">${esc(c.name)} ${stars(c.grade)}${c.awakening ? `<span class="small g5">각성 ${c.awakening}</span>` : ''}</div>
+    <div class="cinfo"><div class="cname">${esc(c.name)} ${stars(c.grade)}${awkTag(c)}</div>
       <div class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} · <span class="cp">전투력 ${fmt(charPower(c))}</span></div>
       ${traits ? `<div class="tags">${traits}</div>` : ''}${tactics}</div>
     <div class="pact">${act}<button class="btn ghost sm" data-a="openChar" data-uid="${esc(c.uid)}">상세</button></div>
@@ -602,9 +604,9 @@ function viewGuild() {
       <div class="small">${JOBS[d.job].name} · Lv.${owned ? owned.level : c.level}</div>
       <div class="tags">${tr}</div>
       <div class="desc">${esc(d.desc)}${d.unique ? `<br><span class="small">${esc(TRAITS[d.unique].desc)}</span>` : ''}</div>
-      ${owned ? `<div class="owned">이미 보유 · 고용 시 각성 ${owned.awakening}→${Math.min(5, owned.awakening + 1)}</div>` : ''}
+      ${owned ? `<div class="owned">이미 보유 · ${owned.awakening < 5 ? `고용 시 각성 ${owned.awakening}→${owned.awakening + 1}` : (owned.transcend ?? 0) < MAX_TRANSCEND ? `고용 시 초월 ${owned.transcend ?? 0}→${(owned.transcend ?? 0) + 1}` : '최대 초월'}</div>` : ''}
       <div class="row" style="justify-content:space-between"><span class="price">${fmt(c.price)}G</span></div>
-      <div class="row"><button class="btn sm" data-a="hire" data-i="${i}" ${owned?.awakening === 5 ? 'disabled' : ''}>${owned ? '각성' : '고용'}</button><button class="btn ghost sm" data-a="refresh" data-i="${i}" ${locked ? 'disabled title="잠금 중"' : ''}>${refreshSlotCost(lead)}G 교체</button></div>
+      <div class="row"><button class="btn sm" data-a="hire" data-i="${i}" ${owned && owned.awakening >= 5 && (owned.transcend ?? 0) >= MAX_TRANSCEND ? 'disabled' : ''}>${owned ? (owned.awakening >= 5 ? '초월' : '각성') : '고용'}</button><button class="btn ghost sm" data-a="refresh" data-i="${i}" ${locked ? 'disabled title="잠금 중"' : ''}>${refreshSlotCost(lead)}G 교체</button></div>
     </div>`;
   }).join('');
   const roster = sortRoster(s.roster).map((c) => charCard(c, { inParty: s.party.includes(c.uid) })).join('');
@@ -612,7 +614,7 @@ function viewGuild() {
     <div class="row" style="justify-content:space-between"><h2>모험가 길드 <span class="mute small">Lv.${s.guildLevel}</span></h2>
       <button class="btn ghost sm" data-a="upgradeGuild">길드 확장 · ${fmt(G.guildUpgradeCost(s.guildLevel))}G</button></div>
     <div class="row" style="justify-content:space-between;margin:6px 0 10px">
-      <p class="small mute" style="margin:0">지원자는 골드로만 바뀌어요. 자물쇠를 잠근 칸은 전체 교체에서 빠지고, 같은 용병을 다시 고용하면 각성합니다.</p>
+      <p class="small mute" style="margin:0">지원자는 골드로만 바뀌어요. 자물쇠를 잠근 칸은 전체 교체에서 빠지고, 같은 용병을 다시 고용하면 각성하고, 각성 5단계 뒤에는 초월(최대 5단계, 단계당 모든 능력치 +4%)해요.</p>
       <button class="btn sm" data-a="refreshAll" ${s.boardLocks.every(Boolean) ? 'disabled' : ''}>전체 교체 ${s.board.filter((_, i) => !s.boardLocks[i]).length}칸 · ${fmt(G.refreshAllCost(s))}G</button></div>
     <div class="panel autorf"><b class="small">자동 교체</b>
       <div class="seg mini" role="group" aria-label="목표 등급">${([[4, '영웅 이상'], [5, '전설']] as const).map(([g, n]) => `<button class="${autoGrade === g ? 'on' : ''}" data-a="autoGrade" data-v="${g}">${n}</button>`).join('')}</div>
@@ -666,11 +668,16 @@ function refineCtl(e: Equip) {
 }
 /** 강화 정보 한 줄 + 버튼 */
 function enhanceCtl(e: Equip) {
-  if (e.enhance >= 15) return `<div class="ectl"><span class="small mute">최대 강화</span></div>`;
+  if (e.enhance >= 15) return `<div class="ectl"><span class="small mute">최대 강화</span>${upgradeRow(e)}</div>`;
   const cost = enhanceCost(e.enhance + 1);
   const rate = enhanceRate(e, useBlessing);
   return `<div class="ectl"><span class="small mute">+${e.enhance}→+${e.enhance + 1} · 성공 <b class="${rate >= 50 ? 'okt' : rate >= 25 ? 'closet' : 'lowt'}">${rate}%</b> · 강화석 ${cost.stone} · ${fmt(cost.gold)}G${e.failStack ? ` · 천장 +${e.failStack * 5}%p` : ''}</span>
-    <span class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sm" data-a="enhance" data-e="${esc(e.uid)}">강화</button>${[5, 10, 15].filter((t) => e.enhance < t).slice(0, 2).map((t) => `<button class="btn ghost sm" data-a="autoEnh" data-e="${esc(e.uid)}" data-v="${t}" title="성공할 때까지 자동으로 강화 (재료가 떨어지면 멈춤)">+${t}까지</button>`).join('')}</span></div>`;
+    <span class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sm" data-a="enhance" data-e="${esc(e.uid)}">강화</button>${[5, 10, 15].filter((t) => e.enhance < t).slice(0, 2).map((t) => `<button class="btn ghost sm" data-a="autoEnh" data-e="${esc(e.uid)}" data-v="${t}" title="성공할 때까지 자동으로 강화 (재료가 떨어지면 멈춤)">+${t}까지</button>`).join('')}</span>${upgradeRow(e)}</div>`;
+}
+function upgradeRow(e: Equip) {
+  const n = G.upgradeTarget(e), c = G.upgradeCost(e);
+  if (!n || !c) return '';
+  return `<span class="small mute" style="display:block;margin-top:4px">승급 → <b>${esc(n.name)}</b> (${n.tier}티어) · 강화석 ${c.stones} · ${fmt(c.gold)}G <button class="btn ghost sm" data-a="upgrade" data-e="${esc(e.uid)}" title="강화 단계와 잠재능력은 그대로 유지">승급</button></span>`;
 }
 
 /** 캐릭터 한 명의 장비 3칸 묶음 */
@@ -797,13 +804,18 @@ function viewPets() {
   const sel = bag.find((p) => p.uid === petSel) ?? null;
   const owned = new Set(s.pets.map((p) => `${p.kind}:${p.grade}`));
   const stars = (n: number) => `<span class="stars" aria-label="${n}성">${'★'.repeat(n)}<span class="off">${'☆'.repeat(PET_MAX_STARS - n)}</span></span>`;
+  const evoBtn = (p: Pet) => {
+    if (p.evo || p.grade < 5 || p.stars < PET_MAX_STARS) return '';
+    const food = G.evoFood(s, p);
+    return `<button class="btn sm" data-a="petEvolve" data-id="${p.uid}" ${food && s.gold >= PET_EVO_GOLD ? '' : 'disabled'} title="다른 전설 펫 1마리 + ${fmt(PET_EVO_GOLD)}G · 효과 ×1.5 + 추가 효과">✦ 진화 · ${fmt(PET_EVO_GOLD)}G${food ? '' : ' (전설 재료 없음)'}</button>`;
+  };
   const hero = act ? `<div class="pethero r${act.grade}b">
       <div class="petpic big">${petSprite(act.kind, act.grade, { size: 128 })}</div>
       <span class="tag">동행 중</span>
-      <h3 class="g${act.grade}" style="margin:6px 0 0">${esc(PET_BY_ID[act.kind].name)}</h3>
+      <h3 class="g${act.grade}" style="margin:6px 0 0">${esc(petName(act))}</h3>
       <div class="small g${act.grade}">${PET_GRADE_NAME[act.grade]} ${stars(act.stars)}</div>
       <p style="margin:6px 0 0"><b>${esc(petEffectText(act))}</b> <span class="small mute">· 출전 파티 전원</span></p>
-      ${act.stars < PET_MAX_STARS ? `<p class="small mute" style="margin:4px 0 0">같은 ${PET_GRADE_NAME[act.grade]} ${esc(PET_BY_ID[act.kind].name)}이(가) 또 나오면 자동으로 ★+1</p>` : '<p class="small g5" style="margin:4px 0 0">최대 성급!</p>'}
+      ${act.stars < PET_MAX_STARS ? `<p class="small mute" style="margin:4px 0 0">같은 ${PET_GRADE_NAME[act.grade]} ${esc(PET_BY_ID[act.kind].name)}이(가) 또 나오면 자동으로 ★+1</p>` : `<p class="small g5" style="margin:4px 0 0">${act.evo ? '✦ 진화 완료' : '최대 성급!'}</p>${evoBtn(act)}`}
     </div>` : `<div class="pethero empty">${itemSprite('egg', { size: 96 })}<p class="mute">동행 중인 펫이 없어요. 알을 부화시켜 보세요.</p></div>`;
   const tiles = bag.map((p) => `<button class="pettile r${p.grade}b ${p.uid === petSel ? 'on' : ''}" data-a="petSel" data-id="${p.uid}" aria-pressed="${p.uid === petSel}">
       ${petSprite(p.kind, p.grade, { size: 56 })}<span class="pn g${p.grade}">${esc(PET_BY_ID[p.kind].name)}</span><span class="pg g${p.grade}">${PET_GRADE_NAME[p.grade]}</span><span class="small">${stars(p.stars)}</span></button>`).join('');
@@ -812,8 +824,8 @@ function viewPets() {
     const d = PET_GRADE_PCT[p.grade] + p.stars - (PET_GRADE_PCT[act.grade] + act.stars);
     return ` <span class="small ${d > 0 ? 'up' : d < 0 ? 'down' : 'mute'}">(지금보다 ${d > 0 ? '+' : ''}${d}%p)</span>`;
   };
-  const detail = sel ? `<div class="petsel r${sel.grade}b">${petSprite(sel.kind, sel.grade, { size: 64 })}<div class="psi"><b class="g${sel.grade}">${PET_GRADE_NAME[sel.grade]} ${esc(PET_BY_ID[sel.kind].name)}</b> ${stars(sel.stars)}<div class="small">${esc(petEffectText(sel))}${cmp(sel)}</div><div class="small mute">${esc(PET_BY_ID[sel.kind].desc)}</div></div>
-      <div class="row psb" style="gap:6px;flex-wrap:wrap"><button class="btn sm" data-a="petUse" data-id="${sel.uid}">데려가기</button><button class="btn ghost sm" data-a="petSell" data-id="${sel.uid}">보내기 +${fmt(petSellPrice(sel))}G</button></div></div>` : '';
+  const detail = sel ? `<div class="petsel r${sel.grade}b">${petSprite(sel.kind, sel.grade, { size: 64 })}<div class="psi"><b class="g${sel.grade}">${PET_GRADE_NAME[sel.grade]} ${esc(petName(sel))}</b> ${stars(sel.stars)}<div class="small">${esc(petEffectText(sel))}${cmp(sel)}</div><div class="small mute">${esc(PET_BY_ID[sel.kind].desc)}</div></div>
+      <div class="row psb" style="gap:6px;flex-wrap:wrap"><button class="btn sm" data-a="petUse" data-id="${sel.uid}">데려가기</button><button class="btn ghost sm" data-a="petSell" data-id="${sel.uid}">보내기 +${fmt(petSellPrice(sel))}G</button>${evoBtn(sel)}</div></div>` : '';
   const lowN = bag.filter((p) => p.grade <= 2).length;
   const recent = G.lastHatch.length ? `<div class="hatch">${G.lastHatch.slice(0, 10).map((h) => `<span class="hx r${h.grade}b" title="${PET_GRADE_NAME[h.grade]} ${esc(PET_BY_ID[h.kind].name)}">${petSprite(h.kind, h.grade, { size: 36 })}</span>`).join('')}</div>` : '';
   return `<div class="wrap">${backBtn()}
@@ -1767,7 +1779,7 @@ function adProfile(sel: Cloud.AdminUser) {
       const eq = EQUIP_SLOTS.map((sl) => { const e = c.equipment[sl]; return `<div class="adeq"><span class="small mute">${SLOT_NAME[sl]}</span>${e ? `<div>${equipLine(e)}</div>` : '<span class="small mute">비어 있음</span>'}</div>`; }).join('');
       const skills = c.skillSlots.map((sl) => SKILLS[sl.skillId]?.name ?? sl.skillId).join(' → ');
       return `<div class="adchar ${gs!.party.includes(c.uid) ? 'inparty' : ''}"><div class="row" style="gap:10px;align-items:center"><div class="ico">${avatar(c, 48)}</div>
-        <div style="flex:1;min-width:0"><b>${esc(c.name)}</b> ${stars(c.grade)}${c.awakening ? ` <span class="small g5">각성 ${c.awakening}</span>` : ''}${gs!.party.includes(c.uid) ? ' <span class="tag">출전</span>' : ''}
+        <div style="flex:1;min-width:0"><b>${esc(c.name)}</b> ${stars(c.grade)} ${awkTag(c)}${gs!.party.includes(c.uid) ? ' <span class="tag">출전</span>' : ''}
           <div class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} · <span class="cp">전투력 ${fmt(charPower(c))}</span>${c.isHero ? ' · 주인공' : merc ? ` · ${GRADE_NAME[merc.grade]} 용병` : ''} · ${rowOf(c) === 'front' ? '전열' : '후열'} · ${TARGET_NAME[c.target ?? 'auto']}</div></div></div>
         ${traits ? `<div class="tags" style="margin-top:6px">${traits}</div>` : ''}
         <div class="adeqs">${eq}</div>
@@ -2585,7 +2597,7 @@ function viewCharModal(uid: string) {
   const ex = [['회피', extra.evade, '%'], ['스킬 데미지', extra.skillDmg, '%'], ['회복량', extra.healPower, '%'], ['받는 피해', extra.dmgTaken, '%']].filter(([, v]) => v).map(([n, v, u]) => `${n} ${Number(v) > 0 ? '+' : ''}${v}${u}`).join(' · ');
   return `<div class="modal" data-a="closeModal"><div class="mbox" role="dialog" aria-modal="true" aria-label="${esc(c.name)}" data-stop>
     <div class="mhead"><div class="ico">${avatar(c)}</div><div style="flex:1"><h2>${esc(c.name)} ${stars(c.grade)}</h2>
-      <div class="mute small"><b class="cp">전투력 ${fmt(charPower(c))}</b> · ${GRADE_NAME[c.grade]} · ${esc(JOBS[c.jobId].name)} · Lv.${c.level}${c.awakening ? ` · 각성 ${c.awakening}/5` : ''}${merc ? ` · ${esc(merc.desc)}` : ''}</div></div>
+      <div class="mute small"><b class="cp">전투력 ${fmt(charPower(c))}</b> · ${GRADE_NAME[c.grade]} · ${esc(JOBS[c.jobId].name)} · Lv.${c.level}${c.transcend ? ` · 초월 ${c.transcend}/5` : c.awakening ? ` · 각성 ${c.awakening}/5` : ''}${merc ? ` · ${esc(merc.desc)}` : ''}</div></div>
       <button class="btn ghost sm" data-a="closeModal" aria-label="닫기">닫기</button></div>
     <div class="tabs" role="group" aria-label="캐릭터 정보" style="margin:4px 0 12px">${([['equip', '장비'], ['skill', '스킬'], ['trait', '특성·전직']] as const).map(([k, n]) => `<button class="${charTab === k ? 'on' : ''}" data-a="charTab" data-v="${k}">${n}${k === 'trait' && canAdvance(c) && advOpts.length ? ' ⚡' : ''}</button>`).join('')}</div>
     ${charTab === 'equip' ? `<div class="cmain">
@@ -2793,6 +2805,8 @@ app.addEventListener('click', (ev) => {
     case 'forgeSet': forgeSet = d.v!; render(); break;
     case 'forgeJob': forgeJob = d.v as BaseJob; render(); break;
     case 'buyEgg': commit(G.buyEggs(s!, Number(d.n ?? 1))); break;
+    case 'petEvolve': commit(G.evolvePet(s!, d.id!)); break;
+    case 'upgrade': commit(G.upgradeEquip(s!, d.e!)); break;
     case 'petUse': petSel = null; commit(G.setActivePet(s!, d.id!)); break;
     case 'petSel': petSel = petSel === d.id ? null : d.id!; render(); break;
     case 'petOdds': petOdds = !petOdds; render(); break;

@@ -13,7 +13,7 @@ import { CRAFT_COST, MYTH_CRAFT_COST, MYTH_SET, RAID_CRAFT_COST, RAID_SET } from
 import { DAILY_BY_ID, DAILY_LIMIT, dailyReward, kstDate, type DailyDef } from '../data/daily';
 import { rewardScale } from '../data/monsters';
 import { MILESTONES, MILESTONE_SCALES, RAID_DIFF, RAID_DIFF_NAME, RAID_LIMIT, attemptReward, raidMaxHp, raidWeek, type RaidDiff } from '../data/raid';
-import { EGG_PRICE, PET_BY_ID, PET_GRADE_NAME, PET_MAX_STARS, hatch, petMods, petSellPrice, type Pet } from '../data/pets';
+import { EGG_PRICE, PET_BY_ID, PET_EVO_GOLD, PET_GRADE_NAME, PET_MAX_STARS, hatch, petMods, petSellPrice, type Pet } from '../data/pets';
 import { charPower, partyPower } from '../core/power';
 import { JOBS } from '../data/jobs';
 import { AWAKEN_COST, CARD_BY_ID, CARD_SETS, DECK_SIZE, cardValue, MAX_AWAKEN, cardMods, openPack, type OwnedCard } from '../data/cards';
@@ -1344,4 +1344,40 @@ export function claimIdle(s: GameState): Result {
   s.idleAt = Date.now();
   const hh = Math.floor(p.hours), mm = Math.floor((p.hours - hh) * 60);
   return { ok: true, msg: `파견 ${hh}시간 ${mm}분: ${p.gold.toLocaleString('ko-KR')}G · 경험치 ${p.exp.toLocaleString('ko-KR')} · 강화석 ${p.stones}${ups.length ? ` · ${ups.join(', ')}` : ''}` };
+}
+
+// ───────── 펫 진화 (전설 ★5 + 다른 전설 펫 1마리 + 골드) ─────────
+export function evoFood(s: GameState, p: Pet) { return s.pets.filter((x) => x.uid !== p.uid && x.grade === 5 && x.uid !== s.activePet && !x.evo).sort((a, b) => a.stars - b.stars)[0]; }
+export function evolvePet(s: GameState, uid: string): Result {
+  const p = s.pets.find((x) => x.uid === uid);
+  if (!p) return fail('펫을 찾을 수 없습니다');
+  if (p.evo) return fail('이미 진화했어요');
+  if (p.grade < 5 || p.stars < PET_MAX_STARS) return fail('전설 ★5 펫만 진화할 수 있어요');
+  const food = evoFood(s, p);
+  if (!food) return fail('재료로 쓸 다른 전설 펫이 1마리 필요해요 (데려가는 펫 제외)');
+  if (s.gold < PET_EVO_GOLD) return fail('골드가 부족합니다');
+  s.gold -= PET_EVO_GOLD;
+  s.pets = s.pets.filter((x) => x !== food);
+  p.evo = true;
+  return { ok: true, msg: `✦ ${PET_BY_ID[p.kind].name} 진화! 효과 ×1.5 + 추가 효과` };
+}
+
+// ───────── 장비 승급 (다음 티어로, 강화·잠재 유지) ─────────
+export function upgradeTarget(e: Equip) {
+  const b = EQUIP_BY_ID[e.baseId];
+  if (b.set || b.tier >= 7) return null;
+  return EQUIP_BASES.find((x) => !x.set && x.slot === b.slot && x.tier === b.tier + 1 && (b.jobs ? x.jobs?.[0] === b.jobs[0] : !x.jobs)) ?? null;
+}
+export const upgradeCost = (e: Equip) => { const n = upgradeTarget(e); return n ? { gold: Math.round(equipPrice(n.tier, e.rarity) * 0.5), stones: 8 * n.tier } : null; };
+export function upgradeEquip(s: GameState, equipUid: string): Result {
+  const f = findEquip(s, equipUid);
+  if (!f) return fail('장비를 찾을 수 없습니다');
+  const n = upgradeTarget(f.e), c = upgradeCost(f.e);
+  if (!n || !c) return fail('더 올릴 수 없는 장비예요 (7티어·세트 장비)');
+  if (s.gold < c.gold) return fail('골드가 부족합니다');
+  if (s.stones < c.stones) return fail(`강화석이 부족합니다 (${c.stones}개 필요)`);
+  const was = EQUIP_BY_ID[f.e.baseId].name;
+  s.gold -= c.gold; s.stones -= c.stones;
+  f.e.baseId = n.id;
+  return { ok: true, msg: `${was} → ${n.name} (${n.tier}티어) 승급! 강화·잠재는 그대로` };
 }

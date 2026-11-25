@@ -176,6 +176,8 @@ export interface Character {
   traitIds: string[];
   uniqueTraitId: string | null;
   awakening: number;       // 0~5
+  /** 초월 0~5: 각성 5 이후 같은 용병 중복 고용 */
+  transcend?: number;
   bonusPoints: Partial<Stats>;
   equipment: Partial<Record<EquipSlot, Equip>>;
   skillSlots: SkillSlot[]; // 우선순위 순

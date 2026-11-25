@@ -49,7 +49,7 @@ export function hire(cand: Candidate, roster: Character[], gold: number, guildLe
   if (gold < cost) return { ok: false, reason: '골드가 부족합니다' };
   if (owned) {
     const msg = awaken(owned, rng);
-    if (!msg) return { ok: false, reason: `${owned.name}은(는) 이미 최대 각성입니다` };
+    if (!msg) return { ok: false, reason: `${owned.name}은(는) 이미 최대 초월입니다` };
     return { ok: true, kind: 'awakened', character: owned, message: msg, cost };
   }
   if (roster.length >= rosterLimit(guildLevel)) return { ok: false, reason: '보유 인원이 가득 찼습니다' };

@@ -72,8 +72,13 @@ export function createMerc(def: MercDef, level: number): Character {
 }
 
 /** 중복 고용 → 각성. 3단계에서 특성 없으면 1개 추가 */
+export const MAX_TRANSCEND = 5;
 export function awaken(c: Character, rng: Rng): string | null {
-  if (c.awakening >= 5) return null;
+  if (c.awakening >= 5) {
+    if ((c.transcend ?? 0) >= MAX_TRANSCEND) return null;
+    c.transcend = (c.transcend ?? 0) + 1;
+    return `${c.name} 초월 ${c.transcend}단계! (모든 능력치 +${c.transcend * 4}%${c.transcend >= MAX_TRANSCEND ? ' · 치명 +5%p' : ''})`;
+  }
   c.awakening++;
   if (c.awakening === 3) {
     const pool = COMMON_TRAITS.filter((t) => !c.traitIds.includes(t));

@@ -82,6 +82,11 @@ export function collectMods(c: Character): CharMods {
     const a = AWAKEN_STAT_PCT[c.awakening];
     for (const k of STAT_KEYS) if (k !== 'crit') res.self.push({ key: k, kind: 'pct', value: a });
   }
+  // 초월: 단계당 모든 능력치 +4%, 5단계 치명 +5%p
+  if (c.transcend) {
+    for (const k of STAT_KEYS) if (k !== 'crit') res.self.push({ key: k, kind: 'pct', value: 4 * c.transcend });
+    if (c.transcend >= 5) res.self.push({ key: 'crit', kind: 'flat', value: 5 });
+  }
   return res;
 }
 

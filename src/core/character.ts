@@ -73,9 +73,15 @@ export function createMerc(def: MercDef, level: number): Character {
 
 /** 중복 고용 → 각성. 3단계에서 특성 없으면 1개 추가 */
 export const MAX_TRANSCEND = 5;
+/** 초월 단계마다 필요한 같은 용병 수 (1→5단계) */
+export const TRANSCEND_NEED = [1, 2, 2, 3, 3];
 export function awaken(c: Character, rng: Rng): string | null {
   if (c.awakening >= 5) {
     if ((c.transcend ?? 0) >= MAX_TRANSCEND) return null;
+    const need = TRANSCEND_NEED[c.transcend ?? 0];
+    c.transShard = (c.transShard ?? 0) + 1;
+    if (c.transShard < need) return `${c.name} 초월 재료 ${c.transShard}/${need} (${need - c.transShard}명 더 모으면 초월 ${(c.transcend ?? 0) + 1}단계)`;
+    c.transShard = 0;
     c.transcend = (c.transcend ?? 0) + 1;
     return `${c.name} 초월 ${c.transcend}단계! (모든 능력치 +${c.transcend * 4}%${c.transcend >= MAX_TRANSCEND ? ' · 치명타 확률 +5%p' : ''})`;
   }

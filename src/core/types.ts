@@ -178,6 +178,8 @@ export interface Character {
   awakening: number;       // 0~5
   /** 초월 0~5: 각성 5 이후 같은 용병 중복 고용 */
   transcend?: number;
+  /** 다음 초월까지 모은 같은 용병 수 */
+  transShard?: number;
   bonusPoints: Partial<Stats>;
   equipment: Partial<Record<EquipSlot, Equip>>;
   skillSlots: SkillSlot[]; // 우선순위 순

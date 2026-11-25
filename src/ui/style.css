@@ -363,12 +363,18 @@ svg.px{image-rendering:pixelated;flex:none}
 .chatbox{position:fixed;right:12px;bottom:12px;z-index:55;width:min(380px,calc(100vw - 24px));height:min(520px,70vh);display:flex;flex-direction:column;background:#1b1622f5;border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 30px #000a}
 .chatbox .chead{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line)}
 .chatbox .chead .tabs{margin:0;flex:1}
-.chatbox .clist{flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:6px}
-.cmsg{display:flex;flex-wrap:wrap;gap:2px 8px;font-size:14px;line-height:1.4}
-.cmsg .cn{font-weight:700;color:var(--gold)}
-.cmsg.mine .cn{color:#7fb3ff}
-.cmsg .cb{flex-basis:100%;word-break:break-word}
-.cmsg .ct{font-size:11px;color:var(--mute)}
+.chatbox .clist{flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:0}
+.cmsg{display:flex;flex-direction:column;align-items:flex-start;gap:2px;font-size:14px;line-height:1.4;max-width:100%;margin-top:6px}
+.cmsg.cont{margin-top:-2px}
+.cmsg .cn{font-size:12px;font-weight:700;color:var(--gold);padding-left:4px}
+.cmsg .cline{display:flex;align-items:flex-end;gap:5px;max-width:88%}
+.cmsg .cb{padding:6px 10px;border-radius:4px 12px 12px 12px;background:#2c2433;border:1px solid #3d3145;word-break:break-word;white-space:pre-wrap}
+.cmsg.cont .cb{border-radius:12px}
+.cmsg .ct{font-size:10px;color:var(--mute);flex:none}
+.cmsg.mine{align-items:flex-end}
+.cmsg.mine .cline{flex-direction:row-reverse}
+.cmsg.mine .cb{background:#4a3a1c;border-color:#7a5f2a;border-radius:12px 4px 12px 12px;color:#fbecc9}
+.cmsg.mine.cont .cb{border-radius:12px}
 .chatbox .cin{display:flex;gap:6px;padding:8px 10px;border-top:1px solid var(--line)}
 .chatbox .flist .cin{border:0;padding:0 0 6px}
 .chatbox .cin input{flex:1;min-width:0;min-height:40px}
@@ -702,3 +708,15 @@ svg.px{image-rendering:pixelated;flex:none}
 .ptable tbody th{text-align:left;font-weight:600}
 .ptable tr.mine{background:rgba(240,180,60,.09)}
 .pnotes{margin:8px 0 0;padding-left:18px;line-height:1.6}
+/* 모험 입구: 접는 칸 + 출발 버튼 고정 */
+.gfold{border:1px solid var(--line);border-radius:10px;padding:6px 10px;background:rgba(0,0,0,.15)}
+.gfold>summary{cursor:pointer;font-weight:700;font-size:14px;padding:4px 0;list-style:revert}
+.gfold[open]>summary{margin-bottom:6px}
+.departbar{position:sticky;bottom:0;z-index:5;margin:4px -16px -16px;padding:12px 16px;background:linear-gradient(to top,var(--panel) 78%,transparent);border-radius:0 0 12px 12px}
+@media (max-width:900px){.departbar{padding-right:84px}}
+.departbar .btn{width:100%;padding:12px;font-size:16px}
+/* 배경음악 버튼: 오른쪽 위, 음량은 마우스 올리거나 누른 뒤에만 */
+.bgmbox{position:fixed;right:10px;top:10px;z-index:54;display:flex;flex-direction:row-reverse;align-items:center;gap:4px;padding:2px;border-radius:99px;background:#1b1622d9;border:1px solid var(--line)}
+.bgmbox button{width:32px;height:32px;border-radius:50%;border:0;background:transparent;font-size:16px;cursor:pointer;color:inherit}
+.bgmbox input{width:0;opacity:0;margin:0;transition:width .2s,opacity .2s;accent-color:var(--gold)}
+.bgmbox:hover input,.bgmbox:focus-within input{width:80px;opacity:1;margin-left:8px}

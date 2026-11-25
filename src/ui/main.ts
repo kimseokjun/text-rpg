@@ -1,5 +1,5 @@
 import './style.css';
-import { canAdvance, levelCap, syncSkillSlots, MAX_TRANSCEND } from '../core/character';
+import { canAdvance, levelCap, syncSkillSlots, MAX_TRANSCEND, TRANSCEND_NEED } from '../core/character';
 import { mitigation, rowOf } from '../core/combat';
 import { charPower, floorPower, hasHealer, noHealerFactor, partyPower, powerLevel } from '../core/power';
 import type { ExpeditionSettings, FloorResult } from '../core/dungeon';
@@ -25,6 +25,7 @@ import { slotsFor } from '../server/multi';
 import { DEFAULT_SETTINGS, Expedition } from '../core/dungeon';
 import { Raid4Battle, type R4Member, type R4State } from '../core/raid4battle';
 import { mountStage, playEvents, setBanner, setPanel, stageMounted, updateStage } from './r4stage';
+import * as Bgm from './bgm';
 import { CHESTS, dRewardText } from '../data/missions';
 import { ACHS, ACH_CAT, ACH_MAX_PTS, ACH_MS, ACH_REWARD, TITLES, TITLE_BY_ID, achPoints, achReady, unlockedTitles, type AchCat } from '../data/achievements';
 import { R4, R4_DIFFS, R4_MAX, R4_ROUNDS, R4_TURN_SEC, r4Reward, type R4Diff } from '../data/raid4';
@@ -140,7 +141,7 @@ async function startSocial() {
     if (chatOpen && chatTab === 'chat' && list) {
       const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
       list.querySelector('p.small.mute')?.remove();
-      list.insertAdjacentHTML('beforeend', msgHtml(m));
+      list.insertAdjacentHTML('beforeend', msgHtml(m, chatMsgs[chatMsgs.length - 2]));
       if (atBottom || m.user_id === Cloud.session?.user.id) list.scrollTop = list.scrollHeight;
       return;
     }
@@ -165,7 +166,12 @@ function renderR4Invite() {
 }
 Cloud.setR4InviteHandler((p) => { r4Invite = p; renderR4Invite(); });
 function stopSocial() { clearInterval(touchTimer); Cloud.leaveRealtime(); socialOn = false; chatOpen = false; chatMsgs = []; friends = []; renderChat(); }
-const msgHtml = (m: Cloud.ChatMsg) => `<div class="cmsg ${m.user_id === Cloud.session?.user.id ? 'mine' : ''}"><span class="cn">${titleTag(m.title)}${esc(m.username)}</span><span class="cb">${esc(m.body)}</span><span class="ct">${hhmm(m.created_at)}</span></div>`;
+/** 말풍선: 내 말 오른쪽, 남 왼쪽. 같은 사람이 3분 안에 이어 쓰면 이름 생략 */
+const msgHtml = (m: Cloud.ChatMsg, prev?: Cloud.ChatMsg) => {
+  const mine = m.user_id === Cloud.session?.user.id;
+  const cont = !!prev && prev.user_id === m.user_id && new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 180000;
+  return `<div class="cmsg ${mine ? 'mine' : ''} ${cont ? 'cont' : ''}">${cont || mine ? '' : `<span class="cn">${titleTag(m.title)}${esc(m.username)}</span>`}<div class="cline"><span class="cb">${esc(m.body)}</span><span class="ct">${hhmm(m.created_at)}</span></div></div>`;
+};
 const hhmm = (t: string) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 function renderChat(scrollBottom = false) {
   const box = document.querySelector('.chatbox .clist');
@@ -185,7 +191,7 @@ function renderChat(scrollBottom = false) {
   const body = chatTab === 'online'
     ? `<div class="clist flist">${onlineList.map(([id, name]) => `<div class="frow"><span class="dot on"></span><b>${esc(name || '?')}</b><span class="small mute">${id === me2 ? '나' : friendIds.has(id) ? (friends.find((f) => f.other === id)?.status === 'accepted' ? '친구' : '요청 중') : ''}</span>${id !== me2 && !friendIds.has(id) && name ? `<button class="btn ghost sm" data-a="friendAdd" data-v="${esc(name)}">친구 요청</button>` : ''}</div>`).join('') || '<p class="small mute">접속 정보를 불러오는 중…</p>'}</div>`
     : chatTab === 'chat'
-    ? `<div class="clist">${chatMsgs.map(msgHtml).join('') || '<p class="small mute">첫 메시지를 남겨보세요.</p>'}</div>
+    ? `<div class="clist">${chatMsgs.map((m, i) => msgHtml(m, chatMsgs[i - 1])).join('') || '<p class="small mute">첫 메시지를 남겨보세요.</p>'}</div>
       <form class="cin" data-form="chat"><input id="chatIn" maxlength="200" placeholder="메시지 (200자)" value="${esc(chatDraft)}" autocomplete="off"><button class="btn sm" type="submit">보내기</button></form>`
     : `<div class="clist flist">
         <form class="cin" data-form="friend"><input id="friendIn" maxlength="12" placeholder="친구 아이디" value="${esc(friendDraft)}" autocomplete="off"><button class="btn sm" type="submit">친구 요청</button></form>
@@ -627,7 +633,7 @@ function viewGuild() {
       <div class="small">${JOBS[d.job].name} · Lv.${owned ? owned.level : c.level}</div>
       <div class="tags">${tr}</div>
       <div class="desc">${esc(d.desc)}${d.unique ? `<br><span class="small">${esc(TRAITS[d.unique].desc)}</span>` : ''}</div>
-      ${owned ? `<div class="owned">이미 보유 · ${owned.awakening < 5 ? `고용 시 각성 ${owned.awakening}→${owned.awakening + 1}` : (owned.transcend ?? 0) < MAX_TRANSCEND ? `고용 시 초월 ${owned.transcend ?? 0}→${(owned.transcend ?? 0) + 1}` : '최대 초월'}</div>` : ''}
+      ${owned ? `<div class="owned">이미 보유 · ${owned.awakening < 5 ? `고용 시 각성 ${owned.awakening}→${owned.awakening + 1}` : (owned.transcend ?? 0) < MAX_TRANSCEND ? `초월 ${(owned.transcend ?? 0) + 1}단계 재료 ${owned.transShard ?? 0}/${TRANSCEND_NEED[owned.transcend ?? 0]}` : '최대 초월'}</div>` : ''}
       <div class="row" style="justify-content:space-between"><span class="price">${fmt(c.price)}G</span></div>
       <div class="row"><button class="btn sm" data-a="hire" data-i="${i}" ${owned && owned.awakening >= 5 && (owned.transcend ?? 0) >= MAX_TRANSCEND ? 'disabled' : ''}>${owned ? (owned.awakening >= 5 ? '초월' : '각성') : '고용'}</button><button class="btn ghost sm" data-a="refresh" data-i="${i}" ${locked ? 'disabled title="잠금 중"' : ''}>${refreshSlotCost(lead)}G 교체</button></div>
     </div>`;
@@ -637,7 +643,7 @@ function viewGuild() {
     <div class="row" style="justify-content:space-between"><h2>모험가 길드 <span class="mute small">Lv.${s.guildLevel}</span></h2>
       <button class="btn ghost sm" data-a="upgradeGuild">길드 확장 · ${fmt(G.guildUpgradeCost(s.guildLevel))}G</button></div>
     <div class="row" style="justify-content:space-between;margin:6px 0 10px">
-      <p class="small mute" style="margin:0">지원자는 골드로만 바뀌어요. 자물쇠를 잠근 칸은 전체 교체에서 빠지고, 같은 용병을 다시 고용하면 각성하고, 각성 5단계 뒤에는 초월(최대 5단계, 단계당 모든 능력치 +4%)해요.</p>
+      <p class="small mute" style="margin:0">지원자는 골드로만 바뀌어요. 자물쇠를 잠근 칸은 전체 교체에서 빠지고, 같은 용병을 다시 고용하면 각성하고, 각성 5단계 뒤에는 초월해요 (최대 5단계, 단계당 모든 능력치 +4% · 필요한 같은 용병 1·2·2·3·3명).</p>
       <button class="btn sm" data-a="refreshAll" ${s.boardLocks.every(Boolean) ? 'disabled' : ''}>전체 교체 ${s.board.filter((_, i) => !s.boardLocks[i]).length}칸 · ${fmt(G.refreshAllCost(s))}G</button></div>
     <div class="panel autorf"><b class="small">자동 교체</b>
       <div class="seg mini" role="group" aria-label="목표 등급">${([[4, '영웅 이상'], [5, '전설']] as const).map(([g, n]) => `<button class="${autoGrade === g ? 'on' : ''}" data-a="autoGrade" data-v="${g}">${n}</button>`).join('')}</div>
@@ -2082,6 +2088,7 @@ function viewDaily() {
   </div>`;
 }
 
+let gateOpts = false, gateInfo = false;
 function viewGate() {
   const s = S!;
   if (!gateRegion) return viewRegions();
@@ -2133,12 +2140,14 @@ function viewGate() {
           }).join('')}</div>
           <p class="small ${powerLevel(power, st.startFloor, healer)}t">파티 전투력 ${fmt(power)} · ${L(st.startFloor)}층 권장 ${fmt(floorPower(st.startFloor))} · ${{ ok: '충분', close: '조금 부족', low: '많이 부족' }[powerLevel(power, st.startFloor, healer)]}</p>
           ${healer ? '' : `<p class="small" style="color:var(--gold)">회복 담당이 없어 전투력을 ${Math.round(noHealerFactor(st.startFloor) * 100)}%로 쳐서 판정해요${st.startFloor >= 25 ? ' (이 깊이부터는 회복 없이 거의 불가능)' : ''}.</p>`}
+          <details class="gfold" ${gateInfo ? 'open' : ''} data-fold="gateInfo"><summary>층 정보 · 공략 · 드롭</summary>
           <p class="small mute">권장 = 그 층 하나를 체력 가득한 상태로 80% 깨는 수준. 아래로 연속 진행하면 체력이 이어지니 여유를 두세요.</p>
           <p class="tipline"><b>${L(st.startFloor)}층 공략</b> ${esc(floorTip(st.startFloor))}</p>
           ${bossInRange.length ? bossCard(bossInRange[0], party, power) : ''}
           ${st.startFloor > PART1_FLOOR ? '<p class="small mute">마왕성 권장 전투력은 탱커·딜러·힐러를 갖춘 정석 조합 기준이에요. 조합과 공격 대상 설정이 어긋나면 훨씬 더 필요해요.</p>' : ''}
+        ${dropInfo(st.startFloor)}</details>
         </div>
-        ${dropInfo(st.startFloor)}
+        <details class="gfold" ${gateOpts ? 'open' : ''} data-fold="gateOpts"><summary>세부 설정 <span class="small mute">${rep ? `${st.repeatCount}회` : `목표 ${L(st.targetFloor)}층`} · HP ${st.retreatHpPct ? `${st.retreatHpPct}% 귀환` : '귀환 안 함'} · ${st.auto ? '자동' : '수동'}${st.insured ? ' · 보험' : ''}</span></summary>
         <div class="form">
           ${rep
             ? `<div class="field"><label for="g_repeatCount">반복 횟수</label><select id="g_repeatCount" data-g="repeatCount">${[3, 5, 10, 20, 30, MAX_REPEAT].map((v) => opt(v, st.repeatCount, `${v}회`)).join('')}</select></div>`
@@ -2150,8 +2159,9 @@ function viewGate() {
         ${rep ? '' : `<label class="chk"><input type="checkbox" data-g="stopBeforeBoss" ${st.stopBeforeBoss ? 'checked' : ''}> 보스 층 앞에서 멈추고 묻기</label>`}
         <label class="chk"><input type="checkbox" data-g="insured" ${st.insured ? 'checked' : ''}> 탐험 보험 ${fmt(G.insuranceCost(st.startFloor))}G · 전멸해도 골드·장비 손실 없음</label>
         <p class="small mute">${rep ? `층을 클리어할 때마다 HP·MP가 15% 회복되고, ${st.repeatCount}회를 채우거나 귀환 조건에 걸리면 돌아옵니다.` : '층을 클리어할 때마다 HP·MP가 15% 회복됩니다.'}</p>
-        ${can.ok ? '' : `<p class="small" style="color:var(--bad)">${esc(can.msg)}</p>`}
-        <button class="btn" data-a="depart" ${can.ok ? '' : 'disabled'}>${rep ? `${L(st.startFloor)}층 반복 출발` : `${L(st.startFloor)}층부터 출발`}</button>
+        </details>
+        <div class="departbar">${can.ok ? '' : `<p class="small" style="color:var(--bad);margin:0 0 6px">${esc(can.msg)}</p>`}
+        <button class="btn" data-a="depart" ${can.ok ? '' : 'disabled'}>${rep ? `${L(st.startFloor)}층 반복 출발` : `${L(st.startFloor)}층부터 출발`}</button></div>
       </section>
     </div>
   </div>`;
@@ -2707,7 +2717,7 @@ function viewCharModal(uid: string) {
   const ex = [['회피', extra.evade, '%'], ['스킬 데미지', extra.skillDmg, '%'], ['회복량', extra.healPower, '%'], ['받는 피해', extra.dmgTaken, '%']].filter(([, v]) => v).map(([n, v, u]) => `${n} ${Number(v) > 0 ? '+' : ''}${v}${u}`).join(' · ');
   return `<div class="modal" data-a="closeModal"><div class="mbox" role="dialog" aria-modal="true" aria-label="${esc(c.name)}" data-stop>
     <div class="mhead"><div class="ico">${avatar(c)}</div><div style="flex:1"><h2>${esc(c.name)} ${stars(c.grade)}</h2>
-      <div class="mute small"><b class="cp">전투력 ${fmt(charPower(c))}</b> · ${GRADE_NAME[c.grade]} · ${esc(JOBS[c.jobId].name)} · Lv.${c.level}${c.transcend ? ` · 초월 ${c.transcend}/5` : c.awakening ? ` · 각성 ${c.awakening}/5` : ''}${merc ? ` · ${esc(merc.desc)}` : ''}</div></div>
+      <div class="mute small"><b class="cp">전투력 ${fmt(charPower(c))}</b> · ${GRADE_NAME[c.grade]} · ${esc(JOBS[c.jobId].name)} · Lv.${c.level}${c.transcend ? ` · 초월 ${c.transcend}/5` : c.awakening ? ` · 각성 ${c.awakening}/5` : ''}${c.transShard ? ` (초월 재료 ${c.transShard}/${TRANSCEND_NEED[c.transcend ?? 0]})` : ''}${merc ? ` · ${esc(merc.desc)}` : ''}</div></div>
       <button class="btn ghost sm" data-a="closeModal" aria-label="닫기">닫기</button></div>
     <div class="tabs" role="group" aria-label="캐릭터 정보" style="margin:4px 0 12px">${([['equip', '장비'], ['skill', '스킬'], ['trait', '특성·전직']] as const).map(([k, n]) => `<button class="${charTab === k ? 'on' : ''}" data-a="charTab" data-v="${k}">${n}${k === 'trait' && canAdvance(c) && advOpts.length ? ' ⚡' : ''}</button>`).join('')}</div>
     ${charTab === 'equip' ? `<div class="cmain">
@@ -2779,7 +2789,29 @@ function keepScroll(draw: () => void) {
   if (box && modal && prevModal === JSON.stringify(modal)) box.scrollTop = boxY;
   if (sameScreen && Math.abs(window.scrollY - winY) > 1) window.scrollTo(0, winY);
 }
-function render() { keepScroll(renderNow); }
+function render() { keepScroll(renderNow); Bgm.setScene(bgmScene()); renderBgmBtn(); }
+/** 화면별 배경음악: 전투 화면은 웅장하게, 나머지는 마을 */
+function bgmScene(): Bgm.Scene {
+  if (!S || screen === 'title') return 'town';
+  if (screen === 'raid4') return r4?.phase === 'battle' ? 'raid' : 'town';
+  if (screen === 'dungeon' || screen === 'duel') return 'battle';
+  return 'town';
+}
+/** 왼쪽 아래 음악 버튼 (화면 다시 그려도 유지되도록 #app 밖에) */
+function renderBgmBtn() {
+  let el = document.getElementById('bgmbox');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'bgmbox'; el.className = 'bgmbox';
+    document.body.appendChild(el);
+    el.addEventListener('click', (ev) => { if ((ev.target as HTMLElement).closest('button')) { Bgm.toggleBgm(); el!.dataset.k = ''; renderBgmBtn(); } });
+    el.addEventListener('input', (ev) => Bgm.setBgmVol(Number((ev.target as HTMLInputElement).value) / 100));
+  }
+  const k = `${Bgm.bgmOn()}`;
+  if (el.dataset.k === k) return;
+  el.dataset.k = k;
+  el.innerHTML = `<button type="button" aria-pressed="${Bgm.bgmOn()}" title="${Bgm.bgmOn() ? '배경음악 끄기' : '배경음악 켜기'}" aria-label="${Bgm.bgmOn() ? '배경음악 끄기' : '배경음악 켜기'}">${Bgm.bgmOn() ? '🔊' : '🔇'}</button>${Bgm.bgmOn() ? `<input type="range" min="0" max="100" value="${Math.round(Bgm.bgmVol() * 100)}" aria-label="배경음악 음량">` : ''}`;
+}
+document.addEventListener('pointerdown', () => Bgm.unlock(), { capture: true });
 function renderNow() {
   if (screen === 'raid4' && r4?.phase === 'battle' && r4.st && stageMounted()) {
     const t = document.querySelector('.top'); if (t) t.outerHTML = topbar();
@@ -3179,6 +3211,8 @@ app.addEventListener('toggle', (ev) => {
   if (el.hasAttribute?.('data-bulk')) bulkOpen = (el as HTMLDetailsElement).open;
   if (el.hasAttribute?.('data-todo')) todoOpen = (el as HTMLDetailsElement).open;
   if (el.hasAttribute?.('data-drops')) dropOpen = (el as HTMLDetailsElement).open;
+  if (el.dataset?.fold === 'gateOpts') gateOpts = (el as HTMLDetailsElement).open;
+  if (el.dataset?.fold === 'gateInfo') gateInfo = (el as HTMLDetailsElement).open;
 }, true);
 
 document.addEventListener('keydown', (ev) => {

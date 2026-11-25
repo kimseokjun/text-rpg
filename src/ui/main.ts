@@ -11,7 +11,7 @@ import { raidWeek, MILESTONE_SCALES, RAID_DIFF, RAID_DIFFS, RAID_DIFF_NAME, RAID
 import { DAILIES, DAILY_BY_ID, DAILY_LIMIT, DAILY_STAGES, dailyReward } from '../data/daily';
 import { CRAFT_COST, MYTH_CRAFT_COST, MYTH_SET, RAID_CRAFT_COST, RAID_SET, SETS, SET_BASES, SET_BY_ID, SET_DROP_CHANCE, SET_RARITY, SHARD_CHANCE } from '../data/sets';
 import { PET_KINDS, EGG_ODDS, EGG_PRICE, PET_BY_ID, PET_GRADE_NAME, PET_GRADE_PCT, PET_MAX_STARS, PET_EVO_GOLD, petName, petEffectText, petSellPrice, type Pet } from '../data/pets';
-import { EQUIP_BASES, EQUIP_BY_ID, MAX_POTIONS, OPTION_SLOTS, POTIONS, REFINE_CHANCE, tierOfFloor, POT_NAME, POT_UP, POT_PITY } from '../data/items';
+import { EQUIP_BASES, EQUIP_BY_ID, MAX_POTIONS, OPTION_SLOTS, POTIONS, REFINE_CHANCE, tierOfFloor, POT_NAME, POT_UP, POT_PITY, POT_POOLS, potSlot, potValue, type PotSlot } from '../data/items';
 import { ADVANCE_AT, JOBS, advanceOptions } from '../data/jobs';
 import { MERCENARIES, MERC_BY_ID } from '../data/mercenaries';
 import { floorLevel, rewardScale } from '../data/monsters';
@@ -310,7 +310,7 @@ function equipLine(e: Equip, opts: { pot?: boolean } = {}) {
 const STAT_LABEL: Record<StatKey, string> = { hp: 'HP', mp: 'MP', atk: '공격', mag: '마력', def: '방어', res: '마저', agi: '민첩', crit: '치명' };
 const MOD_LABEL: Record<string, string> = { ...STAT_LABEL, goldGain: '골드 획득', expGain: '경험치 획득', itemGain: '아이템 드롭', dmgTaken: '받는 피해', mpCost: 'MP 소모', evade: '회피', healPower: '회복량', skillDmg: '스킬 데미지', physDmg: '물리 피해', normalDmg: '일반 공격', bossDmg: '보스 피해', resPierce: '마저 무시', defPierce: '방어 무시', magTaken: '받는 마법 피해' };
 function optText(o: { key: string; kind: string; value: number }) {
-  if (o.key === 'critDmg') return `치명 배율 +${Math.round(o.value * 100)}%p`;
+  if (o.key === 'critDmg') return `치명타 피해 +${Math.round(o.value * 100)}%p`;
   const unit = o.kind === 'pct' || o.key === 'resPierce' || o.key === 'defPierce' || o.key === 'dmgTaken' ? '%' : o.key === 'crit' || o.key === 'evade' ? '%p' : '';
   return `${MOD_LABEL[o.key] ?? o.key} ${o.value >= 0 ? '+' : ''}${o.value}${unit}`;
 }
@@ -676,7 +676,7 @@ function potBlock(e: Equip, add: boolean) {
   const need = add ? (cost as { runes: number }).runes : (cost as { stones: number }).stones;
   const can = have >= need && s.gold >= cost.gold;
   const head = `<div class="row phead" style="justify-content:space-between;gap:6px"><span>${add ? '<b class="small">에디셔널 잠재</b> ' : '<b class="small">잠재능력</b> '}${opened ? potBadge(g) : '<span class="small mute">미개방</span>'}</span>
-    <span class="small mute">${opened && g < 4 ? `등급업 ${POT_UP[g]}% · 천장 ${pity}/${POT_PITY[g]}` : opened ? '최고 등급' : ''}</span></div>`;
+    <span class="small mute">${opened && g < 4 ? `등급업 ${POT_UP[g]}% · 천장 ${pity}/${POT_PITY[g]}` : opened ? '최고 등급' : ''} <button class="linkb" data-a="potTable" data-e="${esc(e.uid)}" data-v="${add ? 'add' : 'pot'}">옵션 표</button></span></div>`;
   const cells = opened ? Array.from({ length: OPTION_SLOTS }, (_, i) => {
     const o = lines[i];
     if (!o) return `<div class="optcell empty"><span class="small mute">빈 칸</span></div>`;
@@ -921,6 +921,37 @@ function viewPets() {
 }
 
 let refineView: GroupView = 'party';
+// ───────── 제련 옵션 표 ─────────
+const potTab = { open: false, slot: 'weapon' as PotSlot, tier: 7, add: false, uid: '' };
+function potTablePanel() {
+  const s = S!;
+  if (!potTab.open) return `<button class="btn ghost sm" data-a="potTable" style="margin:4px 0 10px">📜 가능한 옵션 보기</button>`;
+  const sel = potTab.uid ? G.findEquip(s, potTab.uid)?.e ?? null : null;
+  const cur = sel ? ((potTab.add ? sel.add : sel.options) ?? []) : [];
+  const [common, uni, leg] = POT_POOLS[potTab.slot];
+  const rows = [...common.map((o) => [o, 1] as const), ...uni.map((o) => [o, 3] as const), ...leg.map((o) => [o, 4] as const)];
+  const n = (g: number) => common.length + (g >= 3 ? uni.length : 0) + (g >= 4 ? leg.length : 0);
+  const body = rows.map(([o, from]) => {
+    const mine = cur.find((c) => c.key === o.key);
+    return `<tr class="${mine ? 'mine' : ''}"><th>${esc(o.key === 'critDmg' ? '치명타 피해' : o.key === 'crit' ? '치명타 확률' : MOD_LABEL[o.key] ?? o.key)}${mine ? ' <span class="tag">장착</span>' : ''}</th>${[1, 2, 3, 4].map((g) => g < from ? '<td class="mute">—</td>' : `<td class="p${g}">${esc(optText({ ...o, value: potValue(o, potTab.tier, g, potTab.add) }).replace(/^.*? (?=[+-])/, ''))}</td>`).join('')}</tr>`;
+  }).join('');
+  const SL: [PotSlot, string][] = [['weapon', '무기'], ['armor', '모자·상의·하의'], ['accessory', '목걸이·반지']];
+  return `<div class="panel pottab">
+    <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><b>가능한 옵션${sel ? ` · <span class="small">${esc(EQUIP_BY_ID[sel.baseId].name)}</span>` : ''}</b><button class="btn ghost sm" data-a="potTableClose">닫기</button></div>
+    <div class="row" style="gap:6px;flex-wrap:wrap;margin:8px 0">
+      <div class="tabs" role="group" aria-label="부위">${SL.map(([k, nm]) => `<button class="${potTab.slot === k ? 'on' : ''}" data-a="potSlot" data-v="${k}" aria-pressed="${potTab.slot === k}">${nm}</button>`).join('')}</div>
+      <div class="tabs" role="group" aria-label="종류">${([[false, '잠재'], [true, '에디셔널 (수치 ½)']] as const).map(([a, nm]) => `<button class="${potTab.add === a ? 'on' : ''}" data-a="potAdd" data-v="${a ? 1 : 0}" aria-pressed="${potTab.add === a}">${nm}</button>`).join('')}</div>
+      <label class="small">티어 <select data-change="potTier">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((x) => `<option value="${x}" ${potTab.tier === x ? 'selected' : ''}>${x}${x === 9 ? ' (신화)' : x === 8 ? ' (세트)' : ''}</option>`).join('')}</select></label>
+    </div>
+    <div style="overflow-x:auto"><table class="ptable"><thead><tr><th>옵션</th>${[1, 2, 3, 4].map((g) => `<th>${potBadge(g)}<br><span class="small mute">${n(g)}종</span></th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>
+    <ul class="small mute pnotes">
+      <li>등급 상승: 레어→에픽 ${POT_UP[1]}% (천장 ${POT_PITY[1]}회) · 에픽→유니크 ${POT_UP[2]}% (${POT_PITY[2]}회) · 유니크→레전드리 ${POT_UP[3]}% (${POT_PITY[3]}회)</li>
+      <li>첫 줄은 항상 현재 등급, 2·3번째 줄은 40% 확률로 같은 등급 · 아니면 한 등급 아래 (수치도 그 등급 기준)</li>
+      <li>한 줄은 그 등급에서 나올 수 있는 옵션 중 균등 확률이고, 같은 옵션은 한 장비에 겹쳐 붙지 않아요</li>
+      <li>치명 확률은 100%가 상한이에요. 넘친 만큼은 효과가 없어요</li>
+    </ul></div>`;
+}
+
 function viewRefinery() {
   const s = S!;
   const tabs: [GroupView, string][] = [['party', `출전 파티 ${s.party.length}`], ['all', `전체 단원 ${s.roster.length}`], ['bag', `가방 ${s.inventory.length}`]];
@@ -931,6 +962,7 @@ function viewRefinery() {
     <p class="small mute"><b>잠재능력</b>은 제련석으로, <b>에디셔널 잠재</b>는 고대 룬석으로 3줄을 새로 새겨요. 새길 때마다 확률로 등급이 올라가고(${potBadge(1)}→${potBadge(2)}→${potBadge(3)}→${potBadge(4)}), 천장에 닿으면 확정이에요. 등급이 높을수록 수치가 크고, 유니크부터 전용 옵션이 붙어요. 무기 · 방어구(모자·상의·하의) · 장신구(목걸이·반지)마다 나오는 옵션이 달라요. 첫 줄은 현재 등급, 2·3번째 줄은 가끔 한 등급 아래로 나와요. 에디셔널 수치는 잠재의 절반이에요.<br>
     제련석: 던전 (일반 ${REFINE_CHANCE.normal}% · 엘리트 ${REFINE_CHANCE.elite}% · 보스 ${REFINE_CHANCE.boss}%) · 보유 <b>${s.refineStones}</b>개<br>
     고대 룬석: 일일 던전 · 무한 탑 첫 돌파 · 월드보스 · 보유 <b>${s.runes ?? 0}</b>개</p>
+    ${potTablePanel()}
     <div class="tabs" role="group" aria-label="보기">${tabs.map(([v, n]) => `<button class="${refineView === v ? 'on' : ''}" data-a="refineView" data-v="${v}">${n}</button>`).join('')}</div>
     <div class="groups">${body}</div>
   </div>`;
@@ -2685,7 +2717,9 @@ function viewCharModal(uid: string) {
         <span class="small mute">${c.level >= levelCap(c) ? (JOBS[c.jobId].tier < 5 ? '전직 후 성장 가능' : '최고 레벨') : `경험치 ${pctW(c.exp, expToNext(c.level))}`}</span></div>
       <div class="ccol">${(['accessory', 'ring1', 'ring2'] as EquipSlot[]).map(slotBtn).join('')}<div class="cslotb deco" aria-hidden="true">${JOB_EMBLEM(c)}</div></div>
       <div class="cstats"><div class="cpow"><span class="small">전투력</span><b>${fmt(charPower(c))}</b></div>
-        ${STAT_KEYS.map((k) => `<div class="srow"><span>${STAT_LABEL[k]}</span><b>${fmt(Math.round(stats[k]))}${k === 'crit' ? '%' : ''}</b></div>`).join('')}
+        ${STAT_KEYS.filter((k) => k !== 'crit').map((k) => `<div class="srow"><span>${STAT_LABEL[k]}</span><b>${fmt(Math.round(stats[k]))}</b></div>`).join('')}
+        <div class="srow" title="${stats.crit > 100 ? `치명 수치 ${Math.round(stats.crit)}% · 100% 넘는 ${Math.round(stats.crit - 100)}%p는 효과 없음` : '공격이 치명타로 들어갈 확률'}"><span>치명타 확률</span><b>${Math.min(100, Math.round(stats.crit))}%${stats.crit > 100 ? ` <span class="small mute">(${Math.round(stats.crit)})</span>` : ''}</b></div>
+        <div class="srow" title="치명타가 나면 기본 150% + 치명타 피해 옵션"><span>치명타 피해</span><b>${Math.round(150 + extra.critDmg * 100)}%</b></div>
         ${ex ? `<div class="small mute" style="margin-top:4px">${ex}</div>` : ''}</div>
     </div>
     ${slotDetail}
@@ -2889,6 +2923,15 @@ app.addEventListener('click', (ev) => {
     case 'presetCancel': presetOver = null; render(); break;
     case 'presetDel': presetOver = null; commit(G.deletePreset(s!, +d.i!)); break;
     case 'presetRename': { const cur = G.presetList(s!)[+d.i!]; const n = window.prompt('프리셋 이름 (10자까지)', cur?.name ?? ''); if (n !== null) commit(G.renamePreset(s!, +d.i!, n)); break; }
+    case 'potTable': {
+      potTab.open = true; potTab.uid = d.e ?? '';
+      const e = d.e ? G.findEquip(s!, d.e)?.e ?? null : null;
+      if (e) { const b = EQUIP_BY_ID[e.baseId]; potTab.slot = potSlot(b.slot); potTab.tier = b.tier; potTab.add = d.v === 'add'; }
+      render(); if (e) document.querySelector('.pottab')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
+    }
+    case 'potTableClose': potTab.open = false; potTab.uid = ''; render(); break;
+    case 'potSlot': potTab.slot = d.v as PotSlot; potTab.uid = ''; render(); break;
+    case 'potAdd': potTab.add = d.v === '1'; render(); break;
     case 'achClaim': commit(G.claimAch(s!, d.v)); break;
     case 'achMs': commit(G.claimAchMs(s!)); break;
     case 'achCat': achCat = d.v as typeof achCat; render(); break;
@@ -3107,6 +3150,7 @@ app.addEventListener('submit', (ev) => {
 app.addEventListener('change', (ev) => {
   const sel = ev.target as HTMLSelectElement;
   if (sel.dataset?.m === 'floor') { mFloor = Number(sel.value); return; }
+  if (sel.dataset?.change === 'potTier') { potTab.tier = Number(sel.value); potTab.uid = ''; render(); return; }
   if (sel.dataset?.ad === 'kind') { adKind = sel.value; adLoad('log', true); return; }
   const el = ev.target as HTMLElement;
   const key = el.dataset.g as keyof ExpeditionSettings | undefined;

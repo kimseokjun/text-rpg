@@ -130,7 +130,8 @@ export const POT_PITY = [0, 20, 50, 120];
 /** 에디셔널은 잠재의 절반 수치 */
 export const ADD_MULT = 0.5;
 /** 부위별 잠재 옵션 (메이플식): 레어 이상 공통 / 유니크부터 / 레전드리 전용 */
-type Slot = 'weapon' | 'armor' | 'accessory';
+export type PotSlot = 'weapon' | 'armor' | 'accessory';
+type Slot = PotSlot;
 const M = (key: Modifier['key'], kind: Modifier['kind'], value: number): Modifier => ({ key, kind, value });
 export const POT_POOLS: Record<Slot, [Modifier[], Modifier[], Modifier[]]> = {
   weapon: [
@@ -150,9 +151,11 @@ export const POT_POOLS: Record<Slot, [Modifier[], Modifier[], Modifier[]]> = {
   ],
 };
 /** 모자·하의는 방어구 옵션, 반지는 장신구 옵션 */
-const potSlot = (b: BaseSlot): Slot => (b === 'weapon' ? 'weapon' : b === 'accessory' || b === 'ring' ? 'accessory' : 'armor');
+export const potSlot = (b: BaseSlot): PotSlot => (b === 'weapon' ? 'weapon' : b === 'accessory' || b === 'ring' ? 'accessory' : 'armor');
 const poolOf = (g: number, slot: Slot) => { const [a, u, l] = POT_POOLS[slot]; return g >= 4 ? [...a, ...u, ...l] : g >= 3 ? [...a, ...u] : a; };
 /** 잠재 한 줄: 첫 줄은 현재 등급, 나머지는 40% 확률로 같은 등급 · 아니면 한 등급 아래 */
+/** 옵션 표용: 그 티어·줄 등급에서의 수치 (rollLine과 같은 계산) */
+export const potValue = (o: Modifier, tier: number, g: number, add = false) => { const v = o.value * optionScale(tier) * POT_MULT[g] * (add ? ADD_MULT : 1); return Math.abs(v) < 1 ? Math.round(v * 100) / 100 : Math.round(v * 10) / 10; };
 export function rollLine(rng: { pick<T>(a: T[]): T; chance(p: number): boolean }, bslot: BaseSlot, tier: number, grade: number, idx: number, exclude: string[], add = false): Modifier {
   const g = idx === 0 || grade <= 1 || rng.chance(40) ? grade : grade - 1;
   const pool = poolOf(g, potSlot(bslot));

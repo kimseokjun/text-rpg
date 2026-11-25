@@ -694,3 +694,11 @@ svg.px{image-rendering:pixelated;flex:none}
 .pname{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;background:none;border:0;color:inherit;padding:0;cursor:pointer}
 .pname .small{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .pact2{gap:4px;flex-wrap:wrap}
+/* 제련 옵션 표 */
+.linkb{background:none;border:0;color:var(--gold,#f0b43c);text-decoration:underline;cursor:pointer;font-size:12px;padding:0 2px}
+.pottab{margin:6px 0 12px}
+.ptable{width:100%;border-collapse:collapse;font-size:13px;min-width:420px}
+.ptable th,.ptable td{padding:5px 8px;border-bottom:1px solid rgba(255,255,255,.06);text-align:center;white-space:nowrap}
+.ptable tbody th{text-align:left;font-weight:600}
+.ptable tr.mine{background:rgba(240,180,60,.09)}
+.pnotes{margin:8px 0 0;padding-left:18px;line-height:1.6}

@@ -1119,7 +1119,10 @@ function r4Msg(ev: string, p: any) {
 function r4Start() {
   if (!r4?.host) return;
   const ids = r4.members.map((m) => m.id);
-  if (r4.members.some((m) => !m.ready)) { toast('모두 준비해야 시작할 수 있어요', true); return; }
+  if (!r4.pick) { toast('데려갈 단원을 골라주세요', true); return; }
+  const notReady = r4.members.filter((m) => !m.host && !m.ready);
+  if (notReady.length) { toast(`${notReady.map((m) => m.name).join(', ')} 준비 안 됨`, true); return; }
+  if (!r4.ready) { r4.ready = true; r4Track(); }
   r4SendChar();
   const missing = ids.filter((id) => !r4!.chars[id]);
   if (missing.length) { toast('단원 정보를 받는 중이에요. 잠시 후 다시 눌러주세요', true); return; }
@@ -1207,14 +1210,14 @@ function viewRaid4() {
       <span class="small ${m.ready ? 'okt' : 'mute'}">${m.ready ? '준비 완료' : '대기'}${room.host && m.ready && !room.chars[m.id] && m.id !== myId() ? ' · 정보 받는 중' : ''}</span></div>` : '<div class="r4slot empty2"><span class="small mute">빈 자리</span></div>').join('');
     const picks = sortRoster(s.roster).map((c) => `<button class="dpick ${room.pick === c.uid ? 'on' : ''}" data-a="r4Pick" data-uid="${esc(c.uid)}" ${room.ready ? 'disabled' : ''}><span class="ico">${avatar(c, 30)}</span><span><b class="small">${esc(c.name)}</b><span class="small mute"> ${esc(JOBS[c.jobId].name)} · <span class="cp">${fmt(charPower(c, G.petPartyMods(s)))}</span></span></span></button>`).join('');
     const fr = friends.filter((f) => f.status === 'accepted' && Cloud.online[f.other] && !room.members.some((m) => m.id === f.other));
-    const allReady = room.members.length > 0 && room.members.every((m) => m.ready);
+    const allReady = !!room.pick && room.members.every((m) => m.host || m.ready);
     return `<div class="wrap">${backBtn()}
       <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><h2 style="margin:0">4인 레이드 · ${R4[room.diff].name}</h2><span class="row" style="gap:8px"><span>방 코드 <b class="r4code">${esc(room.code)}</b></span><button class="btn ghost sm" data-a="r4Leave">나가기</button></span></div>
       ${room.result ? `<div class="panel dres ${room.result.win ? 'w' : 'l'}"><b>${room.result.win ? '🏆 아바돈 처치!' : `💀 실패 · ${Math.round(room.result.frac * 100)}% 피해`}</b>${room.result.lines.map((l) => `<div class="small">${esc(l)}</div>`).join('')}</div>` : ''}
       ${room.host ? `<div class="tabs" role="group" aria-label="난이도" style="margin:10px 0">${R4_DIFFS.map((d) => `<button class="${room.diff === d ? 'on' : ''}" data-a="r4Diff" data-v="${d}">${R4[d].name} · 1인 ${fmt(R4[d].power)}</button>`).join('')}</div>` : `<p class="small mute">난이도는 방장이 정해요 · 권장 1인 전투력 ${fmt(R4[room.diff].power)}</p>`}
       <div class="r4slots">${slots}</div>
       <div class="panel"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><h3 style="margin:0">데려갈 단원 1명</h3>${sortBar()}</div><div class="dpicks" style="margin-top:8px">${picks}</div>
-        <div class="row" style="gap:8px;margin-top:10px"><button class="btn ${room.ready ? 'ghost' : ''}" data-a="r4Ready" ${room.pick ? '' : 'disabled'}>${room.ready ? '준비 취소' : '준비'}</button>${room.host ? `<button class="btn" data-a="r4Start" ${allReady ? '' : 'disabled'}>전투 시작 (${room.members.length}명)</button>` : ''}</div></div>
+        <div class="row" style="gap:8px;margin-top:10px"><button class="btn ${room.ready ? 'ghost' : ''}" data-a="r4Ready" ${room.pick ? '' : 'disabled'}>${room.ready ? '준비 취소' : '준비'}</button>${room.host ? `<button class="btn" data-a="r4Start" ${allReady ? '' : 'disabled'}>${room.members.length < 2 ? '혼자 시작' : `전투 시작 (${room.members.length}명)`}</button>` : ''}</div></div>
       <div class="panel"><h3 style="margin-top:0">친구 초대 <span class="small mute">접속 중인 친구</span></h3>${fr.map((f) => `<div class="item"><div><b>${esc(f.username)}</b> <span class="small mute">전투력 ${fmt(f.power)}</span></div><button class="btn sm" data-a="r4Invite" data-v="${esc(f.other)}">초대</button></div>`).join('') || '<p class="small mute">접속 중인 친구가 없어요. 방 코드를 알려줘도 돼요.</p>'}</div>
     </div>`;
   }
@@ -1504,14 +1507,15 @@ function viewMulti() {
   const isHost = room.host === me;
   const meM = members.find((m) => m.user_id === me);
   const n = members.length;
-  const slots = slotsFor(Math.max(n, 2), isHost);
+  const slots = slotsFor(Math.max(n, 1), isHost);
+  if (mPick.length > slots) mPick = mPick.slice(0, slots);
   if (meM && !mPick.length && meM.chars.length) mPick = meM.chars.map(pickUid).filter((u) => G.byUid(s, u));
   const card = (m: Cloud.RoomMember) => {
     const on = !!Cloud.online[m.user_id];
     const picks = m.chars.map((c) => typeof c === 'string' ? '<li class="small mute">단원</li>' : `<li class="small"><b>${esc(c.name)}</b> <span class="mute">${esc(JOBS[c.jobId as JobId]?.name ?? '')} · Lv.${c.level} · ${fmt(c.power)}</span></li>`).join('');
     return `<div class="mmem ${m.ready || m.user_id === room.host ? 'ready' : ''}"><div class="row" style="justify-content:space-between;gap:6px"><span class="row" style="gap:6px"><span class="dot ${on ? 'on' : ''}" title="${on ? '접속 중' : '자리 비움'}"></span><b>${esc(m.username || '(이름 없음)')}${m.user_id === room.host ? ' 👑' : ''}</b></span><span class="small ${m.ready || m.user_id === room.host ? '' : 'mute'}">${m.user_id === room.host ? '방장' : m.ready ? '✔ 준비' : '준비 중'}</span></div>
       <ul class="mpick">${picks || '<li class="small mute">아직 단원을 안 골랐어요</li>'}</ul>
-      <div class="row" style="justify-content:space-between"><span class="small mute">${m.chars.length}/${slotsFor(Math.max(n, 2), m.user_id === room.host)}명${on ? '' : ' · 자리 비움'}</span>${isHost && m.user_id !== me ? `<button class="btn ghost sm" data-a="mKick" data-v="${m.user_id}">내보내기</button>` : ''}</div></div>`;
+      <div class="row" style="justify-content:space-between"><span class="small mute">${m.chars.length}/${slotsFor(Math.max(n, 1), m.user_id === room.host)}명${on ? '' : ' · 자리 비움'}</span>${isHost && m.user_id !== me ? `<button class="btn ghost sm" data-a="mKick" data-v="${m.user_id}">내보내기</button>` : ''}</div></div>`;
   };
   const friendsOn = friends.filter((f) => f.status === 'accepted' && Cloud.online[f.other] && !members.some((m) => m.user_id === f.other));
   return `<div class="wrap">${backBtn()}
@@ -1522,7 +1526,7 @@ function viewMulti() {
     <div class="panel"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><h3 style="margin:0">내가 데려갈 단원 <span class="small mute">${mPick.length}/${slots}명 선택</span></h3>${sortBar()}</div>
       <div class="cards" style="margin-top:8px">${sortRoster(s.roster).map((c) => `<button class="card ${mPick.includes(c.uid) ? 'inparty' : ''}" data-a="mPick" data-uid="${esc(c.uid)}"><div class="ico">${avatar(c)}</div><div><b>${esc(c.name)}</b><div class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} · 전투력 ${fmt(charPower(c))}</div></div></button>`).join('')}</div>
       <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
-        ${isHost ? `<button class="btn" data-a="mStart" ${mBusy || n < 2 ? 'disabled' : ''}>${mBusy ? '서버 계산 중…' : n < 2 ? '2명 이상 모이면 시작' : '출발!'}</button>` : `<button class="btn ${meM?.ready ? 'ghost' : ''}" data-a="mReady">${meM?.ready ? '준비 취소' : '준비 완료'}</button>`}
+        ${isHost ? `<button class="btn" data-a="mStart" ${mBusy ? 'disabled' : ''}>${mBusy ? '서버 계산 중…' : n < 2 ? '혼자 출발 (단원 4명)' : `출발! (${n}명)`}</button>` : `<button class="btn ${meM?.ready ? 'ghost' : ''}" data-a="mReady">${meM?.ready ? '준비 취소' : '준비 완료'}</button>`}
         <button class="btn ghost" data-a="mLeave">${isHost ? '방 삭제' : '나가기'}</button></div></div>
     <div class="panel"><h3 style="margin-top:0">방 채팅 · 기록</h3><div id="roomlog" class="roomlog">${roomLogHtml()}</div>
       <form class="cin" data-form="room" style="display:flex;gap:6px;margin-top:8px"><input id="roomIn" maxlength="200" placeholder="방 사람들에게 한마디" value="${esc(roomDraft)}" autocomplete="off" style="flex:1;min-width:0"><button class="btn sm" type="submit">보내기</button></form></div>
@@ -2038,9 +2042,9 @@ function autoLootPanel() {
   const a = s.autoLoot ?? { on: false, rarities: [1, 2] as Rarity[], mode: 'dismantle' as const };
   return `<div class="panel autolp"><div class="row" style="justify-content:space-between;align-items:center;gap:8px"><div><h3 style="margin:0">줍자마자 자동 처리</h3><span class="small mute">체크한 등급은 가방에 안 들어오고 바로 정리돼요 (탐험·균열 보상)</span></div>
     <button class="btn sm ${a.on ? '' : 'ghost'}" data-a="autoLoot" data-v="toggle" aria-pressed="${a.on}">${a.on ? '켜짐' : '꺼짐'}</button></div>
-    <div class="tabs" role="group" aria-label="자동 처리 등급" style="margin-top:8px">${([1, 2, 3, 4] as Rarity[]).map((r) => `<button class="rr r${r} ${a.rarities.includes(r) ? 'on' : ''}" data-a="autoLoot" data-v="r" data-r="${r}" aria-pressed="${a.rarities.includes(r)}">${RARITY_NAME[r]}</button>`).join('')}</div>
+    <div class="tabs" role="group" aria-label="자동 처리 등급" style="margin-top:8px">${([1, 2, 3, 4, 5] as Rarity[]).map((r) => `<button class="rr r${r} ${a.rarities.includes(r) ? 'on' : ''}" data-a="autoLoot" data-v="r" data-r="${r}" aria-pressed="${a.rarities.includes(r)}">${RARITY_NAME[r]}</button>`).join('')}</div>
     <div class="tabs" role="group" aria-label="처리 방법">${(['dismantle', 'sell'] as const).map((m) => `<button class="${a.mode === m ? 'on' : ''}" data-a="autoLoot" data-v="mode" data-m="${m}">${m === 'dismantle' ? '분해 (강화석)' : '판매 (골드)'}</button>`).join('')}</div>
-    <p class="small mute" style="margin:0">전설 장비는 항상 가방에 들어와요.</p></div>`;
+    <p class="small mute" style="margin:0">세트·신화 장비는 등급과 상관없이 항상 가방에 들어와요.${a.rarities.includes(5) ? ' <b style="color:var(--r5)">전설도 자동 처리 중이에요!</b>' : ''}</p></div>`;
 }
 
 function viewStorage() {
@@ -2674,7 +2678,7 @@ app.addEventListener('click', (ev) => {
     case 'mLeave': (async () => { const host = roomSt?.room.host === Cloud.session?.user.id; await Cloud.leaveRoom(myRoom!, host); myRoom = null; roomSt = null; roomLog = []; Cloud.watchRoom(null, () => {}); refreshRooms(); })(); break;
     case 'mPick': {
       const uid = d.uid!; const isHost = roomSt?.room.host === Cloud.session?.user.id;
-      const max = slotsFor(Math.max(roomSt?.members.length ?? 2, 2), isHost);
+      const max = slotsFor(Math.max(roomSt?.members.length ?? 1, 1), isHost);
       if (mPick.includes(uid)) mPick = mPick.filter((x) => x !== uid);
       else if (mPick.length < max) mPick = [...mPick, uid];
       else { toast(`${max}명까지 데려갈 수 있어요`, true); break; }

@@ -11,7 +11,8 @@ import type { Character } from '../core/types';
 export const MULTI_FLOORS = RIFT_FLOORS;
 export const COOP_BONUS = 1.2;
 /** 인원별 한 명이 데려갈 수 있는 단원 수 (방장 먼저) */
-export const slotsFor = (n: number, isHost: boolean) => (n <= 2 ? 2 : n === 3 ? (isHost ? 2 : 1) : 1);
+/** 인원별 데려갈 단원 수 (합계 4): 혼자 4 · 둘 2+2 · 셋 2+1+1 · 넷 1씩 */
+export const slotsFor = (n: number, isHost: boolean) => (n <= 1 ? 4 : n === 2 ? 2 : n === 3 ? (isHost ? 2 : 1) : 1);
 
 export interface MultiMember { user_id: string; username: string; chars: (string | { uid: string })[]; save: unknown; host: boolean }
 export function multiSettings(floor: number, petMods: ExpeditionSettings['petMods']): ExpeditionSettings {

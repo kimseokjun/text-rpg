@@ -841,7 +841,7 @@ export function applyAutoLoot(s: GameState, equips: Equip[]): { kept: Equip[]; l
   const a = s.autoLoot;
   if (!a?.on || !a.rarities.length) return { kept: equips };
   const set = new Set(a.rarities);
-  const gone = equips.filter((e) => set.has(e.rarity) && !e.enhance);
+  const gone = equips.filter((e) => set.has(e.rarity) && !e.enhance && !EQUIP_BY_ID[e.baseId].set);
   if (!gone.length) return { kept: equips };
   const kept = equips.filter((e) => !gone.includes(e));
   if (a.mode === 'sell') { const g = gone.reduce((x, e) => x + sellPrice(e), 0); s.gold += g; return { kept, line: `자동 판매 ${gone.length}개 → +${g.toLocaleString('ko-KR')}G` }; }

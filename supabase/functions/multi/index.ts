@@ -24,13 +24,13 @@ Deno.serve(async (req) => {
     if (body.action === 'start') {
       if (room.host !== uid) return json({ error: '방장만 시작할 수 있어요' });
       if (room.status !== 'open') return json({ error: '이미 시작한 방이에요' });
-      if (members.length < 2) return json({ error: '2명 이상 모여야 시작할 수 있어요' });
+      if (members.length < 1) return json({ error: '방에 아무도 없어요' });
       const notReady = members.filter((m) => m.user_id !== uid && !m.ready);
       if (notReady.length) return json({ error: `${notReady.map((m) => m.username).join(', ')} 준비 안 됨` });
       for (const m of members) {
         const need = slotsFor(members.length, m.user_id === room.host);
         if ((m.chars ?? []).length < 1) return json({ error: `${m.username}이(가) 단원을 고르지 않았어요` });
-        if ((m.chars ?? []).length > need) return json({ error: `${m.username}은(는) ${need}명까지만 데려갈 수 있어요` });
+        void need; // 인원이 늘어 초과한 단원은 앞에서부터 잘라서 데려감 (simulateMulti)
       }
       const { data: saves } = await admin.from('saves').select('user_id, data').in('user_id', members.map((m) => m.user_id));
       const byUser = Object.fromEntries(((saves ?? []) as { user_id: string; data: unknown }[]).map((x) => [x.user_id, x.data]));

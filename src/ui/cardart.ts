@@ -2,7 +2,7 @@
 import { CARD_BY_ID, SET_BY_ID, type CardDef } from '../data/cards';
 
 /** 그림 파일이 준비된 카드 id (이미지를 넣으면 여기에 추가) */
-export const CARD_IMAGES = new Set<string>([]);
+export const CARD_IMAGES = new Set<string>(['c01', 'c02']);
 
 const GRADE_FRAME: Record<number, [string, string]> = { 1: ['#9aa3ad', '#5b636b'], 2: ['#7fd48a', '#2f7a3a'], 3: ['#7fb3ff', '#2a5aa8'], 4: ['#d08cff', '#6a2aa8'], 5: ['#ffe7a0', '#c8902c'] };
 
@@ -45,7 +45,7 @@ export function cardHtml(id: string, opts: { awaken?: number; locked?: boolean; 
   const [f1, f2] = GRADE_FRAME[c.grade];
   const uid = `k${seq++}`;
   const art = CARD_IMAGES.has(id)
-    ? `<image href="./cards/${id}.webp" x="0" y="0" width="300" height="320" preserveAspectRatio="xMidYMid slice"/>`
+    ? `<image href="./cards/${id}.webp" x="0" y="0" width="300" height="320" preserveAspectRatio="xMidYMin slice"/>`
     : portrait(c, uid);
   const aw = opts.awaken ?? 0;
   return `<svg class="tcard g${c.grade} ${opts.locked ? 'locked' : ''}" width="${w}" height="${Math.round((w * 420) / 300)}" viewBox="0 0 300 420" role="img" aria-label="${c.name} 카드">

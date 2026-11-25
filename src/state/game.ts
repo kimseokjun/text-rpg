@@ -305,7 +305,7 @@ export function craftSet(s: GameState, baseId: string): Result {
   const b = EQUIP_BY_ID[baseId];
   if (!b?.set) return fail('제작할 수 없는 장비예요');
   if (b.set === RAID_SET) {
-    const rc = RAID_CRAFT_COST[b.slot as 'weapon'];
+    const rc = RAID_CRAFT_COST[b.slot];
     if (s.scales < rc.scales) return fail(`벨리알의 파편이 부족해요 (${rc.scales}개 필요)`);
     if (s.gold < rc.gold) return fail('골드가 부족합니다');
     s.scales -= rc.scales; s.gold -= rc.gold;
@@ -314,7 +314,7 @@ export function craftSet(s: GameState, baseId: string): Result {
     bump(s, 'craft');
   return { ok: true, msg: `${RARITY_NAME[e.rarity]} ${b.name} 완성! (가방에 들어갔어요)` };
   }
-  const c = CRAFT_COST[b.slot as 'weapon'];
+  const c = CRAFT_COST[b.slot];
   if (s.cores < c.cores) return fail(`군단장의 핵이 부족해요 (${c.cores}개 필요)`);
   if (s.gold < c.gold) return fail('골드가 부족합니다');
   s.cores -= c.cores; s.gold -= c.gold;

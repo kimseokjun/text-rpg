@@ -643,22 +643,23 @@ function viewSmith() {
 }
 
 /** 착용 중인 세트 효과 */
+const setSteps = (d: { twoText: string; threeText: string; fiveText: string; sevenText: string }): [number, string][] => [[2, d.twoText], [3, d.threeText], [5, d.fiveText], [7, d.sevenText]];
 function setStatus(c: Character) {
   const cnt: Record<string, number> = {};
   for (const e of Object.values(c.equipment)) { const st = e && EQUIP_BY_ID[e.baseId].set; if (st) cnt[st] = (cnt[st] ?? 0) + 1; }
   const ids = Object.keys(cnt);
   if (!ids.length) return '';
-  return `<div class="setbonus">${ids.map((id) => { const d = SET_BY_ID[id], n = cnt[id]; return `<div class="small"><span class="settag">${esc(d.name)} ${n}/3</span> <span class="${n >= 2 ? 'on' : 'mute'}">2세트: ${esc(d.twoText)}</span> · <span class="${n >= 3 ? 'on' : 'mute'}">3세트: ${esc(d.threeText)}</span></div>`; }).join('')}</div>`;
+  return `<div class="setbonus">${ids.map((id) => { const d = SET_BY_ID[id], n = cnt[id]; return `<div class="small"><span class="settag">${esc(d.name)} ${n}/7</span> ${setSteps(d).map(([k, t]) => `<span class="${n >= k ? 'on' : 'mute'}">${k}세트: ${esc(t)}</span>`).join(' · ')}</div>`; }).join('')}</div>`;
 }
 let forgeSet = 'ash';
 let forgeJob: BaseJob = 'warrior';
 function viewForge() {
   const s = S!;
   const set = SET_BY_ID[forgeSet];
-  const bases = SET_BASES.filter((b) => b.set === forgeSet && (b.slot !== 'weapon' || b.jobs?.[0] === forgeJob));
+  const bases = SET_BASES.filter((b) => b.set === forgeSet && (b.slot !== 'weapon' || b.jobs?.[0] === forgeJob)).sort((a, b) => BASE_ORDER[a.slot] - BASE_ORDER[b.slot]);
   const raidSet = forgeSet === RAID_SET;
   const card = (b: typeof bases[number]) => {
-    const c = CRAFT_COST[b.slot as 'weapon'], rc = RAID_CRAFT_COST[b.slot as 'weapon'];
+    const c = CRAFT_COST[b.slot], rc = RAID_CRAFT_COST[b.slot];
     const can = raidSet ? s.scales >= rc.scales && s.gold >= rc.gold : s.cores >= c.cores && s.gold >= c.gold;
     const st = Object.entries(b.stats).map(([k, v]) => `${STAT_LABEL[k as StatKey]} +${v}`).join(', ');
     return `<div class="icard r5b forgecard"><div class="row" style="gap:10px;align-items:center"><span class="eico r5e setico" style="width:64px;height:64px">${equipSprite(equipKind(b.slot, b.jobs?.[0]), 8, { size: 60, set: b.set })}</span>
@@ -678,7 +679,8 @@ function viewForge() {
     <div class="tabs" role="group" aria-label="세트" style="margin-top:12px">${SETS.map((x) => `<button class="${forgeSet === x.id ? 'on' : ''}" data-a="forgeSet" data-v="${x.id}">${x.id === RAID_SET ? '레이드 · ' : ''}${esc(x.name)}</button>`).join('')}</div>
     ${raidSet ? '<p class="small mute">레이드 장비는 개인 레이드에서 얻는 벨리알의 파편으로 만들어요. 레이드 보스에게만 강해지는 대신 다른 세트 효과를 포기해야 해요.</p>' : ''}
     <div class="panel setinfo"><b class="r5">${esc(set.name)} 세트</b> <span class="small mute">${esc(set.desc)}</span>
-      <div class="small" style="margin-top:6px"><b>2세트</b> ${esc(set.twoText)} · <b>3세트</b> ${esc(set.threeText)}</div></div>
+      <div class="small" style="margin-top:6px">${setSteps(set).map(([k, t]) => `<b>${k}세트</b> ${esc(t)}`).join(' · ')}</div>
+      <div class="small mute" style="margin-top:4px">7부위: 무기 · 모자 · 상의 · 하의 · 목걸이 · 반지 ×2 (같은 세트 반지 2개를 끼면 2부위로 세요)</div></div>
     <div class="tabs" role="group" aria-label="무기 직업">${(['warrior', 'mage', 'archer', 'priest'] as BaseJob[]).map((j) => `<button class="${forgeJob === j ? 'on' : ''}" data-a="forgeJob" data-v="${j}">${JOBS[j].name} 무기</button>`).join('')}</div>
     <div class="petgrid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">${bases.map(card).join('')}</div>
   </div>`;

@@ -66,6 +66,7 @@ const SET_PAL: Record<string, { m: string; l: string; j: string; r: string; g: s
   blood: { m: '#3a0c14', l: '#ff5060', j: '#ff1a30', r: '#ff1a30', g: '#a02030', glow: '#ff1a30', glow2: '#3a0008' },
   grim: { m: '#24163a', l: '#b080ff', j: '#30f0c8', r: '#30f0c8', g: '#7a5ad8', glow: '#7a40ff', glow2: '#30f0c8' },
   hunter: { m: '#3a2418', l: '#ffb060', j: '#ff7a20', r: '#ff7a20', g: '#c8803a', glow: '#ff8a30', glow2: '#3a1008' },
+  saint: { m: '#e8e4f0', l: '#fff6c8', j: '#7fd4ff', r: '#ffd95e', g: '#ffd95e', glow: '#fff2a8', glow2: '#7fd4ff' },
   demon: { m: '#120810', l: '#ffd95e', j: '#ff2040', r: '#ffb020', g: '#ffd95e', glow: '#ffb020', glow2: '#ff2040' },
 };
 export function equipSprite(kind: Kind, tier: number, opts: { size?: number; set?: string } = {}) {

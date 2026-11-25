@@ -4,7 +4,7 @@ import { COMMON_TRAITS } from '../data/traits';
 import { DEFAULT_SETTINGS, Expedition, type ExpeditionSettings, rollEquip, rollSetEquip } from '../core/dungeon';
 import { Rng } from '../core/rng';
 import { enhance as doEnhance, enhanceCost, hire as doHire, refreshSlotCost, rollBoard, rollCandidate, rosterLimit, type Candidate } from '../core/town';
-import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Character, type Equip, type EquipSlot, type JobId, type Rarity, type Row, type TargetPref } from '../core/types';
+import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Character, type Equip, type Modifier, type EquipSlot, type JobId, type Rarity, type Row, type TargetPref } from '../core/types';
 import { EQUIP_BASES, EQUIP_BY_ID, OPTION_POOL, OPTION_SLOTS, POTIONS, MAX_POTIONS, RARITY_MULT, TIER_INFO, refineGoldCost, refineStoneCost, rollOption } from '../data/items';
 import { MAX_FLOOR, MONSTERS, floorName, regionOf } from '../data/monsters';
 import { CRAFT_COST, RAID_CRAFT_COST, RAID_SET } from '../data/sets';
@@ -62,7 +62,8 @@ export interface GameState {
   news: string[];
   seed: number;
   day: number;
-  deals: { equip: Equip; price: number }[];  // 잡화점 오늘의 특가
+  deals: { equip: Equip; price: number; sold?: boolean }[];  // 잡화점 오늘의 상점 (10칸)
+  shopDay?: string;  // 오늘의 상점 날짜(KST)
   stoneStock: number;                        // 오늘 남은 강화석 판매량
 }
 
@@ -612,21 +613,6 @@ export const equipPrice = (tier: number, rarity: Rarity) => Math.round(160 * tie
 export const sellPrice = (e: Equip) => Math.round(equipPrice(EQUIP_BY_ID[e.baseId].tier, e.rarity) * 0.3 * (1 + e.enhance * 0.1));
 export const shopTier = (s: GameState) => Math.max(...TIER_INFO.filter((t) => !t.shopAfter || s.bossesKilled.includes(t.shopAfter)).map((t) => t.tier));
 
-export function shopList(s: GameState) {
-  const t = shopTier(s);
-  return EQUIP_BASES.filter((b) => b.tier <= t).flatMap((b) =>
-    ([1, 2] as Rarity[]).map((r) => ({ baseId: b.id, rarity: r, price: equipPrice(b.tier, r) })));
-}
-
-export function buyEquip(s: GameState, baseId: string, rarity: Rarity): Result {
-  const b = EQUIP_BY_ID[baseId];
-  const price = equipPrice(b.tier, rarity);
-  if (s.gold < price) return fail('골드가 부족합니다');
-  s.gold -= price;
-  s.inventory.push({ uid: `e_${s.seed++}`, baseId, rarity, enhance: 0, failStack: 0, options: [] });
-  return { ok: true, msg: `${b.name} 구매` };
-}
-
 export function sellEquip(s: GameState, equipUid: string): Result {
   const idx = s.inventory.findIndex((e) => e.uid === equipUid);
   if (idx < 0) return fail('가방에 없는 장비입니다');
@@ -637,24 +623,53 @@ export function sellEquip(s: GameState, equipUid: string): Result {
 }
 
 // ───────── 골드 사용처 ─────────
-/** 탐험에서 돌아올 때마다: 특가 3칸 갱신, 강화석 재고 채움 */
+/** 탐험에서 돌아올 때마다: 강화석 재고 채움 (+ 날짜가 바뀌었으면 오늘의 상점 갱신) */
 export function refreshDaily(s: GameState) {
-  const r = rngOf(s);
-  const tier = shopTier(s);
-  s.deals = Array.from({ length: 3 }, () => {
-    const floor = Math.max(1, TIER_INFO[tier - 1].floors[1]);
-    const e = rollEquip(r, floor, r.chance(30) ? 4 : 3);
-    return { equip: e, price: Math.round(equipPrice(EQUIP_BY_ID[e.baseId].tier, e.rarity) * 1.1) };
-  });
   s.stoneStock = STONE_STOCK;
+  ensureShopDay(s);
 }
+
+// ───────── 오늘의 상점 (KST 자정마다 10칸) ─────────
+export const SHOP_SLOTS = 10;
+/** 등급별 가격 배수 — 전설은 비싸지만 몇 번 탐험하면 살 수 있게 */
+const SHOP_PRICE_MULT: Record<Rarity, number> = { 1: 1, 2: 0.9, 3: 1.0, 4: 1.2, 5: 1.5 };
+export const shopPrice = (tier: number, r: Rarity) => Math.round(equipPrice(tier, r) * SHOP_PRICE_MULT[r] / 10) * 10;
+
+function shopEquip(rng: Rng, tier: number, r: Rarity, used: Set<string>): Equip {
+  const all = EQUIP_BASES.filter((b) => b.tier === tier && !b.set);
+  const cands = all.filter((b) => !used.has(b.id));
+  const base = rng.pick(cands.length ? cands : all);
+  used.add(base.id);
+  const options: Modifier[] = [];
+  for (let i = 0; i < (r >= 3 ? r - 2 : 0); i++) options.push(rollOption(() => rng.pick(OPTION_POOL), tier, options.map((o) => o.key)));
+  return { uid: `shop_${Math.floor(rng.next() * 1e9).toString(36)}`, baseId: base.id, rarity: r, enhance: 0, failStack: 0, options };
+}
+
+/** 오늘 날짜(KST)의 상점이 아니면 새로 채움: 전설 2~3 · 영웅 3 · 희귀 2~3 · 나머지 고급, 일부는 한 티어 아래 */
+export function ensureShopDay(s: GameState) {
+  const today = kstDate();
+  if (s.shopDay === today && s.deals.length) return;
+  const r = rngOf(s);
+  const top = shopTier(s);
+  const legends = r.chance(50) ? 3 : 2;
+  const plan: Rarity[] = [...Array(legends).fill(5), 4, 4, 4, 3, 3, 3, 2, 2].slice(0, SHOP_SLOTS) as Rarity[];
+  const used = new Set<string>();
+  s.deals = plan.map((rar, i) => {
+    // 전설·영웅은 현재 티어, 나머지 중 일부는 한 티어 아래(싸게 구멍 메우기용)
+    const tier = rar >= 4 || top === 1 || i % 2 === 0 ? top : top - 1;
+    return { equip: shopEquip(r, tier, rar, used), price: shopPrice(tier, rar), sold: false };
+  });
+  s.shopDay = today;
+}
+
 export function buyDeal(s: GameState, i: number): Result {
+  ensureShopDay(s);
   const d = s.deals[i];
-  if (!d) return fail('이미 팔린 상품입니다');
+  if (!d || d.sold) return fail('이미 팔린 상품입니다');
   if (s.gold < d.price) return fail('골드가 부족합니다');
   s.gold -= d.price;
-  s.inventory.push(d.equip);
-  s.deals.splice(i, 1);
+  s.inventory.push({ ...d.equip, uid: `e_${s.seed++}` });
+  d.sold = true;
   return { ok: true, msg: `${EQUIP_BY_ID[d.equip.baseId].name} 구매` };
 }
 
@@ -918,7 +933,7 @@ export function migrate(raw: any): GameState | null {
   // 재화 통합: 어둠의 파편 → 군단장의 핵 (옛 핵 1개 = 새 핵 10개, 파편 1개 = 핵 1개)
   if (!s.coreMerged) { s.cores = s.cores * 10 + s.shards; s.shards = 0; s.coreMerged = true; } s.scales ??= 0; s.daily ??= { date: '', used: {}, cleared: {} }; s.raid ??= { week: 0, date: '', used: 0, dmg: {}, claimed: {}, everKilled: {}, best: 0 };
   s.boardLocks ??= s.board.map(() => false);
-  if (!s.deals) { s.deals = []; refreshDaily(s); } s.news ??= []; s.bossesKilled ??= [];
+  if (!s.deals) s.deals = []; ensureShopDay(s); s.news ??= []; s.bossesKilled ??= [];
   for (const c of s.roster) syncSkillSlots(c);
   return s;
 }

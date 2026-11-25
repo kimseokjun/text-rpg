@@ -710,26 +710,21 @@ function viewRefinery() {
 function viewShop() {
   const s = S!;
   const pots = G.potionsAvailable(s).map((p) => `<div class="item"><div><span class="eico">${potionIcon(p.id)}</span><span class="iname">${esc(p.name)}</span> <span class="small mute">보유 ${s.potions[p.id] ?? 0}</span><div class="istat">${MOD_LABEL[p.mod.key] ?? (p.mod.key === 'goldGain' ? '골드 획득' : p.mod.key)} +${p.mod.value}${p.mod.kind === 'pct' ? '%' : '%p'} · 이번 탐험 동안 파티 전체</div></div><div class="row buyn">${[1, 10, 100].map((n) => `<button class="btn sm ${n > 1 ? 'ghost' : ''}" data-a="buyPotion" data-id="${p.id}" data-n="${n}" ${s.gold < p.price * n ? 'disabled' : ''}>${n > 1 ? `+${n} · ` : ''}${fmt(p.price * n)}G</button>`).join('')}</div></div>`).join('');
-  const eq = G.shopList(s).map((x) => {
-    const b = EQUIP_BY_ID[x.baseId];
-    const fake: Equip = { uid: '', baseId: x.baseId, rarity: x.rarity, enhance: 0, failStack: 0, options: [] };
-    return `<div class="item"><div>${equipLine(fake)}</div><button class="btn sm" data-a="buyEquip" data-id="${b.id}" data-r="${x.rarity}">${fmt(x.price)}G</button></div>`;
-  }).join('');
   const sell = s.inventory.map((e) => `<div class="item"><div>${equipLine(e)}</div><button class="btn ghost sm" data-a="sell" data-e="${esc(e.uid)}">${fmt(G.sellPrice(e))}G 판매</button></div>`).join('');
-  const deals = s.deals.map((d, i) => `<div class="icard r${d.equip.rarity}b"><div class="who"><span class="small mute">오늘의 특가</span></div><div>${equipLine(d.equip)}</div><div class="row" style="margin-top:auto"><button class="btn sm" data-a="buyDeal" data-i="${i}">${fmt(d.price)}G 구매</button></div></div>`).join('');
+  G.ensureShopDay(s);
+  const deals = s.deals.map((d, i) => `<div class="icard r${d.equip.rarity}b ${d.sold ? 'sold' : ''}"><div class="who"><span class="small mute">${d.equip.rarity === 5 ? '★ 전설 입고' : '오늘의 상품'}</span></div><div>${equipLine(d.equip)}</div><div class="row" style="margin-top:auto">${d.sold ? '<span class="small mute">판매 완료</span>' : `<button class="btn sm" data-a="buyDeal" data-i="${i}" ${s.gold < d.price ? 'disabled' : ''}>${fmt(d.price)}G 구매</button>`}</div></div>`).join('');
   const sp = G.stonePrice(s);
   return `<div class="wrap">${backBtn()}
     <h2>잡화점</h2>
     <section class="grid" style="margin-top:12px">
-      <div class="row" style="justify-content:space-between"><h3>오늘의 특가 <span class="small mute">탐험에서 돌아올 때마다 바뀌어요</span></h3></div>
-      <div class="igrid" style="margin-top:0">${deals || '<p class="mute">오늘 특가는 모두 팔렸어요.</p>'}</div>
+      <div class="row" style="justify-content:space-between"><h3>오늘의 상점 <span class="small mute">매일 자정(한국 시간)에 10칸이 새로 들어와요 · 전설 2~3개 포함</span></h3></div>
+      <div class="igrid" style="margin-top:0">${deals}</div>
       <div class="item"><div><span class="iname">강화석</span> <span class="small mute">보유 ${s.stones} · 오늘 남은 재고 ${s.stoneStock}개</span><div class="istat">개당 ${fmt(sp)}G</div></div>
         <div class="row">${[1, 5, 10].map((n) => `<button class="btn sm" data-a="buyStones" data-n="${n}" ${s.stoneStock ? '' : 'disabled'}>${n}개 ${fmt(sp * Math.min(n, Math.max(1, s.stoneStock)))}G</button>`).join('')}</div></div>
     </section>
     <div class="cols" style="margin-top:16px">
       <section class="grid"><h3>버프 물약</h3><div class="items">${pots}
-        <div class="item"><div><span class="iname">축복 주문서</span> <span class="small mute">보유 ${s.blessings}</span><div class="istat">강화 성공률 +10%p</div></div><div class="row buyn">${[1, 10].map((n) => `<button class="btn sm ${n > 1 ? 'ghost' : ''}" data-a="buyBless" data-n="${n}" ${s.gold < G.blessingPrice * n ? 'disabled' : ''}>${n > 1 ? `+${n} · ` : ''}${fmt(G.blessingPrice * n)}G</button>`).join('')}</div></div></div>
-        <h3 style="margin-top:12px">장비</h3><div class="items">${eq}</div></section>
+        <div class="item"><div><span class="iname">축복 주문서</span> <span class="small mute">보유 ${s.blessings}</span><div class="istat">강화 성공률 +10%p</div></div><div class="row buyn">${[1, 10].map((n) => `<button class="btn sm ${n > 1 ? 'ghost' : ''}" data-a="buyBless" data-n="${n}" ${s.gold < G.blessingPrice * n ? 'disabled' : ''}>${n > 1 ? `+${n} · ` : ''}${fmt(G.blessingPrice * n)}G</button>`).join('')}</div></div></div></section>
       <section class="grid"><h3>가방 판매</h3><div class="items">${sell || '<p class="mute">팔 장비가 없습니다.</p>'}</div></section>
     </div>
   </div>`;
@@ -1192,7 +1187,7 @@ function viewCodex() {
 }
 
 // ───────── 관리자 대시보드 ─────────
-const KIND_NAME: Record<string, string> = { cardOpen: '카드 팩', cardAwaken: '카드 각성', autoRefresh: '자동 교체', autoEnh: '자동 강화', login: '접속', signup: '회원가입', run: '던전', tower: '무한 탑', raid: '레이드', daily: '일일 던전', worldboss: '월드보스', multi: '멀티 던전', hire: '용병 고용', upgradeGuild: '길드 강화', advance: '전직', enhance: '강화', buyEquip: '장비 구매', buyDeal: '특가 구매', train: '훈련', reroll: '특성 재설정', refine: '제련', craft: '세트 제작', buyEgg: '펫 알', petSellLow: '펫 정리', claimQuest: '목표 보상', dailySweep: '소탕', buyStones: '강화석 구매', admin_gift: '관리자 지급' };
+const KIND_NAME: Record<string, string> = { cardOpen: '카드 팩', cardAwaken: '카드 각성', autoRefresh: '자동 교체', autoEnh: '자동 강화', login: '접속', signup: '회원가입', run: '던전', tower: '무한 탑', raid: '레이드', daily: '일일 던전', worldboss: '월드보스', multi: '멀티 던전', hire: '용병 고용', upgradeGuild: '길드 강화', advance: '전직', enhance: '강화', buyEquip: '장비 구매', buyDeal: '상점 구매', train: '훈련', reroll: '특성 재설정', refine: '제련', craft: '세트 제작', buyEgg: '펫 알', petSellLow: '펫 정리', claimQuest: '목표 보상', dailySweep: '소탕', buyStones: '강화석 구매', admin_gift: '관리자 지급' };
 let adTab: 'over' | 'users' | 'log' | 'chat' = 'over';
 let adStats: any = null, adUsers: Cloud.AdminUser[] = [], adEvents: Cloud.EventRow[] = [], adChats: (Cloud.ChatMsg & { channel: string })[] = [];
 let adSel: string | null = null, adSave: any = null, adSelEvents: Cloud.EventRow[] = [];
@@ -2103,7 +2098,6 @@ app.addEventListener('click', (ev) => {
     case 'toggleBless': useBlessing = (el as HTMLInputElement).checked; render(); break;
     case 'buyPotion': commit(G.buyPotion(s!, d.id!, Number(d.n ?? 1))); break;
     case 'buyBless': commit(G.buyBlessing(s!, Number(d.n ?? 1))); break;
-    case 'buyEquip': commit(G.buyEquip(s!, d.id!, Number(d.r) as Rarity)); break;
     case 'sell': commit(G.sellEquip(s!, d.e!)); break;
     case 'pickPotion': {
       const id = d.id!;

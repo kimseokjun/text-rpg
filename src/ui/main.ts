@@ -130,6 +130,7 @@ async function startSocial() {
   chatMsgs = await Cloud.loadChat();
   friends = await Cloud.loadFriends();
   loadMailbox().then(() => { if (mailbox.length) toast(`📮 우편함에 장비 ${mailbox.length}개가 와 있어요 (창고)`); });
+  setTimeout(claimLeftovers, 1500);
   Cloud.subscribeChat((m) => {
     if (chatMsgs.some((x) => x.id === m.id)) return;
     chatMsgs.push(m); if (chatMsgs.length > 100) chatMsgs.shift();
@@ -276,8 +277,19 @@ if (CLOUD) HUBS[2].tabs.push(['multi', '멀티'], ['raid4', '4인 레이드'], [
 const hubOf = (sc: string) => HUBS.find((h) => h.tabs.some(([t]) => t === sc));
 const hubTabs = () => {
   const h = hubOf(screen);
-  return h ? `<div class="hubtabs" role="tablist" aria-label="${h.name}">${h.tabs.map(([t, n]) => `<button role="tab" class="${t === screen ? 'on' : ''}" aria-selected="${t === screen}" data-a="go" data-to="${t}">${n}</button>`).join('')}</div>` : '';
+  return h ? `<div class="hubtabs" role="tablist" aria-label="${h.name}">${h.tabs.map(([t, n]) => `<button role="tab" class="${t === screen ? 'on' : ''}" aria-selected="${t === screen}" data-a="go" data-to="${t}">${n}</button>`).join('')}</div>${h.id === 'smith' ? matBar() : ''}` : '';
 };
+/** 대장간 공통: 재료 보유량 */
+function matBar() {
+  const s = S;
+  if (!s) return '';
+  const it = (icon: string, name: string, v: number, hot = false) => `<span class="mat ${hot ? 'hot' : ''}" title="${name}">${icon}<span class="mn">${name}</span><b>${fmt(v)}</b></span>`;
+  return `<div class="matbar">
+    ${it(itemSprite('stone', { size: 22 }), '강화석', s.stones, screen === 'smith')}${it(itemSprite('scroll', { size: 22 }), '축복', s.blessings, screen === 'smith')}
+    ${it(itemSprite('refine', { size: 22 }), '제련석', s.refineStones, screen === 'refinery')}${it(equipSprite('ring', 3, { size: 22 }), '고대 룬석', s.runes ?? 0, screen === 'refinery')}
+    ${it(equipSprite('accessory', 8, { size: 22, set: 'demon' }), '군단장의 핵', s.cores, screen === 'forge')}${it(monsterSprite('belialFire', { size: 22, tags: ['demon'] }), '벨리알 파편', s.scales, screen === 'forge')}${it(equipSprite('ring', 8, { size: 22, set: 'myth' }), '신화의 정수', s.mythEss ?? 0, screen === 'forge')}
+    ${it(itemSprite('gold', { size: 22 }), '골드', s.gold)}</div>`;
+}
 const backBtn = () => `<div class="back"><button class="btn ghost sm" data-a="go" data-to="town">← 마을로</button></div>${hubTabs()}`;
 
 /** 도트 아이콘 */
@@ -2046,6 +2058,29 @@ function autoLootPanel() {
     <div class="tabs" role="group" aria-label="자동 처리 등급" style="margin-top:8px">${([1, 2, 3, 4, 5] as Rarity[]).map((r) => `<button class="rr r${r} ${a.rarities.includes(r) ? 'on' : ''}" data-a="autoLoot" data-v="r" data-r="${r}" aria-pressed="${a.rarities.includes(r)}">${RARITY_NAME[r]}</button>`).join('')}</div>
     <div class="tabs" role="group" aria-label="처리 방법">${(['dismantle', 'sell'] as const).map((m) => `<button class="${a.mode === m ? 'on' : ''}" data-a="autoLoot" data-v="mode" data-m="${m}">${m === 'dismantle' ? '분해 (강화석)' : '판매 (골드)'}</button>`).join('')}</div>
     <p class="small mute" style="margin:0">세트·신화 장비는 등급과 상관없이 항상 가방에 들어와요.${a.rarities.includes(5) ? ' <b style="color:var(--r5)">전설도 자동 처리 중이에요!</b>' : ''}</p></div>`;
+}
+
+// ───────── 못 받은 균열 보상 (창을 꺼서 놓친 것) ─────────
+let leftoverBusy = false;
+async function claimLeftovers() {
+  if (leftoverBusy || !S || !Cloud.session) return;
+  leftoverBusy = true;
+  try {
+    const rooms = (await Cloud.unclaimedRooms()).filter((r) => r.id !== myRoom && r.id !== multiRoom?.id);
+    const lines: string[] = [];
+    for (const room of rooms) {
+      const r = await Cloud.multiCall({ action: 'claim', room: room.id });
+      if (r?.error || !r?.reward || !S) continue;
+      const prefix = `${Cloud.session!.user.id.slice(0, 8)}_`;
+      const res = G.applyMultiReward(S, r.reward, (r.myChars as string[]).map((u) => u.replace(prefix, '')), r.totalChars);
+      lines.push(`${room.host_name}의 균열: 골드 ${fmt(r.reward.gold ?? 0)} · 카드 팩 ${r.reward.cardPacks ?? 0}${res.equips.length ? ` · 장비 ${res.equips.length}` : ''}`);
+    }
+    if (lines.length && S) {
+      await saveGameNow(S);
+      commit({ ok: true, msg: `지난 균열 보상을 받았어요 — ${lines.join(' / ')}` });
+      Cloud.logEvent('multi', `놓친 보상 수령 ${lines.length}건`);
+    }
+  } finally { leftoverBusy = false; }
 }
 
 // ───────── 우편함 ─────────

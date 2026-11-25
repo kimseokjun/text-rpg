@@ -430,3 +430,13 @@ export async function claimMail(id: number): Promise<{ item?: any; error?: strin
   const { data, error } = await sb.rpc('claim_mail', { p_id: id });
   return error ? { error: /no mail/.test(error.message) ? '이미 받은 우편이에요' : error.message } : { item: data };
 }
+
+/** 출발은 했는데 보상을 안 받은 균열 방 (창을 꺼서 못 받은 경우) */
+export async function unclaimedRooms(): Promise<{ id: string; floor: number; host_name: string }[]> {
+  if (!sb || !session) return [];
+  const { data: mem } = await sb.from('room_members').select('room_id').eq('user_id', session.user.id).eq('claimed', false);
+  const ids = ((mem ?? []) as { room_id: string }[]).map((m) => m.room_id);
+  if (!ids.length) return [];
+  const { data } = await sb.from('rooms').select('id, floor, host_name, status').in('id', ids).eq('status', 'done');
+  return (data ?? []) as { id: string; floor: number; host_name: string }[];
+}

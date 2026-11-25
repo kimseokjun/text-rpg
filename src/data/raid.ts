@@ -1,5 +1,5 @@
 /** 개인 레이드: 군단장 벨리알. 주마다(한국 시간 월요일) 형태가 바뀜, 이번 주 누적 HP, 하루 3회, 10라운드 */
-import { kstDate } from './daily';
+import { DAY_SHIFT_MS, kstDate } from './daily';
 
 export type RaidDiff = 'normal' | 'hard' | 'hell';
 export const RAID_DIFFS: RaidDiff[] = ['normal', 'hard', 'hell'];
@@ -13,17 +13,17 @@ export const RAID_FORMS: RaidForm[] = [
   { id: 'abyss', monster: 'belialAbyss', name: '심연 형태', hpMult: { normal: 0.45, hard: 1.05, hell: 1.2 }, adds: ['tentacle', 'tentacle'], tip: '촉수가 살아있는 동안 벨리알이 받는 피해가 70% 줄어요. 촉수는 계속 다시 자라니 잡몹 우선 딜러로 촉수를 끊고, 보스 우선 딜러로 그 틈에 딜하세요.' },
   { id: 'fallen', monster: 'belialFallen', name: '타락 형태', hpMult: { normal: 0.8, hard: 0.8, hell: 0.8 }, adds: [], tip: '마법 저항이 매우 높고 스스로 치유해요. 전사·궁수 같은 물리 딜러와 받는 마법 피해 감소(바르가스, 템플러)가 유리해요.' },
 ];
-/** 한국 시간 기준 주차 번호 (월요일 시작) */
+/** 한국 시간 기준 주차 번호 (월요일 오전 4시 시작) */
 export function raidWeek(now = Date.now()) {
-  const days = Math.floor((now + 9 * 3600 * 1000) / 86400000);
+  const days = Math.floor((now + DAY_SHIFT_MS) / 86400000);
   return Math.floor((days + 3) / 7); // 1970-01-01은 목요일
 }
 export const raidForm = (week = raidWeek()) => RAID_FORMS[week % RAID_FORMS.length];
 export const raidToday = () => kstDate();
 export function nextResetText(now = Date.now()) {
-  const k = new Date(now + 9 * 3600 * 1000);
+  const k = new Date(now + DAY_SHIFT_MS);
   const dow = (k.getUTCDay() + 6) % 7; // 월=0
-  return `${7 - dow}일 뒤 월요일 0시`;
+  return `${7 - dow}일 뒤 월요일 오전 4시`;
 }
 
 export interface RaidDiffDef { floor: number; hp: number; tune: number; mult: number; eggMin: 3 | 4 }

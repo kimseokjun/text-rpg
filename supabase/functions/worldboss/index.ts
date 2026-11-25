@@ -7,9 +7,10 @@ const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
 // 한국 시간 기준 날짜와 주차 (게임과 같은 계산)
-const kstNow = () => new Date(Date.now() + 9 * 3600_000);
+// 게임 하루는 한국 시간 오전 4시에 바뀜 (UTC+9 - 4시간)
+const kstNow = () => new Date(Date.now() + 5 * 3600_000);
 const kstDate = () => kstNow().toISOString().slice(0, 10);
-const season = () => Math.floor((Math.floor((Date.now() + 9 * 3600_000) / 86400_000) + 3) / 7); // 게임의 raidWeek()와 같음 (월요일 0시 KST 시작)
+const season = () => Math.floor((Math.floor((Date.now() + 5 * 3600_000) / 86400_000) + 3) / 7); // 게임의 raidWeek()와 같음 (월요일 오전 4시 KST 시작)
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -48,7 +49,7 @@ Deno.serve(async (req) => {
     if (boss.killed_at || boss.hp <= 0) return json({ error: '이번 주 월드보스는 이미 쓰러졌어요. 보상을 받으세요' });
     const today = kstDate();
     const { count } = await admin.from('worldboss_hits').select('id', { count: 'exact', head: true }).eq('user_id', uid).eq('kst_date', today);
-    if ((count ?? 0) >= WB_LIMIT) return json({ error: `오늘 도전 ${WB_LIMIT}회를 다 썼어요 (자정 초기화)` });
+    if ((count ?? 0) >= WB_LIMIT) return json({ error: `오늘 도전 ${WB_LIMIT}회를 다 썼어요 (오전 4시 초기화)` });
     const { data: save } = await admin.from('saves').select('data').eq('user_id', uid).maybeSingle();
     if (!save) return json({ error: '서버에 저장된 세이브가 없어요. 잠시 후 다시 시도하세요' });
     const seed = Math.floor(Math.random() * 1e9);

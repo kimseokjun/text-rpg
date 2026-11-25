@@ -1,5 +1,5 @@
 /** 4인 레이드: 주간 로테이션 보스. 인당 단원 1명, 차례마다 스킬을 직접 고름 (방장 화면이 전투 진행) */
-import { kstDate } from './daily';
+import { DAY_SHIFT_MS, kstDate } from './daily';
 
 export type R4Diff = 'normal' | 'hard' | 'hell';
 export const R4_DIFFS: R4Diff[] = ['normal', 'hard', 'hell'];
@@ -13,7 +13,7 @@ export const R4: Record<R4Diff, R4Def> = {
 export const R4_ROUNDS = 20;
 export const R4_TURN_SEC = 15;
 export const R4_MAX = 4;
-/** 보상은 난이도마다 하루 1번 (한국 시간 자정 초기화) */
+/** 보상은 난이도마다 하루 1번 (한국 시간 오전 4시 초기화) */
 export const r4Today = () => kstDate();
 /** 실패해도 준 피해 비율만큼 정수 일부 */
 export const R4_BONUS: Record<R4Diff, { cores: number; runes: number; gold: number }> = {
@@ -68,7 +68,7 @@ export const R4_BOSSES: Record<R4BossId, R4BossDef> = {
   },
 };
 export const R4_ROTATION: R4BossId[] = ['abaddon', 'frost', 'blood'];
-/** 한국 시간 월요일 0시 기준 주차 */
-export const r4Week = (now = Date.now()) => Math.floor((now + 9 * 3600 * 1000 - Date.UTC(1970, 0, 5)) / (7 * 86400 * 1000));
+/** 한국 시간 월요일 오전 4시 기준 주차 */
+export const r4Week = (now = Date.now()) => Math.floor((now + DAY_SHIFT_MS - Date.UTC(1970, 0, 5)) / (7 * 86400 * 1000));
 export const r4BossOfWeek = (now = Date.now()): R4BossId => R4_ROTATION[((r4Week(now) % 3) + 3) % 3];
 export const r4NextBoss = (now = Date.now()): R4BossId => r4BossOfWeek(now + 7 * 86400 * 1000);

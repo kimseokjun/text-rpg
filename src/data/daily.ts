@@ -1,4 +1,4 @@
-/** 일일 던전: 하루 3회(한국 시간 자정 초기화), 단계 1~10, 클리어한 단계는 소탕 가능 */
+/** 일일 던전: 하루 3회(한국 시간 오전 4시 초기화), 단계 1~10, 클리어한 단계는 소탕 가능 */
 export type DailyReward = 'gold' | 'refine' | 'stone' | 'exp' | 'legion';
 export interface DailyDef {
   id: string; name: string; desc: string; tip: string; reward: DailyReward;
@@ -29,7 +29,11 @@ export const DAILY_TUNE: Record<string, number[]> = {"vault": [1.05, 1.08, 1.55,
 export const DAILY_BY_ID = Object.fromEntries(DAILIES.map((d) => [d.id, d]));
 export const DAILY_STAGES = 10;
 /** 한국 시간 날짜 (YYYY-MM-DD) */
-export const kstDate = (now = Date.now()) => new Date(now + 9 * 3600 * 1000).toISOString().slice(0, 10);
+/** 게임 하루의 시작: 한국 시간 오전 4시 (UTC+9에서 4시간 늦춤) */
+export const RESET_HOUR = 4;
+export const DAY_SHIFT_MS = (9 - RESET_HOUR) * 3600 * 1000;
+/** 게임 날짜 (한국 시간 오전 4시에 바뀜) */
+export const kstDate = (now = Date.now()) => new Date(now + DAY_SHIFT_MS).toISOString().slice(0, 10);
 
 export interface DailyLoot { gold: number; exp: number; stones: number; blessings: number; refineStones: number; shards: number; cores: number; runes: number }
 export function dailyReward(d: DailyDef, stage: number, scale: number): DailyLoot {

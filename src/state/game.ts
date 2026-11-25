@@ -232,7 +232,7 @@ export const bump = (s: GameState, k: string, n = 1) => {
 export function startDaily(s: GameState, id: string, stage: number, potions: string[]): Expedition | string {
   const d = DAILY_BY_ID[id];
   if (!d || !stageOpen(s, d, stage)) return '아직 열리지 않은 단계예요';
-  if (dailyLeft(s, id) <= 0) return '오늘 입장 횟수를 다 썼어요 (자정에 초기화)';
+  if (dailyLeft(s, id) <= 0) return '오늘 입장 횟수를 다 썼어요 (오전 4시에 초기화)';
   const ok = canDepart(s);
   if (!ok.ok) return ok.msg;
   const pots = potions.filter((p) => (s.potions[p] ?? 0) > 0).slice(0, MAX_POTIONS);
@@ -246,7 +246,7 @@ export function sweepDaily(s: GameState, id: string, stage: number): Result {
   const d = DAILY_BY_ID[id];
   const st = dailyState(s);
   if ((st.cleared[id] ?? 0) < stage) return fail('한 번 클리어한 단계만 소탕할 수 있어요');
-  if (dailyLeft(s, id) <= 0) return fail('오늘 입장 횟수를 다 썼어요 (자정에 초기화)');
+  if (dailyLeft(s, id) <= 0) return fail('오늘 입장 횟수를 다 썼어요 (오전 4시에 초기화)');
   st.used[id] = (st.used[id] ?? 0) + 1;
   const goldMult = 1 + (fromCharacterExtra(s)?.goldGain ?? 0) / 100;
   const r = dailyReward(d, stage, rewardScale(d.stageFloor(stage)));
@@ -280,7 +280,7 @@ export function raidOpen(s: GameState, diff: RaidDiff): boolean {
 export const raidHpLeft = (s: GameState, diff: RaidDiff) => Math.max(0, raidMaxHp(diff) - (raidState(s).dmg[diff] ?? 0));
 export function startRaid(s: GameState, diff: RaidDiff, potions: string[]): Expedition | string {
   if (!raidOpen(s, diff)) return diff === 'normal' ? '마왕숲 50층을 클리어하면 열려요' : `${RAID_DIFF_NAME[diff === 'hell' ? 'hard' : 'normal']} 난이도를 처치하면 열려요`;
-  if (raidLeft(s) <= 0) return '오늘 도전 횟수를 다 썼어요 (자정에 초기화)';
+  if (raidLeft(s) <= 0) return '오늘 도전 횟수를 다 썼어요 (오전 4시에 초기화)';
   const hpLeft = raidHpLeft(s, diff);
   if (hpLeft <= 0) return '이번 주 벨리알은 이미 쓰러뜨렸어요. 다음 주 월요일에 새 형태로 돌아와요';
   const ok = canDepart(s);
@@ -680,7 +680,7 @@ export function refreshDaily(s: GameState) {
   ensureShopDay(s);
 }
 
-// ───────── 오늘의 상점 (KST 자정마다 10칸) ─────────
+// ───────── 오늘의 상점 (KST 오전 4시마다 10칸) ─────────
 export const SHOP_SLOTS = 10;
 /** 등급별 가격 배수 — 전설은 비싸지만 몇 번 탐험하면 살 수 있게 */
 const SHOP_PRICE_MULT: Record<Rarity, number> = { 1: 1, 2: 0.9, 3: 1.0, 4: 1.2, 5: 1.5 };
@@ -731,7 +731,7 @@ export const packPrice = (s: GameState) => 1500 * shopTier(s);
 export function buyPack(s: GameState, n: number): Result {
   ensureShopDay(s);
   const k = Math.min(n, PACK_DAILY - (s.packBought ?? 0));
-  if (k <= 0) return fail('오늘 카드 팩은 다 팔렸어요. 내일 자정에 다시 들어와요');
+  if (k <= 0) return fail('오늘 카드 팩은 다 팔렸어요. 내일 오전 4시에 다시 들어와요');
   const cost = packPrice(s) * k;
   if (s.gold < cost) return fail('골드가 부족합니다');
   s.gold -= cost;
@@ -1241,7 +1241,7 @@ export function awakenCard(s: GameState, id: string): Result {
 // ───────── 4인 레이드 보상 (난이도마다 하루 1번) ─────────
 export const r4Claimed = (s: GameState, diff: R4Diff) => s.r4?.date === r4Today() && s.r4.done.includes(diff);
 export function claimR4(s: GameState, diff: R4Diff, frac: number, win: boolean): string[] {
-  if (r4Claimed(s, diff)) return [`오늘 ${R4[diff].name} 보상은 이미 받았어요 (자정에 초기화)`];
+  if (r4Claimed(s, diff)) return [`오늘 ${R4[diff].name} 보상은 이미 받았어요 (오전 4시에 초기화)`];
   bump(s, 'raid4');
   if (win) bump(s, `r4win_${diff}`);
   if (s.r4?.date !== r4Today()) s.r4 = { date: r4Today(), done: [] };
@@ -1317,7 +1317,7 @@ export function withGuest(s: GameState): Character[] {
   return [...p, JSON.parse(JSON.stringify(g.char)) as Character];
 }
 export function setGuest(s: GameState, owner: string, ownerName: string, c: Character): Result {
-  if (guestToday(s)) return fail('오늘은 이미 친구 용병을 빌렸어요 (자정에 초기화)');
+  if (guestToday(s)) return fail('오늘은 이미 친구 용병을 빌렸어요 (오전 4시에 초기화)');
   const copy = JSON.parse(JSON.stringify(c)) as Character;
   copy.uid = `guest_${c.uid}`; copy.name = `${c.name}(${ownerName})`; copy.isHero = false;
   syncSkillSlots(copy);

@@ -8,7 +8,7 @@ import { gradeWeights, BOARD_SIZE, enhanceCost, enhanceRate, refreshSlotCost, ro
 import { equipStats } from '../core/stats';
 import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Row, type TargetPref, type UnitSnap, type BaseJob, type BattleEvent, type JobId, type Character, type Equip, type EquipSlot, type BaseSlot, type Rarity, type StatKey, type Modifier, EQUIP_SLOTS, wornSlots } from '../core/types';
 import { raidWeek, MILESTONE_SCALES, RAID_DIFF, RAID_DIFFS, RAID_DIFF_NAME, RAID_LIMIT, RAID_ROUNDS, nextResetText, raidForm, raidMaxHp, type RaidDiff } from '../data/raid';
-import { DAILIES, DAILY_BY_ID, DAILY_LIMIT, DAILY_STAGES, dailyReward } from '../data/daily';
+import { DAILIES, DAILY_BY_ID, DAILY_LIMIT, DAILY_STAGES, dailyReward, kstDate } from '../data/daily';
 import { CRAFT_COST, MYTH_CRAFT_COST, MYTH_SET, RAID_CRAFT_COST, RAID_SET, SETS, SET_BASES, SET_BY_ID, SET_DROP_CHANCE, SET_RARITY, SHARD_CHANCE } from '../data/sets';
 import { PET_KINDS, EGG_ODDS, EGG_PRICE, PET_BY_ID, PET_GRADE_NAME, PET_GRADE_PCT, PET_MAX_STARS, PET_EVO_GOLD, petName, petEffectText, petSellPrice, type Pet } from '../data/pets';
 import { EQUIP_BASES, EQUIP_BY_ID, MAX_POTIONS, OPTION_SLOTS, POTIONS, REFINE_CHANCE, tierOfFloor, POT_NAME, POT_UP, POT_PITY, POT_POOLS, potSlot, potValue, type PotSlot } from '../data/items';
@@ -530,7 +530,7 @@ function guestPanel() {
   if (g) {
     const c = g.char;
     return `<div class="panel guest"><div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><div class="row" style="gap:8px;align-items:center"><span class="ico">${avatar(c, 40)}</span>
-      <div><b>🤝 친구 용병 · ${esc(c.name)}</b><div class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} · 전투력 ${fmt(charPower(c))} · 오늘 자정까지</div>
+      <div><b>🤝 친구 용병 · ${esc(c.name)}</b><div class="small mute">${esc(JOBS[c.jobId].name)} · Lv.${c.level} · 전투력 ${fmt(charPower(c))} · 오늘 오전 4시까지</div>
       <div class="small ${full ? '' : 'okt'}">${!g.on ? '쉬는 중' : full ? '파티가 꽉 차서 이번엔 같이 못 가요 (빈자리가 있으면 자동 합류)' : '던전·일일 던전에 자동 합류해요'}</div></div></div>
       <button class="btn ghost sm" data-a="guestToggle">${g.on ? '쉬게 하기' : '같이 가기'}</button></div></div>`;
   }
@@ -986,7 +986,7 @@ function viewShop() {
   return `<div class="wrap">${backBtn()}
     <h2>잡화점</h2>
     <section class="grid" style="margin-top:12px">
-      <div class="row" style="justify-content:space-between"><h3>오늘의 상점 <span class="small mute">매일 자정(한국 시간)에 10칸이 새로 들어와요 · 전설 2~3개 포함</span></h3></div>
+      <div class="row" style="justify-content:space-between"><h3>오늘의 상점 <span class="small mute">매일 오전 4시(한국 시간)에 10칸이 새로 들어와요 · 전설 2~3개 포함</span></h3></div>
       <div class="igrid" style="margin-top:0">${deals}</div>
       <div class="item"><div><span class="iname">🃏 신비 카드 팩</span> <span class="small mute">보유 ${s.cardPacks ?? 0} · 오늘 남은 재고 ${pk}개</span><div class="istat">개당 ${fmt(pp)}G · 카드 보관함에서 개봉</div></div>
         <div class="row">${[1, 3].map((n) => `<button class="btn sm" data-a="buyPack" data-n="${n}" ${pk && s.gold >= pp * Math.min(n, pk) ? '' : 'disabled'}>${n}개 ${fmt(pp * Math.min(n, Math.max(1, pk)))}G</button>`).join('')}</div></div>
@@ -1143,7 +1143,7 @@ function viewRaid() {
         <p class="small mute" style="margin:6px 0 0">도전할 때마다 가한 피해만큼 골드·제련석·벨리알의 파편도 받아요. 한 번에 ${RAID_ROUNDS}라운드, 파티가 쓰러져도 넣은 피해는 남아요.</p>
       </div>
       <div class="panel">
-        <h3>도전 <span class="small mute">오늘 ${G.raidLeft(s)}/${RAID_LIMIT} · 자정 초기화</span></h3>
+        <h3>도전 <span class="small mute">오늘 ${G.raidLeft(s)}/${RAID_LIMIT} · 오전 4시 초기화</span></h3>
         <p class="small">파티 전투력 ${fmt(G.statePower(s))} · 펫 ${G.activePet(s) ? esc(PET_BY_ID[G.activePet(s)!.kind].name) : '없음'}</p>
         <h3 style="margin-top:10px">버프 물약 <span class="small mute">최대 ${MAX_POTIONS}종</span></h3>
         <div class="pots">${owned.map((p) => `<button class="pot ${gatePotions.includes(p.id) ? 'on' : ''}" data-a="pickPotion" data-id="${p.id}"><span class="row" style="gap:4px">${potionIcon(p.id, 24)}${esc(p.name)}</span><span class="small mute">×${s.potions[p.id]}</span></button>`).join('') || '<p class="small mute">물약이 없어요.</p>'}</div>
@@ -1208,7 +1208,7 @@ async function loadWB(force = false) {
   Cloud.subscribeWB((b) => { if (wb && b.season === raidWeek()) { wb.boss = b; if (screen === 'world') { const el = document.getElementById('wbhp'); if (el) el.outerHTML = wbHpBar(b); } } });
   if (screen === 'world') render();
 }
-const kstToday = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+const kstToday = () => kstDate();
 function wbHpBar(b: Cloud.WBBoss | null) {
   if (!b) return `<div id="wbhp" class="small mute">첫 도전이 들어오면 이번 주 보스가 나타나요.</div>`;
   const pct = Math.max(0, (b.hp / b.max_hp) * 100);
@@ -1482,7 +1482,7 @@ function viewRaid4() {
   if (!r4) {
     return `<div class="wrap">${backBtn()}
       <h2>4인 레이드 · ${esc(R4_BOSSES[r4BossOfWeek()].name)}</h2>
-      <p class="small mute">이번 주 보스예요 (매주 월요일 0시 교체 · 다음 주: <b>${esc(R4_BOSSES[r4NextBoss()].name)}</b>). 친구 최대 4명이 <b>단원 1명씩</b> 데려와 싸워요. 내 단원 차례가 오면 <b>스킬을 직접 골라요</b> (${R4_TURN_SEC}초 안에 안 고르면 자동). ${R4_ROUNDS}라운드 안에 쓰러뜨려야 해요. 방장 화면이 전투를 진행하니 방장은 끝까지 창을 켜 두세요.</p>
+      <p class="small mute">이번 주 보스예요 (매주 월요일 오전 4시 교체 · 다음 주: <b>${esc(R4_BOSSES[r4NextBoss()].name)}</b>). 친구 최대 4명이 <b>단원 1명씩</b> 데려와 싸워요. 내 단원 차례가 오면 <b>스킬을 직접 골라요</b> (${R4_TURN_SEC}초 안에 안 고르면 자동). ${R4_ROUNDS}라운드 안에 쓰러뜨려야 해요. 방장 화면이 전투를 진행하니 방장은 끝까지 창을 켜 두세요.</p>
       <div class="panel small"><b>${R4_BOSSES[r4BossOfWeek()].wipe.kind === 'dodge' ? '❄' : R4_BOSSES[r4BossOfWeek()].wipe.kind === 'shield' ? '🩸' : '☠'} ${esc(R4_BOSSES[r4BossOfWeek()].short)}의 기믹</b>
         <ul style="margin:6px 0 0;padding-left:18px;line-height:1.7">
           ${R4_BOSSES[r4BossOfWeek()].tips.map((x) => `<li>${x}</li>`).join('')}
@@ -2165,7 +2165,7 @@ function viewDaily() {
   }).join('');
   return `<div class="wrap">${backBtn()}
     <h2>일일 던전</h2>
-    <p class="mute">던전마다 하루 ${DAILY_LIMIT}번 (한국 시간 자정 초기화). 단계마다 개방 조건(🔒)이 표시돼 있고, 한 번 클리어한 단계는 <b>소탕</b>으로 바로 보상을 받을 수 있어요.</p>
+    <p class="mute">던전마다 하루 ${DAILY_LIMIT}번 (한국 시간 오전 4시 초기화). 단계마다 개방 조건(🔒)이 표시돼 있고, 한 번 클리어한 단계는 <b>소탕</b>으로 바로 보상을 받을 수 있어요.</p>
     <div class="dailies">${cards}</div>
   </div>`;
 }
@@ -2747,7 +2747,7 @@ function dailyResultPanel(ref: { id: string; stage: number; won: boolean }) {
       ${ref.won && nextOpen ? `<button class="btn ghost" data-a="dailyGo" data-id="${d.id}" data-v="${next}" ${left ? '' : 'disabled'}>${next}단계 도전</button>` : ''}
       <button class="btn ghost" data-a="go" data-to="daily">일일 던전 목록</button>
     </div>
-    ${left ? '' : '<p class="small mute" style="margin:6px 0 0">오늘 입장 횟수를 다 썼어요 (자정 초기화)</p>'}
+    ${left ? '' : '<p class="small mute" style="margin:6px 0 0">오늘 입장 횟수를 다 썼어요 (오전 4시 초기화)</p>'}
   </div>`;
 }
 

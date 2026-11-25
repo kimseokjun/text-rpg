@@ -116,6 +116,7 @@ export function subscribeChat(onMsg: (m: ChatMsg) => void, onFriends: () => void
   chatCh = sb.channel('db-changes')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (p) => { const m = p.new as ChatMsg2; if (!m.channel || m.channel === 'global') onMsg(m); else roomMsgHandler?.(m); })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, () => onFriends())
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mail' }, (p) => { const d = p.new as MailRow; if (d.recipient === session?.user.id) mailHandler?.(d); })
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'duels' }, (p) => { const d = p.new as DuelRow; if (d.defender === session?.user.id) duelHandler?.(d); })
     .subscribe();
 }
@@ -337,9 +338,9 @@ export async function adminChats(limit = 150): Promise<(ChatMsg & { channel: str
   return ((await sb.from('chat_messages').select('id, user_id, username, body, created_at, channel').order('id', { ascending: false }).limit(limit)).data ?? []) as (ChatMsg & { channel: string })[];
 }
 export async function adminDeleteChat(id: number) { if (sb) await sb.from('chat_messages').delete().eq('id', id); }
-export async function adminGift(user: string, g: { gold: number; stones: number; blessings: number; refineStones: number; cores: number; scales: number }): Promise<string | null> {
+export async function adminGift(user: string, g: { gold: number; stones: number; blessings: number; refineStones: number; cores: number; scales: number; runes?: number; mythEss?: number; cardPacks?: number }): Promise<string | null> {
   if (!sb) return '서버 없음';
-  const { error } = await sb.rpc('admin_gift', { p_user: user, p_gold: g.gold, p_stones: g.stones, p_bless: g.blessings, p_refine: g.refineStones, p_cores: g.cores, p_scales: g.scales });
+  const { error } = await sb.rpc('admin_gift2', { p_user: user, p_gold: g.gold, p_stones: g.stones, p_bless: g.blessings, p_refine: g.refineStones, p_cores: g.cores, p_scales: g.scales, p_runes: g.runes ?? 0, p_myth: g.mythEss ?? 0, p_packs: g.cardPacks ?? 0 });
   return error ? (/no save/.test(error.message) ? '서버 세이브가 없는 계정이에요' : error.message) : null;
 }
 export async function adminSet(user: string, muted: boolean, admin: boolean): Promise<string | null> {
@@ -407,4 +408,25 @@ export function joinR4(code: string, onSync: (m: R4Presence[]) => void, onMsg: (
     leave: () => { ch.untrack(); sb!.removeChannel(ch); },
     members,
   };
+}
+
+// ───────── 친구 우편 (장비 보내기) ─────────
+export interface MailRow { id: number; sender: string; recipient: string; sender_name: string; item: any; note: string; created_at: string }
+let mailHandler: ((m: MailRow) => void) | null = null;
+export function setMailHandler(h: typeof mailHandler) { mailHandler = h; }
+export async function sendMail(to: string, item: unknown, note = ''): Promise<string | null> {
+  if (!sb || !session) return '로그인이 필요해요';
+  const { error } = await sb.from('mail').insert({ sender: session.user.id, recipient: to, item, note });
+  if (!error) return null;
+  return /mailbox full/.test(error.message) ? '친구 우편함이 가득 찼어요 (50개)' : /too fast/.test(error.message) ? '조금 천천히 보내주세요' : /row-level|policy/.test(error.message) ? '친구에게만 보낼 수 있어요' : error.message;
+}
+export async function loadMail(): Promise<MailRow[]> {
+  if (!sb || !session) return [];
+  const { data } = await sb.from('mail').select('*').eq('recipient', session.user.id).order('id', { ascending: false }).limit(50);
+  return (data ?? []) as MailRow[];
+}
+export async function claimMail(id: number): Promise<{ item?: any; error?: string }> {
+  if (!sb || !session) return { error: '로그인이 필요해요' };
+  const { data, error } = await sb.rpc('claim_mail', { p_id: id });
+  return error ? { error: /no mail/.test(error.message) ? '이미 받은 우편이에요' : error.message } : { item: data };
 }

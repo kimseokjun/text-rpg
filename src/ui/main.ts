@@ -129,6 +129,7 @@ async function startSocial() {
   touchTimer = window.setInterval(() => Cloud.touch(false), 180000);
   chatMsgs = await Cloud.loadChat();
   friends = await Cloud.loadFriends();
+  loadMailbox().then(() => { if (mailbox.length) toast(`📮 우편함에 장비 ${mailbox.length}개가 와 있어요 (창고)`); });
   Cloud.subscribeChat((m) => {
     if (chatMsgs.some((x) => x.id === m.id)) return;
     chatMsgs.push(m); if (chatMsgs.length > 100) chatMsgs.shift();
@@ -400,7 +401,7 @@ function viewTown() {
     ['cards', '카드 보관함', `신비 카드 ${Object.keys(s.cards ?? {}).length}/${CARDS.length}${s.cardPacks ? ` · 팩 ${s.cardPacks}개` : ''}`],
     ['pets', '펫 우리', G.activePet(s) ? `${PET_BY_ID[G.activePet(s)!.kind].name} 동행 · ${s.pets.length}마리` : `펫 알 ${fmt(EGG_PRICE)}G`],
     ['shop', '잡화점', `물약 ${Object.values(s.potions).reduce((a, b) => a + b, 0)}개 보유`],
-    ['storage', '창고', `장비 ${allEquips().length}개 · 재료 보기`],
+    ['storage', '창고', `${mailbox.length ? `📮 우편 ${mailbox.length}개 · ` : ''}장비 ${allEquips().length}개 · 재료 보기`],
     ...(CLOUD ? [['rank', '명예의 전당', '무한 탑 · 전투력 · 레이드 순위'] as [string, string, string]] : []),
     ...(CLOUD && Cloud.isAdmin ? [['admin', '관리자', '회원 · 활동 로그 · 채팅 · 지급'] as [string, string, string]] : []),
   ];
@@ -1615,7 +1616,7 @@ function viewCodex() {
 }
 
 // ───────── 관리자 대시보드 ─────────
-const KIND_NAME: Record<string, string> = { cardOpen: '카드 팩', cardAwaken: '카드 각성', autoRefresh: '자동 교체', autoEnh: '자동 강화', login: '접속', signup: '회원가입', run: '던전', tower: '무한 탑', raid: '레이드', daily: '일일 던전', worldboss: '월드보스', multi: '멀티 던전', hire: '용병 고용', upgradeGuild: '길드 강화', advance: '전직', enhance: '강화', buyEquip: '장비 구매', buyDeal: '상점 구매', train: '훈련', reroll: '특성 재설정', refine: '제련', craft: '세트 제작', buyEgg: '펫 알', petSellLow: '펫 정리', claimQuest: '목표 보상', dailySweep: '소탕', buyStones: '강화석 구매', buyPack: '카드 팩 구매', admin_gift: '관리자 지급', duel: '친구 결투' };
+const KIND_NAME: Record<string, string> = { mail: '우편 보내기', raid4: '4인 레이드', cardOpen: '카드 팩', cardAwaken: '카드 각성', autoRefresh: '자동 교체', autoEnh: '자동 강화', login: '접속', signup: '회원가입', run: '던전', tower: '무한 탑', raid: '레이드', daily: '일일 던전', worldboss: '월드보스', multi: '멀티 던전', hire: '용병 고용', upgradeGuild: '길드 강화', advance: '전직', enhance: '강화', buyEquip: '장비 구매', buyDeal: '상점 구매', train: '훈련', reroll: '특성 재설정', refine: '제련', craft: '세트 제작', buyEgg: '펫 알', petSellLow: '펫 정리', claimQuest: '목표 보상', dailySweep: '소탕', buyStones: '강화석 구매', buyPack: '카드 팩 구매', admin_gift: '관리자 지급', duel: '친구 결투' };
 let adTab: 'over' | 'users' | 'log' | 'chat' = 'over';
 let adStats: any = null, adUsers: Cloud.AdminUser[] = [], adEvents: Cloud.EventRow[] = [], adChats: (Cloud.ChatMsg & { channel: string })[] = [];
 let adSel: string | null = null, adSave: any = null, adSelEvents: Cloud.EventRow[] = [];
@@ -1666,7 +1667,7 @@ function adProfile(sel: Cloud.AdminUser) {
   let body = '';
   if (!gs && adUTab !== 'log' && adUTab !== 'manage') body = '<p class="mute">세이브를 불러오는 중이거나 서버 세이브가 없어요.</p>';
   else if (adUTab === 'sum') {
-    body = `${tiles([['골드', gs!.gold], ['강화석', gs!.stones], ['축복', gs!.blessings], ['제련석', gs!.refineStones], ['군단장의 핵', gs!.cores], ['벨리알 파편', gs!.scales], ['물약', Object.values(gs!.potions).reduce((x, y) => x + y, 0)], ['길드', `Lv.${gs!.guildLevel}`]])}
+    body = `${tiles([['골드', gs!.gold], ['강화석', gs!.stones], ['축복', gs!.blessings], ['제련석', gs!.refineStones], ['군단장의 핵', gs!.cores], ['벨리알 파편', gs!.scales], ['고대 룬석', gs!.runes ?? 0], ['신화의 정수', gs!.mythEss ?? 0], ['카드 팩', gs!.cardPacks ?? 0], ['물약', Object.values(gs!.potions).reduce((x, y) => x + y, 0)], ['길드', `Lv.${gs!.guildLevel}`]])}
       <h4>진행</h4>${tiles([['최고 층', floorName(Math.max(1, gs!.maxFloor))], ['무한 탑', `${gs!.tower?.best ?? 0}층`], ['이번 주 레이드 최고', gs!.raid?.best ?? 0], ['보스 처치', gs!.bossesKilled.length], ['가이드 목표', `${gs!.questIdx ?? 0}/${QUESTS.length}`], ['용병 도감', `${(gs!.codex ?? []).length}/${MERCENARIES.length}`], ['전직 가능', G.advanceable(gs!).length], ['일차', gs!.day]])}
       <h4>출전 파티</h4><div class="cards">${party.map((c) => charCard(c, { act: 'noop', inParty: true })).join('') || '<p class="small mute">없음</p>'}</div>`;
   } else if (adUTab === 'chars') {
@@ -1694,7 +1695,7 @@ function adProfile(sel: Cloud.AdminUser) {
     body = `<div class="adlog">${adSelEvents.map(evRow).join('') || '<p class="small mute">활동 기록 없음</p>'}</div>`;
   } else {
     body = `<div class="row" style="gap:6px;flex-wrap:wrap;margin:4px 0 10px"><button class="btn ghost sm" data-a="adMute" data-v="${sel.id}">${sel.muted ? '채팅 금지 해제' : '채팅 금지'}</button>${sel.id !== Cloud.session?.user.id ? `<button class="btn ghost sm" data-a="adAdmin" data-v="${sel.id}">${sel.is_admin ? '관리자 해제' : '관리자 지정'}</button>` : ''}</div>
-      <form class="adgift" data-form="adgift"><b class="small" style="flex-basis:100%">재료 지급</b>${[['gold', '골드'], ['stones', '강화석'], ['blessings', '축복'], ['refineStones', '제련석'], ['cores', '핵'], ['scales', '벨리알 파편']].map(([k, n]) => `<label class="small">${n}<input type="number" min="0" step="1" name="${k}" value="0" inputmode="numeric"></label>`).join('')}<button class="btn sm" type="submit">지급</button></form>
+      <form class="adgift" data-form="adgift"><b class="small" style="flex-basis:100%">재료 지급</b>${[['gold', '골드'], ['stones', '강화석'], ['blessings', '축복'], ['refineStones', '제련석'], ['cores', '핵'], ['scales', '벨리알 파편'], ['runes', '고대 룬석'], ['mythEss', '신화의 정수'], ['cardPacks', '카드 팩']].map(([k, n]) => `<label class="small">${n}<input type="number" min="0" step="1" name="${k}" value="0" inputmode="numeric"></label>`).join('')}<button class="btn sm" type="submit">지급</button></form>
       <p class="small mute" style="margin:6px 0 0">지급하면 그 계정 서버 세이브에 바로 더해져요. 접속 중이면 새로고침해야 보여요 (그 전에 저장되면 덮어써짐).</p>`;
   }
   return `<div class="panel addetail">${head}
@@ -2047,6 +2048,40 @@ function autoLootPanel() {
     <p class="small mute" style="margin:0">세트·신화 장비는 등급과 상관없이 항상 가방에 들어와요.${a.rarities.includes(5) ? ' <b style="color:var(--r5)">전설도 자동 처리 중이에요!</b>' : ''}</p></div>`;
 }
 
+// ───────── 우편함 ─────────
+let mailbox: Cloud.MailRow[] = [];
+let mailBusy = false;
+async function loadMailbox() { mailbox = await Cloud.loadMail(); if (screen === 'storage' || screen === 'town') render(); }
+function mailPanel() {
+  if (!CLOUD || !Cloud.session || !mailbox.length) return '';
+  const rows = mailbox.map((m) => { const ok = m.item && EQUIP_BY_ID[m.item.baseId]; return `<div class="item"><div><span class="small mute">${esc(m.sender_name)}님이 보냄 · ${hhmm(m.created_at)}</span><div>${ok ? equipLine(m.item as Equip) : '<span class="mute">알 수 없는 장비</span>'}</div></div><button class="btn sm" data-a="mailClaim" data-v="${m.id}" ${mailBusy ? 'disabled' : ''}>받기</button></div>`; }).join('');
+  return `<div class="panel mailbox"><div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">📮 우편함 <span class="small mute">${mailbox.length}개</span></h3>${mailbox.length > 1 ? `<button class="btn sm" data-a="mailClaimAll" ${mailBusy ? 'disabled' : ''}>모두 받기</button>` : ''}</div><div class="items" style="margin-top:8px">${rows}</div></div>`;
+}
+async function claimMails(ids: number[]) {
+  if (mailBusy) return;
+  mailBusy = true; render();
+  let n = 0;
+  for (const id of ids) { const r = await Cloud.claimMail(id); if (r.item && S) { if (G.receiveMail(S, r.item).ok) n++; } else if (r.error) toast(r.error, true); }
+  mailBusy = false;
+  mailbox = await Cloud.loadMail();
+  if (n && S) { await saveGameNow(S); commit({ ok: true, msg: `장비 ${n}개를 받았어요 (가방)` }); } else render();
+}
+async function sendMailItem(equipUid: string) {
+  const s = S!;
+  const to = (document.getElementById(`mailTo-${equipUid}`) as HTMLSelectElement | null)?.value;
+  if (!to) return;
+  const who = friends.find((f) => f.other === to)?.username ?? '';
+  const e = G.takeForMail(s, equipUid);
+  if (typeof e === 'string') { toast(e, true); return; }
+  const err = await Cloud.sendMail(to, e);
+  if (err) { s.inventory.push(e); toast(err, true); render(); return; }
+  await saveGameNow(s);
+  Cloud.logEvent('mail', `${who}에게 ${EQUIP_BY_ID[e.baseId].name} 보냄`);
+  whOpen = null;
+  commit({ ok: true, msg: `${who}에게 ${EQUIP_BY_ID[e.baseId].name}을(를) 보냈어요` });
+}
+Cloud.setMailHandler((m) => { toast(`📮 ${m.sender_name}님이 장비를 보냈어요 (창고 → 우편함)`); loadMailbox(); });
+
 function viewStorage() {
   const s = S!;
   const all = allEquips();
@@ -2074,12 +2109,14 @@ function viewStorage() {
         ${set ? `<p class="small mute" style="margin:0">${esc(set.name)} 세트 효과는 캐릭터 정보에서 확인</p>` : ''}
         <div class="row" style="gap:6px">${owner ? `<button class="btn ghost sm" data-a="unequip" data-uid="${esc(owner.uid)}" data-slot="${G.slotOfWorn(owner, e) ?? ''}">${esc(owner.name)}에게서 해제</button>`
           : `<button class="btn ghost sm" data-a="sell" data-e="${esc(e.uid)}">판매 ${fmt(G.sellPrice(e))}G</button><button class="btn ghost sm" data-a="dismantle" data-e="${esc(e.uid)}">분해 · 강화석 +${G.dismantleValue(e)}</button>`}</div>
+        ${!owner && CLOUD && Cloud.session ? (() => { const fr = friends.filter((f) => f.status === 'accepted'); return fr.length ? `<div class="row mailrow" style="gap:6px;flex-wrap:wrap"><span class="small">📮 친구에게 보내기</span><select id="mailTo-${esc(e.uid)}" aria-label="받을 친구">${fr.map((f) => `<option value="${esc(f.other)}">${esc(f.username)}</option>`).join('')}</select><button class="btn sm" data-a="mailSend" data-e="${esc(e.uid)}">보내기</button></div>` : '<p class="small mute" style="margin:0">친구를 추가하면 장비를 보낼 수 있어요</p>'; })() : ''}
       </div>` : ''}
     </div>`;
   }).join('');
   const pots = POTIONS.filter((p) => (s.potions[p.id] ?? 0) > 0).map((p) => `<div><span class="small mute row" style="gap:4px">${potionIcon(p.id, 22)}${esc(p.name)}</span><b>${s.potions[p.id]}</b></div>`).join('');
   return `<div class="wrap">${backBtn()}
     <h2>창고</h2>
+    ${mailPanel()}
     <div class="sum" style="margin:12px 0">
       <div><span class="small mute">강화석</span><b>${s.stones}</b></div>
       <div><span class="small mute">축복 주문서</span><b>${s.blessings}</b></div>
@@ -2742,6 +2779,9 @@ app.addEventListener('click', (ev) => {
     case 'r4Invite': if (r4) { Cloud.sendR4Invite(d.v!, r4.code, r4.diff); toast('초대를 보냈어요'); } break;
     case 'r4InviteJoin': if (r4Invite) { const p = r4Invite; r4Invite = null; renderR4Invite(); r4Open(p.code, false, p.diff as R4Diff); } break;
     case 'r4InviteNo': r4Invite = null; renderR4Invite(); break;
+    case 'mailSend': sendMailItem(d.e!); break;
+    case 'mailClaim': claimMails([Number(d.v)]); break;
+    case 'mailClaimAll': claimMails(mailbox.map((m) => m.id)); break;
     case 'deckAuto': {
       if (d.v === 'close') { deckOpts = null; render(); break; }
       const o = G.autoDeckOptions(s!);
@@ -2819,7 +2859,7 @@ app.addEventListener('submit', (ev) => {
   if (f.dataset.form === 'adgift' && adSel) {
     ev.preventDefault();
     const fd = new FormData(f as HTMLFormElement);
-    const g = Object.fromEntries(['gold', 'stones', 'blessings', 'refineStones', 'cores', 'scales'].map((k) => [k, Math.max(0, Math.floor(Number(fd.get(k)) || 0))])) as { gold: number; stones: number; blessings: number; refineStones: number; cores: number; scales: number };
+    const g = Object.fromEntries(['gold', 'stones', 'blessings', 'refineStones', 'cores', 'scales', 'runes', 'mythEss', 'cardPacks'].map((k) => [k, Math.max(0, Math.floor(Number(fd.get(k)) || 0))])) as { gold: number; stones: number; blessings: number; refineStones: number; cores: number; scales: number; runes: number; mythEss: number; cardPacks: number };
     if (!Object.values(g).some((v) => v > 0)) { toast('지급할 수량을 넣어주세요', true); return; }
     const who = adUsers.find((u) => u.id === adSel)?.username ?? '';
     Cloud.adminGift(adSel, g).then((e) => { if (e) toast(e, true); else { toast(`${who}에게 지급 완료`); if (adSel === Cloud.session?.user.id) toast('내 계정에 지급했어요. 새로고침하면 반영돼요'); adOpenUser(adSel!); adLoad('users', true); } });

@@ -649,3 +649,4 @@ svg.px{image-rendering:pixelated;flex:none}
 .r4log{margin-top:8px;max-height:160px}
 @media (max-width:700px){.r4stage2{aspect-ratio:3/4;max-height:none}.r4panel{left:3%;right:3%;top:13%;max-width:none;min-width:0;padding:6px}.r4skills{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}.r4skb{padding:3px 5px}.r4skb b{font-size:12px}.r4ph{margin-bottom:4px}}
 @media (prefers-reduced-motion:reduce){.r4snow i,.r4banner.mine,.r4arrow,.r4unit.boss .r4spr{animation:none}}
+.mailbox{border-color:#c8a050;margin:10px 0}.mailrow{margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}.mailrow select{width:auto;min-width:120px}

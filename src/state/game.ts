@@ -1212,3 +1212,19 @@ export function claimR4(s: GameState, diff: R4Diff, frac: number, win: boolean):
   news(s, `4인 레이드 ${R4[diff].name} ${win ? '처치!' : '도전'} — ${lines[0]}`);
   return lines;
 }
+
+// ───────── 친구 우편 ─────────
+/** 보내기 전: 가방에서 꺼냄 (장착 중인 건 불가) */
+export function takeForMail(s: GameState, equipUid: string): Equip | string {
+  const i = s.inventory.findIndex((e) => e.uid === equipUid);
+  if (i < 0) return '가방에 있는 장비만 보낼 수 있어요 (장착 중이면 먼저 해제)';
+  const [e] = s.inventory.splice(i, 1);
+  return e;
+}
+/** 받은 장비 넣기 (모르는 장비는 무시) */
+export function receiveMail(s: GameState, item: any): Result {
+  if (!item || typeof item !== 'object' || !EQUIP_BY_ID[item.baseId]) return fail('알 수 없는 장비예요');
+  const e: Equip = { ...item, uid: newUid('e'), enhance: Math.max(0, Math.min(15, Number(item.enhance) || 0)), failStack: 0, options: Array.isArray(item.options) ? item.options : [] };
+  s.inventory.push(e);
+  return { ok: true, msg: `${EQUIP_BY_ID[e.baseId].name} 받았어요` };
+}

@@ -182,6 +182,8 @@ export interface Character {
   transcend?: number;
   /** 다음 초월까지 모은 같은 용병 수 */
   transShard?: number;
+  /** 꾸미기 (망토·오라·이름표·등장 효과 아이템 id) */
+  cos?: Partial<Record<'cape' | 'aura' | 'plate' | 'ent', string>>;
   bonusPoints: Partial<Stats>;
   equipment: Partial<Record<EquipSlot, Equip>>;
   skillSlots: SkillSlot[]; // 우선순위 순

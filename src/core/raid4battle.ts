@@ -16,7 +16,7 @@ export let R4_K_EXP = 0.68;
 export const setR4Exp = (v: number) => { R4_K_EXP = v; };
 const BOSS_FLOOR = 70;
 
-export interface R4Unit { id: string; name: string; owner?: string; ownerName?: string; jobId?: string; mid?: string; hp: number; maxHp: number; mp: number; maxMp: number; alive: boolean; boss?: boolean; frozen?: boolean }
+export interface R4Unit { id: string; name: string; owner?: string; ownerName?: string; jobId?: string; mid?: string; hp: number; maxHp: number; mp: number; maxMp: number; alive: boolean; boss?: boolean; frozen?: boolean; cos?: Character['cos'] }
 export type WipeKind = 'interrupt' | 'dodge' | 'shield';
 export interface R4BossState { id: R4BossId; phase: number; cast: { name: string; kind: WipeKind; left: number; gauge: number; max: number } | null; groggy: number; mark: string | null; enraged: boolean }
 /** 회피 타임 (절대영도): 방장이 시드·단계를 정해 모두에게 보내고, 각자 맞은 횟수를 돌려받음 */
@@ -378,7 +378,7 @@ export class Raid4Battle {
   /** 마지막 방송 이후 새 기록 */
   drain(): BattleEvent[] { const out = this.ctx.log.slice(this.cursor); this.cursor = this.ctx.log.length; return out; }
   state(): R4State {
-    const u = (c: Combatant): R4Unit => ({ id: c.id, name: c.name, owner: this.owners[c.id]?.owner, ownerName: this.owners[c.id]?.ownerName, jobId: c.char?.jobId, mid: c.mdef?.id, hp: Math.max(0, Math.round(c.hp)), maxHp: c.maxHp, mp: Math.round(c.mp), maxMp: c.maxMp, alive: c.alive, boss: c === this.boss, frozen: this.frozen(c) || undefined });
+    const u = (c: Combatant): R4Unit => ({ id: c.id, name: c.name, owner: this.owners[c.id]?.owner, ownerName: this.owners[c.id]?.ownerName, jobId: c.char?.jobId, mid: c.mdef?.id, hp: Math.max(0, Math.round(c.hp)), maxHp: c.maxHp, mp: Math.round(c.mp), maxMp: c.maxMp, alive: c.alive, boss: c === this.boss, frozen: this.frozen(c) || undefined, cos: c.char?.cos });
     return {
       round: Math.min(this.ctx.round, R4_ROUNDS), turn: this.current?.id ?? null, order: this.order.slice(this.idx).filter((c) => c.alive).map((c) => c.id),
       units: [...this.ctx.party, ...this.ctx.enemies].map(u), over: this.over, win: this.win, dealt: Math.round(this.boss.maxHp - Math.max(0, this.boss.hp)), maxHp: this.boss.maxHp,

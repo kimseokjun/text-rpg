@@ -2,15 +2,18 @@
  *  패턴은 방장이 정한 시드로 모두 같게, 판정은 각자 화면에서 → 맞은 횟수만 방장에게 보냄 */
 
 export interface DodgePlayer { owner: string; name: string; icon: string }
+type DodgePos = { x: number; y: number; d: boolean; h: number; dash?: boolean; facing?: -1 | 1 };
+
 export interface DodgeOpts {
   host: HTMLElement; seed: number; level: number; me: string; players: DodgePlayer[];
-  onPos: (p: { x: number; y: number; d: boolean; h: number }) => void;
+  onPos: (p: DodgePos) => void;
   onEnd: (hits: number) => void;
 }
-export interface DodgeRun { ghost: (owner: string, p: { x: number; y: number; d: boolean; h: number }) => void; stop: () => void }
+export interface DodgeRun { ghost: (owner: string, p: DodgePos) => void; stop: () => void }
 
 export const DODGE_SEC = 8;
 const COUNT_SEC = 3;
+const DASH_MS = 250, DASH_COOLDOWN_MS = 1500, DASH_SPEED = 88;
 const W = 100, GROUND = 82; // 가로 0~100, 바닥 높이(%)
 const PX = 0.5625; // 세로 1% = 가로 0.5625 (16:9)
 type Ob = { t: number; kind: 'low' | 'high' | 'fall'; x: number; speed: number; id: number };
@@ -32,7 +35,7 @@ export function dodgePattern(seed: number, level: number): Ob[] {
     const speed = (62 + lv * 8) * (1 + late * 0.35); // 초당 가로 이동
     out.push({ t, kind, x: kind === 'fall' ? 8 + r() * 34 : W + 4, speed, id: id++ });
     // 마지막 구간엔 높은 것·낮은 것이 짧은 간격으로 섞여 옴
-    t += Math.max(0.36, (0.95 - lv * 0.09) * (1 - late * 0.4) + r() * 0.25);
+    t += Math.max(0.36, (0.90 - lv * 0.09) * (1 - late * 0.4) + r() * 0.25);
   }
   return out;
 }
@@ -44,10 +47,10 @@ export function startDodge(o: DodgeOpts): DodgeRun {
   root.className = 'dodge';
   root.innerHTML = `<div class="dg-sky"></div><div class="dg-ground"></div>
     <div class="dg-title">❄ 절대영도 ❄</div>
-    <div class="dg-help">${meP ? '<b>↑ / Space</b> 점프 · <b>↓</b> 숙이기 · <b>← →</b> 이동' : '관전 중'}</div>
+    <div class="dg-help">${meP ? '<b>↑ / Space</b> 점프 · <b>↓</b> 숙이기 · <b>← →</b> 이동 · <b>Shift</b> 대쉬' : '관전 중'}</div>
     <div class="dg-count" id="dgc"></div><div class="dg-timer"><i id="dgt"></i></div>
     <div class="dg-field" id="dgf"></div>
-    ${meP ? `<div class="dg-pad"><div><button data-k="L" aria-label="왼쪽">◀</button><button data-k="R" aria-label="오른쪽">▶</button></div><div><button data-k="D" aria-label="숙이기">숙이기</button><button data-k="U" aria-label="점프">점프</button></div></div>` : ''}`;
+    ${meP ? `<div class="dg-pad"><div><button data-k="L" aria-label="왼쪽">◀</button><button data-k="R" aria-label="오른쪽">▶</button></div><div><button data-k="D" aria-label="숙이기">숙이기</button><button data-k="U" aria-label="점프">점프</button><button data-k="dash" aria-label="대쉬">대쉬</button></div></div>` : ''}`;
   o.host.appendChild(root);
   const field = root.querySelector<HTMLElement>('#dgf')!;
   const mk = (cls: string, html = '') => { const d = document.createElement('div'); d.className = cls; d.innerHTML = html; field.appendChild(d); return d; };
@@ -62,14 +65,35 @@ export function startDodge(o: DodgeOpts): DodgeRun {
   const obEl = new Map<number, HTMLElement>();
   // 내 상태
   let x = 20, y = 0, vy = 0, duck = false, hits = 0, inv = 0;
+  let facing: -1 | 1 = 1, dashFacing: -1 | 1 = 1;
+  let dashStart = -Infinity, lastDashSent = false;
+  const dashButton = root.querySelector<HTMLButtonElement>('[data-k="dash"]');
+  const canDash = (now: number) => now - dashStart >= DASH_COOLDOWN_MS;
+  const tryDash = () => {
+    const now = performance.now();
+    if (done || !canDash(now)) return;
+    dashStart = now;
+    dashFacing = facing;
+  };
   const keys = { L: false, R: false, U: false, D: false };
   const keyMap: Record<string, keyof typeof keys> = { ArrowLeft: 'L', a: 'L', A: 'L', ArrowRight: 'R', d: 'R', D: 'R', ArrowUp: 'U', w: 'U', W: 'U', ' ': 'U', ArrowDown: 'D', s: 'D', S: 'D' };
-  const kd = (e: KeyboardEvent) => { const k = keyMap[e.key]; if (!k || !meP) return; e.preventDefault(); keys[k] = true; };
+  const press = (k: keyof typeof keys) => {
+    keys[k] = true;
+    if (k === 'L' || k === 'R') facing = k === 'L' ? -1 : 1;
+  };
+  const kd = (e: KeyboardEvent) => {
+    if (!meP) return;
+    if (e.key === 'Shift') { e.preventDefault(); if (!e.repeat) tryDash(); return; }
+    const k = keyMap[e.key]; if (!k) return;
+    e.preventDefault();
+    if (!e.repeat) press(k);
+  };
   const ku = (e: KeyboardEvent) => { const k = keyMap[e.key]; if (!k) return; keys[k] = false; };
   window.addEventListener('keydown', kd); window.addEventListener('keyup', ku);
-  root.querySelectorAll<HTMLButtonElement>('.dg-pad button').forEach((b) => {
+  dashButton?.addEventListener('click', tryDash);
+  root.querySelectorAll<HTMLButtonElement>('.dg-pad button:not([data-k="dash"])').forEach((b) => {
     const k = b.dataset.k as keyof typeof keys;
-    const on = (v: boolean) => (e: Event) => { e.preventDefault(); keys[k] = v; b.classList.toggle('on', v); };
+    const on = (v: boolean) => (e: Event) => { e.preventDefault(); if (v) press(k); else keys[k] = false; b.classList.toggle('on', v); };
     b.addEventListener('pointerdown', on(true)); b.addEventListener('pointerup', on(false)); b.addEventListener('pointerleave', on(false)); b.addEventListener('pointercancel', on(false));
   });
   const t0 = performance.now() + COUNT_SEC * 1000;
@@ -85,17 +109,21 @@ export function startDodge(o: DodgeOpts): DodgeRun {
   };
   function frame(now: number) {
     if (done) return;
-    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    const frameStart = Math.max(last, now - 50);
+    const dt = (now - frameStart) / 1000; last = now;
     const t = (now - t0) / 1000;
     if (t < 0) { countEl.textContent = String(Math.ceil(-t)); countEl.style.display = ''; }
     else countEl.style.display = 'none';
     timerEl.style.width = `${Math.max(0, Math.min(100, (1 - t / DODGE_SEC) * 100))}%`;
     // 이동 (카운트다운 중에도 연습 가능)
     if (meP) {
-      duck = keys.D && y <= 0.01;
+      const dashEnd = dashStart + DASH_MS;
+      const dashing = now < dashEnd;
+      const dashDt = Math.max(0, Math.min(now, dashEnd) - Math.max(frameStart, dashStart)) / 1000;
+      duck = !dashing && keys.D && y <= 0.01;
       const sp = duck ? 22 : 40;
-      if (keys.L) x -= sp * dt;
-      if (keys.R) x += sp * dt;
+      x += dashFacing * DASH_SPEED * dashDt;
+      x += (Number(keys.R) - Number(keys.L)) * sp * (dt - dashDt);
       x = Math.max(4, Math.min(46, x));
       if (keys.U && y <= 0.01 && vy <= 0) vy = 60;
       vy -= 175 * dt; y = Math.max(0, y + vy * dt);
@@ -103,7 +131,15 @@ export function startDodge(o: DodgeOpts): DodgeRun {
       inv = Math.max(0, inv - dt);
       place(meEl!, x, y, duck);
       meEl!.classList.toggle('inv', inv > 0);
-      if (now - lastSend > 90) { lastSend = now; o.onPos({ x: +x.toFixed(1), y: +y.toFixed(1), d: duck, h: hits }); }
+      meEl!.classList.toggle('dash', dashing);
+      const shownFacing = dashing ? dashFacing : facing;
+      meEl!.classList.toggle('face-right', shownFacing === 1);
+      if (dashButton) dashButton.disabled = !canDash(now);
+      if (dashing !== lastDashSent || now - lastSend > 90) {
+        lastSend = now;
+        lastDashSent = dashing;
+        o.onPos({ x: +x.toFixed(1), y: +y.toFixed(1), d: duck, h: hits, dash: dashing, facing: shownFacing });
+      }
     }
     for (const g of others.values()) { g.x += (g.tx - g.x) * Math.min(1, dt * 12); g.y += (g.ty - g.y) * Math.min(1, dt * 12); place(g.el, g.x, g.y, g.d); }
     // 얼음
@@ -130,7 +166,7 @@ export function startDodge(o: DodgeOpts): DodgeRun {
         if (ox < -10) el.style.opacity = '0';
       }
       // 판정 (회피 시간 중에만)
-      if (meP && t >= 0 && t <= DODGE_SEC && active && inv <= 0) {
+      if (meP && t >= 0 && t <= DODGE_SEC && active && inv <= 0 && now >= dashStart + DASH_MS) {
         const pw = 4.4, ph = duck ? 5 : 10.5;
         const overlapX = Math.abs(ox - x) < (ow + pw) / 2;
         const overlapY = y < oyTop && y + ph > oyBot;
@@ -143,6 +179,7 @@ export function startDodge(o: DodgeOpts): DodgeRun {
   function finish() {
     if (done) return;
     done = true; cancelAnimationFrame(raf);
+    if (dashButton) dashButton.disabled = true;
     const res = document.createElement('div'); res.className = `dg-result ${hits ? '' : 'perfect'}`;
     res.innerHTML = meP ? (hits ? `${hits}번 맞았어요 <span>(최대 HP ${Math.min(6, hits) * 35}%)</span>` : '완벽 회피! ✨') : '회피 타임 종료';
     root.appendChild(res);
@@ -156,7 +193,18 @@ export function startDodge(o: DodgeOpts): DodgeRun {
   }
   raf = requestAnimationFrame(frame);
   return {
-    ghost(owner, p) { const g = others.get(owner); if (!g) return; g.tx = p.x; g.ty = p.y; g.d = p.d; if (p.h > Number(g.el.dataset.h ?? 0)) { g.el.dataset.h = String(p.h); g.el.classList.add('hit'); setTimeout(() => g.el.classList.remove('hit'), 300); } },
+    ghost(owner, p) {
+      const g = others.get(owner);
+      if (!g) return;
+      g.tx = p.x; g.ty = p.y; g.d = p.d;
+      g.el.classList.toggle('dash', p.dash === true);
+      g.el.classList.toggle('face-right', p.facing === 1);
+      if (p.h > Number(g.el.dataset.h ?? 0)) {
+        g.el.dataset.h = String(p.h);
+        g.el.classList.add('hit');
+        setTimeout(() => g.el.classList.remove('hit'), 300);
+      }
+    },
     stop,
   };
 }

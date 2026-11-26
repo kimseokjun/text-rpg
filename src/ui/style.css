@@ -802,3 +802,4 @@ svg.px{image-rendering:pixelated;flex:none}
 .r4cast.dodge{border-color:#6ac8ff;background:#061a30e8;box-shadow:0 0 24px #6ac8ff80;animation:none}
 .r4cast.dodge .r4ct{color:#dff4ff}.r4cast.dodge .r4chint{color:#bfe8ff}
 .r4cast.shield{border-color:#ff3050}.r4cast.shield .r4gauge i{background:linear-gradient(90deg,#8a0a20,#ff3050)}
+.r4ask{margin-top:8px;padding:10px 12px;border-radius:8px;border:1px solid var(--gold);background:#ffd95e12}

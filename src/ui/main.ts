@@ -1231,7 +1231,7 @@ interface R4Room {
   pick: string | null; ready: boolean; chars: Record<string, R4Member>;
   phase: 'lobby' | 'battle' | 'done'; st: R4State | null; log: { c: string; t: string }[];
   choice: { turn: string; owner: string; skills: { skillId: string; name: string; mp: number; ok: boolean; why?: string; interrupt?: number }[]; deadline: number } | null;
-  result?: { win: boolean; frac: number; lines: string[] }; battle?: Raid4Battle; timer?: number; inBattle: string[]; sawHost?: boolean;
+  result?: { win: boolean; frac: number; lines: string[]; pending?: boolean }; battle?: Raid4Battle; timer?: number; inBattle: string[]; sawHost?: boolean;
   boss: R4BossId;
   /** 회피 타임: 진행 중인 미니게임, 방장이 모으는 결과 */
   dodge?: { run?: DodgeRun; res: Record<string, number>; owners: string[]; timer?: number };
@@ -1480,7 +1480,9 @@ function r4Finish(win: boolean, frac: number) {
   if (!r4) return;
   r4.phase = 'done'; r4.ready = false;
   const mine = r4.inBattle.includes(myId());
-  r4.result = { win, frac, lines: mine ? G.claimR4(S!, r4.diff, frac, win) : ['이번 전투에 참가하지 않았어요'] };
+  // 실패했고 오늘 보상이 남아 있으면 받을지 물어봄 (안 받으면 기회 유지)
+  const ask = mine && !win && !G.r4Claimed(S!, r4.diff);
+  r4.result = { win, frac, pending: ask, lines: !mine ? ['이번 전투에 참가하지 않았어요'] : ask ? [] : G.claimR4(S!, r4.diff, frac, win) };
   if (mine) Cloud.logEvent('raid4', `${R4[r4.diff].name} ${win ? '처치' : `실패 (${Math.round(frac * 100)}%)`}`);
   r4Track();
   commit();
@@ -1519,7 +1521,9 @@ function viewRaid4() {
     const allReady = !!room.pick && room.members.every((m) => m.host || m.ready);
     return `<div class="wrap">${backBtn()}
       <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><h2 style="margin:0">4인 레이드 · ${esc(R4_BOSSES[room.boss].short)} · ${R4[room.diff].name}</h2><span class="row" style="gap:8px"><span>방 코드 <b class="r4code">${esc(room.code)}</b></span><button class="btn ghost sm" data-a="r4Leave">나가기</button></span></div>
-      ${room.result ? `<div class="panel dres ${room.result.win ? 'w' : 'l'}"><b>${room.result.win ? `🏆 ${esc(R4_BOSSES[room.boss].short)} 처치!` : `💀 실패 · ${Math.round(room.result.frac * 100)}% 피해`}</b>${room.result.lines.map((l) => `<div class="small">${esc(l)}</div>`).join('')}</div>` : ''}
+      ${room.result ? `<div class="panel dres ${room.result.win ? 'w' : 'l'}"><b>${room.result.win ? `🏆 ${esc(R4_BOSSES[room.boss].short)} 처치!` : `💀 실패 · ${Math.round(room.result.frac * 100)}% 피해`}</b>${room.result.lines.map((l) => `<div class="small">${esc(l)}</div>`).join('')}${room.result.pending ? (() => { const rw = r4Reward(room.diff, room.result!.frac, false); return `<div class="r4ask" role="alertdialog" aria-label="보상 받기 확인"><div class="small">이번 결과로 받을 수 있는 보상: <b>정수 ${rw.ess} · 핵 ${rw.cores} · 룬석 ${rw.runes} · ${fmt(rw.gold)}G</b> <span class="mute">(실패라 처치 보상의 ${Math.round(Math.min(1, room.result!.frac) * 40)}%)</span></div>
+        <div class="small mute">받으면 오늘 ${esc(R4[room.diff].name)} 기회를 써요. 안 받으면 기회가 남아서 다시 도전할 수 있어요.</div>
+        <div class="row" style="gap:8px;margin-top:6px;flex-wrap:wrap"><button class="btn sm" data-a="r4ClaimNow">보상 받기 (오늘 기회 사용)</button><button class="btn ghost sm" data-a="r4ClaimSkip">안 받고 다시 도전</button></div></div>`; })() : ''}</div>` : ''}
       ${room.host ? `<div class="tabs" role="group" aria-label="난이도" style="margin:10px 0">${R4_DIFFS.map((d) => `<button class="${room.diff === d ? 'on' : ''}" data-a="r4Diff" data-v="${d}">${R4[d].name} · 1인 ${fmt(R4[d].power)}</button>`).join('')}</div>` : `<p class="small mute">난이도는 방장이 정해요 · 권장 1인 전투력 ${fmt(R4[room.diff].power)}</p>`}
       <div class="r4slots">${slots}</div>
       <div class="panel"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><h3 style="margin:0">데려갈 단원 1명</h3>${sortBar()}</div><div class="dpicks" style="margin-top:8px">${picks}</div>
@@ -3172,6 +3176,8 @@ app.addEventListener('click', (ev) => {
     case 'profDuel': if (prof) { screen = 'duel'; duelLast = null; loadDuelLog(); render(); window.scrollTo(0, 0); } break;
     case 'rosterSort': rosterSort = d.v as RosterSort; try { localStorage.setItem('rpg-sort', rosterSort); } catch { /* 저장 불가 */ } render(); break;
     case 'r4Create': { const code = Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join(''); r4Open(code, true, d.v as R4Diff); break; }
+    case 'r4ClaimNow': if (r4?.result?.pending && S) { r4.result = { ...r4.result, pending: false, lines: G.claimR4(S, r4.diff, r4.result.frac, false) }; commit(); } break;
+    case 'r4ClaimSkip': if (r4?.result?.pending) { r4.result = { ...r4.result, pending: false, lines: ['보상을 받지 않았어요 · 오늘 기회가 그대로 남아 있어요'] }; render(); } break;
     case 'r4Leave': r4Leave(); render(); break;
     case 'r4qc': r4Qc(Number(d.v)); break;
     case 'r4Pick': if (r4 && !r4.ready) { r4.pick = d.uid!; r4Track(); render(); } break;

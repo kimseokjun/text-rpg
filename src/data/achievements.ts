@@ -85,6 +85,7 @@ export const ACHS: AchDef[] = [
   // 함께
   { id: 'duelWin', cat: 'social', name: '결투 승리', unit: '회', goals: [1, 10, 50], titles: { 2: 'duelist' }, get: (s) => c(s, 'duelWin') },
   { id: 'r4', cat: 'social', name: '4인 레이드', unit: '회', goals: [1, 10, 50], get: (s) => c(s, 'raid4') },
+  { id: 'defWin', cat: 'social', name: '랜덤 디펜스 30웨이브', unit: '회', goals: [1, 10, 30], get: (s) => c(s, 'defWin_easy') + c(s, 'defWin_normal') + c(s, 'defWin_hard') },
   { id: 'r4hell', cat: 'social', name: '지옥 레이드 처치', unit: '회', goals: [1, 10], titles: { 0: 'hellConq' }, get: (s) => c(s, 'r4win_hell') },
   { id: 'lend', cat: 'social', name: '친구에게 단원 빌려주기', unit: '회', goals: [1, 10, 50], titles: { 2: 'loyal' }, get: (s) => c(s, 'lent') },
   { id: 'multi', cat: 'social', name: '파티 던전', unit: '회', goals: [10, 50, 200], get: (s) => c(s, 'multi') },

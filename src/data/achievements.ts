@@ -11,7 +11,7 @@ export interface AchState {
   maxFloor: number; roster: Character[]; party: string[]; inventory: Equip[]; pets: Pet[];
   cnt?: Record<string, number>; tower?: { best: number };
   cards?: Record<string, OwnedCard>; codex?: string[]; bossesKilled: string[];
-  ach?: Record<string, number>; achMs?: number; title?: string;
+  ach?: Record<string, number>; achMs?: number; title?: string; r4Abyss?: number;
 }
 
 export type AchCat = 'explore' | 'battle' | 'growth' | 'gear' | 'collect' | 'social' | 'life';
@@ -33,6 +33,8 @@ export const TITLES: Title[] = [
   { id: 'cardMaster', name: '카드 마스터', tone: 5, mods: [pm('skillDmg', 3)], desc: '스킬 피해 +3%' },
   { id: 'duelist', name: '불패의 결투가', tone: 5, mods: [pm('agi', 3)], desc: '민첩 +3%' },
   { id: 'hellConq', name: '지옥 정복자', tone: 5, mods: [pm('raidDmg', 5)], desc: '레이드 보스 피해 +5%' },
+  { id: 'abyssWalker', name: '심연을 걷는 자', tone: 5, mods: [pm('raidDmg', 6), pm('hp', 2)], desc: '레이드 보스 피해 +6% · 생명력 +2%' },
+  { id: 'abyssLord', name: '심연의 정복자', tone: 5, mods: [pm('raidDmg', 8), pm('atk', 3), pm('mag', 3)], desc: '레이드 보스 피해 +8% · 공격력·마력 +3%' },
   { id: 'loyal', name: '의리의 동료', tone: 4, mods: [pm('healPower', 5)], desc: '회복량 +5%' },
   { id: 'tycoon', name: '대부호', tone: 4, mods: [pm('goldGain', 8)], desc: '골드 획득 +8%' },
   { id: 'achiever', name: '업적의 달인', tone: 5, mods: [pm('atk', 1), pm('mag', 1), pm('hp', 1), pm('def', 1)], desc: '공격력·마력·생명력·방어 +1%' },
@@ -86,6 +88,7 @@ export const ACHS: AchDef[] = [
   { id: 'duelWin', cat: 'social', name: '결투 승리', unit: '회', goals: [1, 10, 50], titles: { 2: 'duelist' }, get: (s) => c(s, 'duelWin') },
   { id: 'r4', cat: 'social', name: '4인 레이드', unit: '회', goals: [1, 10, 50], get: (s) => c(s, 'raid4') },
   { id: 'r4hell', cat: 'social', name: '지옥 레이드 처치', unit: '회', goals: [1, 10], titles: { 0: 'hellConq' }, get: (s) => c(s, 'r4win_hell') },
+  { id: 'abyss', cat: 'social', name: '4인 레이드 심연', unit: '단계', goals: [1, 3, 5, 10], titles: { 2: 'abyssWalker', 3: 'abyssLord' }, get: (s) => s.r4Abyss ?? 0 },
   { id: 'lend', cat: 'social', name: '친구에게 단원 빌려주기', unit: '회', goals: [1, 10, 50], titles: { 2: 'loyal' }, get: (s) => c(s, 'lent') },
   { id: 'multi', cat: 'social', name: '파티 던전', unit: '회', goals: [10, 50, 200], get: (s) => c(s, 'multi') },
   // 일상

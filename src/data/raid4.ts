@@ -1,14 +1,21 @@
 /** 4인 레이드: 주간 로테이션 보스. 인당 단원 1명, 차례마다 스킬을 직접 고름 (방장 화면이 전투 진행) */
 import { DAY_SHIFT_MS, kstDate } from './daily';
 
-export type R4Diff = 'normal' | 'hard' | 'hell';
+/** 노말·하드·헬 + 헬 위의 「심연」 1~10단계 */
+export const ABYSS_MAX = 10;
+export type AbyssDiff = `abyss${number}`;
+export type R4Diff = 'normal' | 'hard' | 'hell' | AbyssDiff;
 export const R4_DIFFS: R4Diff[] = ['normal', 'hard', 'hell'];
+export const ABYSS_DIFFS: AbyssDiff[] = Array.from({ length: ABYSS_MAX }, (_, i) => `abyss${i + 1}` as AbyssDiff);
+export const abyssLevel = (d: string) => (/^abyss(\d+)$/.test(d) ? Number(d.slice(5)) : 0);
+export const isAbyss = (d: string) => abyssLevel(d) > 0;
 export interface R4Def { name: string; power: number; ess: number; mythChance: number }
-/** power = 권장 1인 전투력 (난이도마다 2배). 보스 능력치도 같은 배율로 커짐 */
-export const R4: Record<R4Diff, R4Def> = {
+/** power = 권장 1인 전투력 (난이도마다 2배, 심연은 1단계 80만에서 단계마다 +30%). 보스 능력치도 같은 배율로 커짐 */
+export const R4: Record<string, R4Def> = {
   normal: { name: '노말', power: 125000, ess: 20, mythChance: 0 },
   hard: { name: '하드', power: 250000, ess: 45, mythChance: 6 },
   hell: { name: '헬', power: 500000, ess: 100, mythChance: 15 },
+  ...Object.fromEntries(ABYSS_DIFFS.map((d, i) => [d, { name: `심연 ${i + 1}단계`, power: Math.round(800000 * Math.pow(1.3, i) / 10000) * 10000, ess: 130 + 20 * i, mythChance: Math.min(45, 18 + 3 * i) }])),
 };
 export const R4_ROUNDS = 20;
 export const R4_TURN_SEC = 15;
@@ -16,9 +23,12 @@ export const R4_MAX = 4;
 /** 보상은 난이도마다 하루 1번 (한국 시간 오전 4시 초기화) */
 export const r4Today = () => kstDate();
 /** 실패해도 준 피해 비율만큼 정수 일부 */
-export const R4_BONUS: Record<R4Diff, { cores: number; runes: number; gold: number }> = {
+export const R4_BONUS: Record<string, { cores: number; runes: number; gold: number }> = {
   normal: { cores: 60, runes: 10, gold: 300000 }, hard: { cores: 120, runes: 20, gold: 600000 }, hell: { cores: 250, runes: 40, gold: 1200000 },
+  ...Object.fromEntries(ABYSS_DIFFS.map((d, i) => [d, { cores: 300 + 60 * i, runes: 50 + 10 * i, gold: 1500000 + 300000 * i }])),
 };
+/** 하루 보상 칸: 심연은 단계와 상관없이 하루 1번 */
+export const r4Slot = (d: string) => (isAbyss(d) ? 'abyss' : d);
 export const r4Reward = (d: R4Diff, frac: number, win: boolean) => {
   const f = win ? 1 : 0.4 * Math.min(1, frac);
   return { ess: Math.floor(R4[d].ess * f), cores: Math.floor(R4_BONUS[d].cores * f), runes: Math.floor(R4_BONUS[d].runes * f), gold: Math.floor(R4_BONUS[d].gold * f) };

@@ -802,3 +802,10 @@ svg.px{image-rendering:pixelated;flex:none}
 .r4cast.dodge{border-color:#6ac8ff;background:#061a30e8;box-shadow:0 0 24px #6ac8ff80;animation:none}
 .r4cast.dodge .r4ct{color:#dff4ff}.r4cast.dodge .r4chint{color:#bfe8ff}
 .r4cast.shield{border-color:#ff3050}.r4cast.shield .r4gauge i{background:linear-gradient(90deg,#8a0a20,#ff3050)}
+/* 4인 레이드 심연 */
+.r4d.abyss{grid-column:1/-1;background:linear-gradient(135deg,#1a0a2a,#0a0612);border-color:#5a2aa0;box-shadow:inset 0 0 30px #3a1a6a66}
+.r4d.abyss.locked{opacity:.7}
+.abysslv{display:flex;gap:3px;flex-wrap:wrap}
+.abysslv button{min-width:30px;height:28px;border-radius:6px;border:1px solid #5a2aa0;background:#12081f;color:#d8b0ff;font-weight:700;cursor:pointer}
+.abysslv button.on{background:#5a2aa0;color:#fff}
+.abysslv button:disabled{opacity:.4;cursor:default}

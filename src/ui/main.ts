@@ -27,7 +27,7 @@ import { Raid4Battle, type R4Member, type R4State } from '../core/raid4battle';
 import { mountStage, playEvents, setBanner, setPanel, speech, stageMounted, updateStage } from './r4stage';
 import * as Bgm from './bgm';
 import { mountPlaza, EMOTES, type PlazaRun } from './plaza';
-import { stageShell, unitBox, fxSkill, statusMp, spriteImg, monSpriteH, JOB_SPRITE_H, formation, enemyFormation, SUMMON_POS, fxCaption, fxLunge, fxNumber, fxBossBar, statusPanel, statusHp, type StageTheme } from './stage2d';
+import { stageShell, unitBox, fxSkill, statusMp, spriteImg, monSpriteH, JOB_SPRITE_H, formation, enemyFormation, dailyEnemyFormation, SUMMON_POS, fxCaption, fxLunge, fxNumber, fxBossBar, statusPanel, statusHp, type StageTheme } from './stage2d';
 import { FISH, FISH_GRADE_NAME, MASTERY_MAX, fishCosChance, fishWeights, masteryNeed } from '../data/fish';
 import { COSMETICS, COS_BY_ID, COS_KIND_KO, FREE_HEADS, MERC_KINDS, OUTFIT_COLORS, TRIM_COLORS, type AvatarState, type CosKind } from '../data/cosmetics';
 import { CHESTS, dRewardText } from '../data/missions';
@@ -2729,6 +2729,7 @@ function drawEnemies(list: UnitSnap[], append = false) {
   // 결투 상대는 각자 전열/후열, 몬스터는 앞줄부터 채움. 싸움 중 소환은 빈자리로
   const mobs = list.filter((m) => !m.boss);
   const pos = append ? mobs.map((_, i) => SUMMON_POS[(slot + i) % SUMMON_POS.length])
+    : EX?.daily && !withBoss ? dailyEnemyFormation(mobs.length)
     : mobs.some((m) => m.row) ? formation('e', mobs.map((m) => m.row ?? 'front')) : enemyFormation(mobs.length, withBoss);
   let mi = 0;
   for (const m of list) {

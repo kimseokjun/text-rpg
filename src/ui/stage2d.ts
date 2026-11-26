@@ -75,6 +75,13 @@ export function enemyFormation(n: number, withBoss: boolean): Pos[] {
   if (withBoss) return column('e', 'front', n).map((p) => ({ ...p, x: p.x + 4 }));
   return formation('e', Array.from({ length: n }, (_, i) => (i < 3 ? 'front' : 'back')));
 }
+/** 일일 던전의 큰 몬스터는 가로로 엇갈려 배치한다. */
+const DAILY_X: Record<number, number[]> = { 1: [32], 2: [18, 39], 3: [17, 39, 28], 4: [16, 36, 24, 43] };
+export function dailyEnemyFormation(n: number): Pos[] {
+  const count = Math.min(n, 4);
+  const ys = (mobile() ? COL_Y_M : COL_Y)[count];
+  return Array.from({ length: n }, (_, i) => ({ x: DAILY_X[count][i % count], y: ys[i % count] }));
+}
 export const BOSS_POS: Pos = { x: 18, y: 88 };
 /** 싸움 중에 불려 나온 졸개 (빈자리 쪽) */
 export const SUMMON_POS: Pos[] = [{ x: 30, y: 74 }, { x: 30, y: 93 }, { x: 8, y: 76 }, { x: 8, y: 93 }, { x: 46, y: 84 }];
@@ -90,6 +97,8 @@ export function spriteImg(key: string, h: number): string | null {
 }
 /** 몬스터별 크기 (기본 1). 작은 짐승은 작게 */
 const MON_SIZE: Record<string, number> = {
+  treasureGoblin: 0.75, mimic: 0.72, stoneBeetle: 0.64, crystalSpirit: 0.7, trainingDummy: 0.82,
+  goldGolem: 1.12, shardGolem: 1.16, rockGiant: 1.2,
   // 작은 짐승·벌레·떠다니는 것
   rat: 0.55, bat: 0.62, crystalBat: 0.62, volcBat: 0.62, vampireBat: 0.62, mosquito: 0.6, imp: 0.7, eggCluster: 0.65,
   swampToad: 0.7, salamander: 0.6, venomSpider: 0.65, webSpider: 0.7, frostWolf: 0.75, hellhound: 0.75, chaosHound: 0.75,

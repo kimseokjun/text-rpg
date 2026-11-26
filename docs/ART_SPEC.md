@@ -199,23 +199,23 @@ transparent background, no shadow, no ground, centered, same style as the refere
 | `mon/doomBringer` | 파멸의 전령 | 몬스터 · 마왕방 · 마왕의 심장 | 3 | idle |  | 적용됨 |
 | `mon/kingGuard` | 마왕 친위대장 | 정예 · 마왕방 · 마왕의 심장 | 3 | idle |  | 적용됨 |
 | `mon/lucifel` | 마왕 루시펠 | 보스 · 마왕방 · 마왕의 심장 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 적용됨 |
-| `mon/treasureGoblin` | 보물 고블린 | 특수 (레이드·일일 던전·이벤트) | 4 | idle |  | 요청 |
-| `mon/abyssKing` | 심연의 왕 아바돈 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 4인 레이드 보스 | 요청 |
-| `mon/belialFire` | 군단장 벨리알 · 화염 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 보스급 | 요청 |
-| `mon/belialAbyss` | 군단장 벨리알 · 심연 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 보스급 | 요청 |
-| `mon/belialFallen` | 군단장 벨리알 · 타락 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 보스급 | 요청 |
-| `mon/tentacle` | 심연의 촉수 | 특수 (레이드·일일 던전·이벤트) | 4 | idle |  | 요청 |
-| `mon/goldGolem` | 황금 골렘 | 특수 (레이드·일일 던전·이벤트) | 4 | idle |  | 요청 |
-| `mon/mimic` | 보물 미믹 | 특수 (레이드·일일 던전·이벤트) | 4 | idle |  | 요청 |
-| `mon/vaultKeeper` | 금고지기 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 보스급 | 요청 |
-| `mon/crystalSpirit` | 수정 정령 | 특수 (레이드·일일 던전·이벤트) | 4 | idle |  | 요청 |
-| `mon/shardGolem` | 광맥 골렘 | 특수 (레이드·일일 던전·이벤트) | 4 | idle |  | 요청 |
-| `mon/crystalHeart` | 수정 심장 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 보스급 | 요청 |
-| `mon/rockGiant` | 바위 거인 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 보스급 | 요청 |
-| `mon/stoneBeetle` | 돌갑충 | 특수 (레이드·일일 던전·이벤트) | 4 | idle |  | 요청 |
-| `mon/quarryLord` | 채석장 감독관 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 보스급 | 요청 |
-| `mon/trainingDummy` | 수련 허수아비 | 특수 (레이드·일일 던전·이벤트) | 4 | idle |  | 요청 |
-| `mon/swordInstructor` | 검술 교관 | 특수 (레이드·일일 던전·이벤트) | 4 | idle |  | 요청 |
-| `mon/grandMaster` | 무도 사범 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 보스급 | 요청 |
-| `mon/frostLord` | 빙결 군주 니플헤임 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 4인 레이드 보스 | 요청 |
-| `mon/bloodEmpress` | 혈월의 여제 세레네 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 4인 레이드 보스 | 요청 |
+| `mon/treasureGoblin` | 보물 고블린 | 특수 (레이드·일일 던전·이벤트) | 4 | idle |  | 적용됨 |
+| `mon/abyssKing` | 심연의 왕 아바돈 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 4인 레이드 보스 | 적용됨 |
+| `mon/belialFire` | 군단장 벨리알 · 화염 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 보스급 | 적용됨 |
+| `mon/belialAbyss` | 군단장 벨리알 · 심연 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 보스급 | 적용됨 |
+| `mon/belialFallen` | 군단장 벨리알 · 타락 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 보스급 | 적용됨 |
+| `mon/tentacle` | 심연의 촉수 | 특수 (레이드·일일 던전·이벤트) | 4 | idle |  | 적용됨 |
+| `mon/goldGolem` | 황금 골렘 | 특수 (레이드·일일 던전·이벤트) | 4 | idle |  | 적용됨 |
+| `mon/mimic` | 보물 미믹 | 특수 (레이드·일일 던전·이벤트) | 4 | idle |  | 적용됨 |
+| `mon/vaultKeeper` | 금고지기 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 보스급 | 적용됨 |
+| `mon/crystalSpirit` | 수정 정령 | 특수 (레이드·일일 던전·이벤트) | 4 | idle |  | 적용됨 |
+| `mon/shardGolem` | 광맥 골렘 | 특수 (레이드·일일 던전·이벤트) | 4 | idle |  | 적용됨 |
+| `mon/crystalHeart` | 수정 심장 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 보스급 | 적용됨 |
+| `mon/rockGiant` | 바위 거인 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 보스급 | 적용됨 |
+| `mon/stoneBeetle` | 돌갑충 | 특수 (레이드·일일 던전·이벤트) | 4 | idle |  | 적용됨 |
+| `mon/quarryLord` | 채석장 감독관 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 보스급 | 적용됨 |
+| `mon/trainingDummy` | 수련 허수아비 | 특수 (레이드·일일 던전·이벤트) | 4 | idle |  | 적용됨 |
+| `mon/swordInstructor` | 검술 교관 | 특수 (레이드·일일 던전·이벤트) | 4 | idle |  | 적용됨 |
+| `mon/grandMaster` | 무도 사범 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 보스급 | 적용됨 |
+| `mon/frostLord` | 빙결 군주 니플헤임 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 4인 레이드 보스 | 적용됨 |
+| `mon/bloodEmpress` | 혈월의 여제 세레네 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 4인 레이드 보스 | 적용됨 |

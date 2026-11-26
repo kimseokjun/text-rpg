@@ -892,3 +892,4 @@ kbd{font-family:inherit;font-size:.85em;padding:0 4px;border:1px solid #ffffff40
 .fishbar .ff{position:absolute;top:50%;transform:translate(-50%,-50%);font-size:20px;line-height:1}
 .fishprog{height:8px;border-radius:4px;background:#0006;overflow:hidden}.fishprog i{display:block;height:100%;background:linear-gradient(90deg,#ffd95e,#5ae07a)}
 .fishhold{margin-top:8px;width:100%;touch-action:none;user-select:none}
+.cosplate.pl-wave{background:linear-gradient(180deg,#bfe8ff,#2a7ab8);color:#04203a;border-color:#e8f8ff}

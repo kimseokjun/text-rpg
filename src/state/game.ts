@@ -13,8 +13,8 @@ import { CRAFT_COST, MYTH_CRAFT_COST, MYTH_SET, RAID_CRAFT_COST, RAID_SET } from
 import { DAILY_BY_ID, DAILY_LIMIT, dailyReward, kstDate, type DailyDef } from '../data/daily';
 import { rewardScale } from '../data/monsters';
 import { MILESTONES, MILESTONE_SCALES, RAID_DIFF, RAID_DIFF_NAME, RAID_LIMIT, attemptReward, raidMaxHp, raidWeek, type RaidDiff } from '../data/raid';
-import { FISH, type FishDef } from '../data/fish';
-import { COS_BY_ID, FREE_HEADS, MERC_KINDS, raidCosmetics, type AvatarLook, type AvatarState, type CosKind } from '../data/cosmetics';
+import { FISH, FISH_MISS_XP, FISH_XP, MASTERY_MAX, fishCosChance, masteryNeed, type FishDef } from '../data/fish';
+import { COSMETICS, COS_BY_ID, FREE_HEADS, MERC_KINDS, raidCosmetics, type AvatarLook, type AvatarState, type CosKind } from '../data/cosmetics';
 import { ACHS, ACH_BY_ID, ACH_MS, ACH_REWARD, achPoints, achReady, titleMods, unlockedTitles, TITLE_BY_ID } from '../data/achievements';
 import { EGG_PRICE, PET_BY_ID, PET_EVO_GOLD, PET_GRADE_NAME, PET_MAX_STARS, hatch, petMods, petSellPrice, type Pet } from '../data/pets';
 import { charPower, partyPower } from '../core/power';
@@ -32,6 +32,8 @@ export interface GameState {
   v: number;
   /** 광장 낚시 도감 (물고기 id → 잡은 수) */
   fish?: { caught: Record<string, number> };
+  /** 숙련도 (생활 기술별 레벨·경험치, 최대 Lv.20) */
+  mastery?: Record<string, { lv: number; xp: number }>;
   /** 오늘 군단장의 핵을 받은 마왕성·마왕방 보스 (한국 시간 오전 4시 초기화) */
   coreBoss?: { date: string; ids: string[] };
   heroName: string;
@@ -1626,16 +1628,44 @@ export function wearCos(s: GameState, target: 'avatar' | string, kind: CosKind, 
   return { ok: true, msg: it ? `${c.name}에게 「${it.name}」` : '해제했어요' };
 }
 
+// ───────── 숙련도 ─────────
+export const masteryOf = (s: GameState, k: string) => s.mastery?.[k] ?? { lv: 1, xp: 0 };
+/** 숙련 경험치 추가 → 오른 레벨 수 */
+export function gainMastery(s: GameState, k: string, xp: number): number {
+  const m = { ...masteryOf(s, k) };
+  let ups = 0;
+  if (m.lv < MASTERY_MAX) m.xp += xp;
+  while (m.lv < MASTERY_MAX && m.xp >= masteryNeed(m.lv)) { m.xp -= masteryNeed(m.lv); m.lv++; ups++; }
+  if (m.lv >= MASTERY_MAX) m.xp = 0;
+  s.mastery = { ...s.mastery, [k]: m };
+  return ups;
+}
+
 // ───────── 광장 낚시 ─────────
-/** 잡은 물고기: 도감 기록 + 바로 팔아 골드, 전설 첫 낚시면 이름표 */
+/** 잡은 물고기: 도감 기록 + 바로 팔아 골드 + 숙련도, 낮은 확률로 꾸미기, 전설 첫 낚시면 이름표 */
 export function catchFish(s: GameState, f: FishDef): string {
   const first = !s.fish?.caught[f.id];
   s.fish = { caught: { ...(s.fish?.caught ?? {}), [f.id]: (s.fish?.caught[f.id] ?? 0) + 1 } };
   s.gold += f.price;
   bump(s, 'fish');
   const out = [`${f.price.toLocaleString('ko-KR')}G에 팔았어요`];
+  const lv0 = masteryOf(s, 'fishing').lv;
+  const ups = gainMastery(s, 'fishing', FISH_XP[f.grade]);
+  out.push(`숙련 +${FISH_XP[f.grade]}`);
+  if (ups) out.push(`🎣 낚시 숙련도 Lv.${lv0 + ups}!`);
   if (first) out.push(`📖 도감 등록 (${Object.keys(s.fish.caught).length}/${FISH.length})`);
   if (f.grade === 5 && !cosOwned(s, 'plate:fish')) { (s.cos ??= []).push('plate:fish'); out.push('🎨 꾸미기 「낚시왕 이름표」 획득!'); }
+  const pool = COSMETICS.filter((c) => c.src === 'fish:drop' && !cosOwned(s, c.id));
+  if (pool.length && rngOf(s).chance(fishCosChance(masteryOf(s, 'fishing').lv))) {
+    const c = rngOf(s).pick(pool); (s.cos ??= []).push(c.id); out.push(`🎁 물고기 뱃속에서 꾸미기 「${c.name}」 발견!`);
+    news(s, `광장 낚시 중 꾸미기 「${c.name}」을(를) 찾았다!`);
+  }
   if (f.grade >= 4) news(s, `광장 연못에서 ${f.name}을(를) 낚았다!`);
   return out.join(' · ');
+}
+/** 놓쳐도 숙련 조금 */
+export function missFish(s: GameState): string {
+  const lv0 = masteryOf(s, 'fishing').lv;
+  const ups = gainMastery(s, 'fishing', FISH_MISS_XP);
+  return `숙련 +${FISH_MISS_XP}${ups ? ` · 🎣 낚시 숙련도 Lv.${lv0 + ups}!` : ''}`;
 }

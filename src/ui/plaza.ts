@@ -15,6 +15,10 @@ export interface PlazaOpts {
   onLog: (line: string) => void;
   /** 낚시로 잡음 → 저장·보상, 돌려준 글은 결과로 보여줌 */
   onCatch: (f: FishDef) => string;
+  /** 놓쳤을 때 (숙련도 조금) */
+  onMiss: () => string;
+  /** 낚시 숙련도 Lv (높을수록 상위 등급 확률↑) */
+  fishLv: () => number;
 }
 interface P { id: string; name: string; av?: AvatarState; title?: string | null; x: number; y: number; tx: number; ty: number; f: 1 | -1; moving: boolean; el: HTMLElement; seen: number }
 
@@ -122,7 +126,7 @@ export function mountPlaza(o: PlazaOpts) {
   };
   const startFish = () => {
     if (fs) return;
-    fs = { st: 'wait', t: 3 + Math.random() * 5, pos: 0.5, vel: 0, zone: 0.35, hold: false, prog: 30, msg: '찌를 던졌다… 입질을 기다리는 중 (기다렸다가 「입질!」이 뜨면 누르세요)' };
+    fs = { st: 'wait', t: 3 + Math.random() * 5, pos: 0.5, vel: 0, zone: 0.35, hold: false, prog: 30, msg: `찌를 던졌다… 입질을 기다리는 중 (기다렸다가 「입질!」이 뜨면 누르세요)<br><span class="small">🎣 낚시 숙련도 Lv.${o.fishLv()}</span>` };
     tap = null; keys.L = keys.R = keys.U = keys.D = false;
     o.send('emo', { id: o.me.id, e: '🎣' }); bubble(me, '🎣', true);
     fishView();
@@ -133,7 +137,7 @@ export function mountPlaza(o: PlazaOpts) {
     if (fs.st === 'reel') { fs.hold = down; return; }
     if (!down) return;
     if (fs.st === 'wait') endFish('너무 빨랐다! 물고기가 놀라서 도망갔다');
-    else if (fs.st === 'bite') { fs.st = 'reel'; fs.fish = rollFish(); fishView(); }
+    else if (fs.st === 'bite') { fs.st = 'reel'; fs.fish = rollFish(Math.random, o.fishLv()); fishView(); }
     else if (fs.st === 'done') { fs = null; fishView(); }
   };
   fui.addEventListener('pointerdown', (e) => {
@@ -166,7 +170,7 @@ export function mountPlaza(o: PlazaOpts) {
       endFish(`<b class="r${f.grade}">${FISH_GRADE_NAME[f.grade]} · ${f.emoji} ${f.name}</b> 을(를) 낚았다!<br><span class="small">${f.desc}</span><br>${msg}`);
       return;
     }
-    if (fs.prog <= 0) { endFish(`${fs.fish.emoji} 물고기가 줄을 끊고 도망갔다…`); return; }
+    if (fs.prog <= 0) { endFish(`${fs.fish.emoji} 물고기가 줄을 끊고 도망갔다… <span class="small">${o.onMiss()}</span>`); return; }
     const z = fui.querySelector<HTMLElement>('.fz'), ff = fui.querySelector<HTMLElement>('.ff'), pr = fui.querySelector<HTMLElement>('.fishprog i');
     if (z) z.style.left = `${fs.zone * 100}%`; if (ff) ff.style.left = `${fs.pos * 100}%`; if (pr) pr.style.width = `${fs.prog}%`;
   };

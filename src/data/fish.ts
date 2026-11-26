@@ -18,9 +18,23 @@ export const FISH_BY_ID: Record<string, FishDef> = Object.fromEntries(FISH.map((
 /** 등급 확률 % */
 export const FISH_GRADE_W = [0, 60, 25, 10, 4, 1];
 export const FISH_GRADE_NAME = ['', '흔함', '보통', '희귀', '영웅', '전설'];
-export function rollFish(rand = Math.random): FishDef {
+/** 숙련도 Lv.20에서의 등급 확률 % (Lv.1 → 20 사이는 고르게 늘어남) */
+export const FISH_GRADE_W20 = [0, 30, 30, 22, 13, 5];
+export const fishWeights = (lv = 1) => { const t = Math.max(0, Math.min(1, (lv - 1) / 19)); return FISH_GRADE_W.map((w, i) => w + (FISH_GRADE_W20[i] - w) * t); };
+export function rollFish(rand = Math.random, lv = 1): FishDef {
+  const W = fishWeights(lv);
   let x = rand() * 100, g = 1;
-  for (let i = 1; i <= 5; i++) { if (x < FISH_GRADE_W[i]) { g = i; break; } x -= FISH_GRADE_W[i]; }
+  for (let i = 1; i <= 5; i++) { if (x < W[i]) { g = i; break; } x -= W[i]; }
   const pool = FISH.filter((f) => f.grade === g);
   return pool[Math.floor(rand() * pool.length)];
 }
+
+// ───────── 숙련도 (지금은 낚시만) ─────────
+export const MASTERY_MAX = 20;
+/** 다음 레벨까지 필요한 숙련 경험치 (점점 어려워짐) */
+export const masteryNeed = (lv: number) => Math.round(20 * Math.pow(lv, 1.6));
+/** 물고기 등급별 숙련 경험치, 놓치면 2 */
+export const FISH_XP = [0, 10, 20, 40, 80, 160];
+export const FISH_MISS_XP = 2;
+/** 낚을 때 꾸미기가 나올 확률 % */
+export const fishCosChance = (lv: number) => 0.5 + 0.1 * lv;

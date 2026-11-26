@@ -1,7 +1,7 @@
 import { advanceJob, canAdvance, createHero, gainExp, levelCap, newUid, syncSkillSlots } from '../core/character';
 import { expToNext, finalStats, partyMods } from '../core/stats';
 import { COMMON_TRAITS } from '../data/traits';
-import { CARD_DUN_LIMIT, DEFAULT_SETTINGS, Expedition, RIFT_FLOORS, type ExpeditionSettings, rollEquip, rollSetEquip } from '../core/dungeon';
+import { CARD_DUN_DIFF, CARD_DUN_LIMIT, cardDunLevel, type CardDunDiff, DEFAULT_SETTINGS, Expedition, RIFT_FLOORS, type ExpeditionSettings, rollEquip, rollSetEquip } from '../core/dungeon';
 import { Rng } from '../core/rng';
 import { enhance as doEnhance, enhanceCost, hire as doHire, refreshSlotCost, rollBoard, rollCandidate, rosterLimit, type Candidate } from '../core/town';
 import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Character, type Equip, type Modifier, type EquipSlot, EQUIP_SLOTS, wornSlots, type JobId, type Rarity, type Row, type TargetPref } from '../core/types';
@@ -1098,15 +1098,16 @@ export const towerOpen = (s: GameState) => s.maxFloor >= TOWER_UNLOCK;
 // ───────── 카드 던전 (구 균열, 혼자 · 하루 3회) ─────────
 export const cardDunUsed = (s: GameState) => (s.cardDun?.date === kstDate() ? s.cardDun.used : 0);
 export const cardDunLeft = (s: GameState) => Math.max(0, CARD_DUN_LIMIT - cardDunUsed(s));
-/** level = 기준 층 (구역 첫 층 + 2). 입장할 때 횟수 차감 */
-export function startCardDun(s: GameState, level: number): Expedition | string {
+/** 난이도별 기준 층은 내 최고 층에 맞춰 자동. 입장할 때 횟수 차감 */
+export function startCardDun(s: GameState, diff: CardDunDiff): Expedition | string {
   if (cardDunLeft(s) <= 0) return `오늘 카드 던전 ${CARD_DUN_LIMIT}회를 다 돌았어요 (오전 4시 초기화)`;
-  if (level > Math.max(3, s.maxFloor || 0)) return '아직 지나오지 않은 구역이에요';
+  if (!CARD_DUN_DIFF[diff]) return '난이도를 골라주세요';
   const ok = canDepart(s);
   if (!ok.ok) return ok.msg;
   s.cardDun = { date: kstDate(), used: cardDunUsed(s) + 1 };
   bump(s, 'cardDun');
-  return new Expedition(partyChars(s), { ...DEFAULT_SETTINGS, startFloor: 1, targetFloor: RIFT_FLOORS, mode: 'advance', auto: true, retreatHpPct: 0, retreatOnDown: false, stopBeforeBoss: false, insured: true, potions: [], petMods: petPartyMods(s), rift: { level } }, rngOf(s));
+  const level = cardDunLevel(diff, s.maxFloor || 0);
+  return new Expedition(partyChars(s), { ...DEFAULT_SETTINGS, startFloor: 1, targetFloor: RIFT_FLOORS, mode: 'advance', auto: true, retreatHpPct: 0, retreatOnDown: false, stopBeforeBoss: false, insured: true, potions: [], petMods: petPartyMods(s), rift: { level, packs: CARD_DUN_DIFF[diff].packs } }, rngOf(s));
 }
 
 export function startTower(s: GameState): Expedition | string {

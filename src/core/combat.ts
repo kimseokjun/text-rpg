@@ -112,7 +112,7 @@ export function nameUnique(list: Combatant[]) {
 }
 
 export const snap = (c: Combatant) => ({
-  name: c.name, hp: Math.round(c.hp), maxHp: c.maxHp, boss: c.tags.has('boss'), elite: c.tags.has('elite'), id: c.mdef?.id, tags: [...c.tags], ...(c.char && c.side === 'enemy' ? { job: c.char.jobId } : {}),
+  name: c.name, hp: Math.round(c.hp), maxHp: c.maxHp, boss: c.tags.has('boss'), elite: c.tags.has('elite'), id: c.mdef?.id, tags: [...c.tags], ...(c.char && c.side === 'enemy' ? { job: c.char.jobId, row: rowOf(c.char) } : {}),
 });
 
 // ───────── 전투 ─────────

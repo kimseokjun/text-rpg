@@ -27,7 +27,7 @@ import { Raid4Battle, type R4Member, type R4State } from '../core/raid4battle';
 import { mountStage, playEvents, setBanner, setPanel, speech, stageMounted, updateStage } from './r4stage';
 import * as Bgm from './bgm';
 import { mountPlaza, EMOTES, type PlazaRun } from './plaza';
-import { stageShell, unitBox, fxCaption, fxLunge, fxNumber, fxBossBar, statusPanel, statusHp, type StageTheme } from './stage2d';
+import { stageShell, unitBox, formation, enemyFormation, SUMMON_POS, fxCaption, fxLunge, fxNumber, fxBossBar, statusPanel, statusHp, type StageTheme } from './stage2d';
 import { FISH, FISH_GRADE_NAME, MASTERY_MAX, fishCosChance, fishWeights, masteryNeed } from '../data/fish';
 import { COSMETICS, COS_BY_ID, COS_KIND_KO, FREE_HEADS, MERC_KINDS, OUTFIT_COLORS, TRIM_COLORS, type AvatarState, type CosKind } from '../data/cosmetics';
 import { CHESTS, dRewardText } from '../data/missions';
@@ -2694,9 +2694,10 @@ const unitHtml = (name: string, u: { id: string; hp: number; max: number; dead: 
 function drawParty() {
   const el = document.getElementById('pside');
   if (!el || !EX) return;
+  const pos = formation('p', EX.party.map((p) => (p.char ? rowOf(p.char) : 'front')));
   el.innerHTML = EX.party.map((p, i) => {
     const u = (units[p.name] ??= { id: `u${uidSeq++}`, hp: p.hp, max: p.maxHp, dead: !p.alive, side: 'p' });
-    return unitBox({ id: u.id, name: esc(p.name), icon: avatar(p.char!, 72), hp: u.hp, max: u.max, dead: u.dead, side: 'p', slot: i, owner: mOwners[p.id] ? esc(mOwners[p.id]) : undefined });
+    return unitBox({ id: u.id, name: esc(p.name), icon: avatar(p.char!, 72), hp: u.hp, max: u.max, dead: u.dead, side: 'p', pos: pos[i], owner: mOwners[p.id] ? esc(mOwners[p.id]) : undefined });
   }).join('');
   statusPanel(EX.party.map((p) => ({ name: esc(p.name), hp: units[p.name]?.hp ?? p.hp, max: p.maxHp, mp: p.mp, mpMax: p.maxMp, dead: units[p.name]?.dead ?? !p.alive, icon: avatar(p.char!, 22) })));
 }
@@ -2711,10 +2712,15 @@ function drawEnemies(list: UnitSnap[], append = false) {
   if (!append) { el.innerHTML = ''; for (const k of Object.keys(units)) if (units[k].side === 'e') delete units[k]; fxBossBar(null); }
   let slot = Object.values(units).filter((u) => u.side === 'e' && !u.boss).length;
   const withBoss = list.some((m) => m.boss) || Object.values(units).some((u) => u.side === 'e' && u.boss);
+  // 결투 상대는 각자 전열/후열, 몬스터는 앞줄부터 채움. 싸움 중 소환은 빈자리로
+  const mobs = list.filter((m) => !m.boss);
+  const pos = append ? mobs.map((_, i) => SUMMON_POS[(slot + i) % SUMMON_POS.length])
+    : mobs.some((m) => m.row) ? formation('e', mobs.map((m) => m.row ?? 'front')) : enemyFormation(mobs.length, withBoss);
+  let mi = 0;
   for (const m of list) {
     const u = (units[m.name] = { id: `e${uidSeq++}`, hp: m.hp, max: m.maxHp, dead: false, side: 'e', boss: !!m.boss });
     const icon = m.job ? charSprite(JOBS[m.job as JobId].base, m.name.replace('(상대)', ''), JOBS[m.job as JobId].tier, { size: 72 }) : monsterSprite(m.id ?? '', { size: m.boss ? 128 : m.elite ? 80 : 64, boss: m.boss, elite: m.elite, tags: m.tags });
-    el.insertAdjacentHTML('beforeend', unitBox({ id: u.id, name: esc(m.name), icon, hp: m.hp, max: m.maxHp, dead: false, side: 'e', boss: !!m.boss, slot: m.boss ? 0 : slot++, withBoss }));
+    el.insertAdjacentHTML('beforeend', unitBox({ id: u.id, name: esc(m.name), icon, hp: m.hp, max: m.maxHp, dead: false, side: 'e', boss: !!m.boss, pos: m.boss ? { x: 0, y: 0 } : pos[mi++] }));
     if (m.boss) fxBossBar(m.name, m.hp, m.maxHp);
   }
 }

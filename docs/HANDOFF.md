@@ -2,6 +2,21 @@
 
 작업 완료 시 최신 항목을 위에 추가한다. 날짜, 담당, 기준 커밋, 브랜치 또는 PR, 변경 사항, 검증 명령과 결과, 다음 작업을 남긴다. 실패하거나 실행하지 못한 검증에는 이유를 적는다.
 
+## 2026-11-26 · 2D 전투 무대 전열·후열 배치
+
+- 담당 및 브랜치는 Claude Code, `claude/stage-rows`
+- 기준 커밋 `f5468e4`. 시작 시 Codex의 새 커밋, 열린 PR, 새 이미지가 없음을 확인했다.
+- 변경 사항
+  - `src/ui/stage2d.ts`: 고정 자리표(`PARTY_POS`/`ENEMY_POS`/`BOSS_ADD_POS`)를 없애고 `formation()`·`enemyFormation()`으로 바꿨다. 전열은 가운데 쪽 줄(파티 x 60, 적 x 40), 후열은 그 뒤 20% 줄(파티 x 80, 적 x 20)에 세운다. 한 줄 인원에 따라 세로 간격을 나눈다. `unitBox`는 `slot` 대신 `pos`를 받는다.
+  - 몬스터는 앞줄 최대 3, 나머지 뒷줄. 보스가 있으면 보스는 뒤 가운데(18, 88), 졸개는 앞줄. 싸움 중 소환은 `SUMMON_POS` 빈자리로 간다.
+  - 결투 상대: `UnitSnap`에 `row`를 추가했다(`src/core/types.ts`, `src/core/combat.ts`의 `snap`). 상대도 전열·후열대로 선다.
+  - 4인 레이드(`src/ui/r4stage.ts`): `R4Unit`에 `row`를 추가했다(`src/core/raid4battle.ts`). 파티는 왼쪽에서 전열 x 34, 후열 x 14로 선다. 예전 클라이언트가 보낸 상태에는 `row`가 없어 전열로 처리한다.
+- 검증
+  - `npm run typecheck`, `npm run smoke`, `npm run build`, `git diff --check`가 통과했다.
+  - Playwright로 던전 3층(일반)과 10층(보스)을 PC·모바일에서 확인했다. 전열(전사 2)이 앞, 후열(성직자·궁수)이 뒤에 선다.
+  - 결투와 4인 레이드는 실시간 서버가 필요해 화면 검증을 하지 못했다.
+- 알려진 문제: 모바일에서 같은 줄 유닛의 이름표가 조금 겹친다(기존과 같음).
+
 ## 2026-11-26 · Claude 작업 시작·재개 규칙
 
 - 담당 및 브랜치는 Claude Code, `claude/resume-rules`

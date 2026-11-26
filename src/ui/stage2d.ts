@@ -1,4 +1,5 @@
 import { SPRITES } from '../data/spriteManifest';
+import { stageSkillFx } from './r4stage';
 /**
  * 모든 전투 공용 2D 무대 (횡스크롤): 왼쪽 적 · 오른쪽 파티, 위 보스 HP, 아래 파티 상태창, 기술 이름 배너, 피해 숫자·돌진·피격 연출.
  * 유닛 DOM 구조(.bar i · small · id)는 기존 setHp/setDead가 그대로 쓰도록 맞춤.
@@ -159,4 +160,13 @@ export function statusHp(name: string, hp: number, max: number, dead?: boolean) 
   (r.querySelector('.s2hp i') as HTMLElement).style.width = `${Math.max(0, Math.min(100, (hp / Math.max(1, max)) * 100))}%`;
   r.querySelector('small')!.textContent = String(Math.max(0, Math.round(hp)));
   if (dead !== undefined) r.classList.toggle('dead', dead);
+}
+
+/** 스킬 이펙트 (4인 레이드와 같은 연출). 이름으로 유닛을 찾고, 같은 편·상대 편은 무대 클래스(p/e)로 나눔 */
+export async function fxSkill(skill: string, actor: string, targets: string[], o: { heal?: boolean; crit?: boolean; fast?: boolean }) {
+  const host = document.getElementById('s2'), layer = fxLayer(), a = el(actor);
+  if (!host || !layer || !a) return;
+  const ts = [...new Set(targets)].map(el).filter((x): x is HTMLElement => !!x);
+  const side = (e: HTMLElement) => [...host.querySelectorAll<HTMLElement>(`.s2u.${e.classList.contains('e') ? 'e' : 'p'}:not(.dead)`)];
+  await stageSkillFx({ host, layer, spr: '.s2spr', side }, skill, a, ts, { ...o, boss: a.classList.contains('boss') });
 }

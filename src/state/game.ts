@@ -1,7 +1,7 @@
 import { advanceJob, canAdvance, createHero, gainExp, levelCap, newUid, syncSkillSlots } from '../core/character';
 import { expToNext, finalStats, partyMods } from '../core/stats';
 import { COMMON_TRAITS } from '../data/traits';
-import { DEFAULT_SETTINGS, Expedition, type ExpeditionSettings, rollEquip, rollSetEquip } from '../core/dungeon';
+import { CARD_DUN_LIMIT, DEFAULT_SETTINGS, Expedition, RIFT_FLOORS, type ExpeditionSettings, rollEquip, rollSetEquip } from '../core/dungeon';
 import { Rng } from '../core/rng';
 import { enhance as doEnhance, enhanceCost, hire as doHire, refreshSlotCost, rollBoard, rollCandidate, rosterLimit, type Candidate } from '../core/town';
 import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Character, type Equip, type Modifier, type EquipSlot, EQUIP_SLOTS, wornSlots, type JobId, type Rarity, type Row, type TargetPref } from '../core/types';
@@ -29,6 +29,8 @@ export const SAVE_VERSION = 1;
 
 export interface GameState {
   v: number;
+  /** 오늘 군단장의 핵을 받은 마왕성·마왕방 보스 (한국 시간 오전 4시 초기화) */
+  coreBoss?: { date: string; ids: string[] };
   heroName: string;
   gold: number;
   stones: number;
@@ -77,6 +79,8 @@ export interface GameState {
   cnt?: Record<string, number>;
   questIdx?: number;
   tower?: { best: number; claimed: number };
+  /** 카드 던전 (구 균열) 오늘 입장 횟수 */
+  cardDun?: { date: string; used: number };
   cores: number;
   /** 레이드 재료: 벨리알의 파편 */
   scales: number;
@@ -931,6 +935,8 @@ export function canDepart(s: GameState): Result {
   return { ok: true };
 }
 
+/** 오늘 이미 핵을 받은 보스 */
+export const coreBossToday = (s: GameState) => (s.coreBoss?.date === kstDate() ? s.coreBoss.ids : []);
 export function startExpedition(s: GameState, settings: ExpeditionSettings): Expedition | string {
   const ok = canDepart(s);
   if (!ok.ok) return ok.msg;
@@ -948,7 +954,7 @@ export function startExpedition(s: GameState, settings: ExpeditionSettings): Exp
   s.settings = { ...settings, potions: [] };
   if (settings.startFloor > maxStartFloor(s)) settings.startFloor = maxStartFloor(s);
   // 낮은 층 보상 감소는 같은 지역 기록 기준
-  return new Expedition(withGuest(s), { ...settings, potions, bestFloor: Math.min(s.maxFloor, regionEnd), petMods: petPartyMods(s) }, rngOf(s));
+  return new Expedition(withGuest(s), { ...settings, potions, bestFloor: Math.min(s.maxFloor, regionEnd), petMods: petPartyMods(s), coreBossDone: coreBossToday(s) }, rngOf(s));
 }
 
 export interface ExpeditionSummary {
@@ -996,7 +1002,8 @@ export function finishExpedition(s: GameState, ex: Expedition): ExpeditionSummar
   if (ex.loot.gold > 0) bump(s, 'goldEarn', ex.loot.gold);
   s.shards += ex.loot.shards;
   s.cores += ex.loot.cores;
-  if (!ex.settings.daily && !ex.settings.raid && !ex.settings.tower && !ex.settings.duel) bump(s, 'run');
+  if (ex.coreBosses.length) s.coreBoss = { date: kstDate(), ids: [...coreBossToday(s), ...ex.coreBosses] };
+  if (!ex.settings.daily && !ex.settings.raid && !ex.settings.tower && !ex.settings.duel && !ex.settings.rift) bump(s, 'run');
   const auto = applyAutoLoot(s, ex.loot.equips);
   ex.loot.equips = auto.kept;
   s.inventory.push(...ex.loot.equips);
@@ -1010,7 +1017,7 @@ export function finishExpedition(s: GameState, ex: Expedition): ExpeditionSummar
     st.cleared[dly.id] = Math.max(st.cleared[dly.id] ?? 0, dly.stage);
   }
   const towerLines = ex.settings.tower ? applyTower(s, ex) : undefined;
-  const reached = dly || ex.settings.raid || ex.settings.tower ? 0 : ex.reachedFloor();
+  const reached = dly || ex.settings.raid || ex.settings.tower || ex.settings.rift ? 0 : ex.reachedFloor();
   const newMax = reached > s.maxFloor;
   s.maxFloor = Math.max(s.maxFloor, reached);
   const bosses = ex.bossesKilled.filter((b) => !s.bossesKilled.includes(b));
@@ -1033,10 +1040,10 @@ export function finishExpedition(s: GameState, ex: Expedition): ExpeditionSummar
     : `${s.day - 1}일차 탐험: ${floorName(ex.floor)}까지, 골드 ${ex.loot.gold} 획득.`);
   for (const l of levelUps) news(s, `${l.name} Lv.${l.to} 달성!`);
   return {
-    reason: ex.settings.tower ? (failed ? `무한 탑 ${ex.floor}층에서 막혔다${ex.towerCleared ? ` (${ex.towerCleared}층까지 돌파)` : ''}` : `무한 탑 ${ex.towerCleared}층까지 돌파하고 귀환`) : ex.settings.raid ? (ex.raidKilled ? '군단장 벨리알 처치!' : `벨리알에게 ${ex.raidDealt.toLocaleString('ko-KR')} 피해 (${((ex.raidDealt / ex.settings.raid.maxHp) * 100).toFixed(1)}%)`) : dly ? (won ? `${DAILY_BY_ID[dly.id].name} ${dly.stage}단계 클리어!` : ex.stopReason === 'timeout' ? '시간 초과… 입장 횟수는 차감되지 않았다' : '파티 전멸… 입장 횟수는 차감되지 않았다') : ex.repeating && ex.stopReason === 'target' ? '반복 파밍을 마치고 귀환했다' : REASON[ex.stopReason ?? 'manual'],
+    reason: ex.settings.rift ? (failed ? `카드 던전 ${ex.floor}층에서 ${ex.stopReason === 'timeout' ? '시간 초과로 후퇴' : '전멸'}` : `카드 던전 ${ex.floorsCleared}층 완주!`) : ex.settings.tower ? (failed ? `무한 탑 ${ex.floor}층에서 막혔다${ex.towerCleared ? ` (${ex.towerCleared}층까지 돌파)` : ''}` : `무한 탑 ${ex.towerCleared}층까지 돌파하고 귀환`) : ex.settings.raid ? (ex.raidKilled ? '군단장 벨리알 처치!' : `벨리알에게 ${ex.raidDealt.toLocaleString('ko-KR')} 피해 (${((ex.raidDealt / ex.settings.raid.maxHp) * 100).toFixed(1)}%)`) : dly ? (won ? `${DAILY_BY_ID[dly.id].name} ${dly.stage}단계 클리어!` : ex.stopReason === 'timeout' ? '시간 초과… 입장 횟수는 차감되지 않았다' : '파티 전멸… 입장 횟수는 차감되지 않았다') : ex.repeating && ex.stopReason === 'target' ? '반복 파밍을 마치고 귀환했다' : REASON[ex.stopReason ?? 'manual'],
     towerLines,
     autoLine: auto.line,
-    daily: ex.settings.tower ? `무한 탑 · 최고 기록 ${s.tower?.best ?? 0}층` : ex.settings.raid ? `레이드 · ${RAID_DIFF_NAME[ex.settings.raid.diff]}` : dly ? `${DAILY_BY_ID[dly.id].name} ${dly.stage}단계` : undefined,
+    daily: ex.settings.rift ? `카드 던전 · 오늘 남은 횟수 ${cardDunLeft(s)}회` : ex.settings.tower ? `무한 탑 · 최고 기록 ${s.tower?.best ?? 0}층` : ex.settings.raid ? `레이드 · ${RAID_DIFF_NAME[ex.settings.raid.diff]}` : dly ? `${DAILY_BY_ID[dly.id].name} ${dly.stage}단계` : undefined,
     report: ex.report,
     lost: ex.settings.raid ? !ex.raidKilled && ex.stopReason === 'wipe' : !won,
     diag: diagnose(ex.report, ex.settings.raid ? ex.raidKilled : won, {
@@ -1083,6 +1090,20 @@ export function migrate(raw: any): GameState | null {
 // ───────── 무한 탑 ─────────
 export const towerState = (s: GameState) => (s.tower ??= { best: 0, claimed: 0 });
 export const towerOpen = (s: GameState) => s.maxFloor >= TOWER_UNLOCK;
+// ───────── 카드 던전 (구 균열, 혼자 · 하루 3회) ─────────
+export const cardDunUsed = (s: GameState) => (s.cardDun?.date === kstDate() ? s.cardDun.used : 0);
+export const cardDunLeft = (s: GameState) => Math.max(0, CARD_DUN_LIMIT - cardDunUsed(s));
+/** level = 기준 층 (구역 첫 층 + 2). 입장할 때 횟수 차감 */
+export function startCardDun(s: GameState, level: number): Expedition | string {
+  if (cardDunLeft(s) <= 0) return `오늘 카드 던전 ${CARD_DUN_LIMIT}회를 다 돌았어요 (오전 4시 초기화)`;
+  if (level > Math.max(3, s.maxFloor || 0)) return '아직 지나오지 않은 구역이에요';
+  const ok = canDepart(s);
+  if (!ok.ok) return ok.msg;
+  s.cardDun = { date: kstDate(), used: cardDunUsed(s) + 1 };
+  bump(s, 'cardDun');
+  return new Expedition(partyChars(s), { ...DEFAULT_SETTINGS, startFloor: 1, targetFloor: RIFT_FLOORS, mode: 'advance', auto: true, retreatHpPct: 0, retreatOnDown: false, stopBeforeBoss: false, insured: true, potions: [], petMods: petPartyMods(s), rift: { level } }, rngOf(s));
+}
+
 export function startTower(s: GameState): Expedition | string {
   if (!towerOpen(s)) return `마왕숲 ${TOWER_UNLOCK}층을 클리어하면 열려요`;
   const ok = canDepart(s);
@@ -1132,8 +1153,8 @@ export function applyMultiReward(s: GameState, r: { gold: number; exp: number; s
 }
 
 /** 서버 보상 지급 (월드보스 등) */
-export function grantReward(s: GameState, r: { gold?: number; cores?: number; refineStones?: number; runes?: number; egg?: number }): string {
-  s.gold += r.gold ?? 0; s.cores += r.cores ?? 0; s.refineStones += r.refineStones ?? 0; s.runes = (s.runes ?? 0) + (r.runes ?? 0);
+export function grantReward(s: GameState, r: { gold?: number; cores?: number; mythEss?: number; refineStones?: number; runes?: number; egg?: number }): string {
+  s.gold += r.gold ?? 0; s.cores += r.cores ?? 0; s.mythEss = (s.mythEss ?? 0) + (r.mythEss ?? 0); s.refineStones += r.refineStones ?? 0; s.runes = (s.runes ?? 0) + (r.runes ?? 0);
   let extra = '';
   if (r.egg) { const p = addPet(s, hatch(rngOf(s), r.egg as Grade)); extra = ` · ${PET_GRADE_NAME[p.grade]} ${PET_BY_ID[p.kind].name} 부화!`; }
   return extra;
@@ -1169,7 +1190,7 @@ export const advanceable = (s: GameState) => s.roster.filter((c) => canAdvance(c
 export function openCardPacks(s: GameState, n: number): Result & { got?: { id: string; isNew: boolean }[] } {
   const have = s.cardPacks ?? 0;
   n = Math.min(n, have);
-  if (n <= 0) return fail('카드 팩이 없어요. 균열(멀티)이나 잡화점에서 얻을 수 있어요');
+  if (n <= 0) return fail('카드 팩이 없어요. 카드 던전이나 잡화점에서 얻을 수 있어요');
   s.cards ??= {};
   const r = rngOf(s);
   const got: { id: string; isNew: boolean }[] = [];

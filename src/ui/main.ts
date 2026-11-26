@@ -9,7 +9,7 @@ import { equipStats } from '../core/stats';
 import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Row, type TargetPref, type UnitSnap, type BaseJob, type BattleEvent, type JobId, type Character, type Equip, type EquipSlot, type BaseSlot, type Rarity, type StatKey, type Modifier, EQUIP_SLOTS, wornSlots } from '../core/types';
 import { raidWeek, MILESTONE_SCALES, RAID_DIFF, RAID_DIFFS, RAID_DIFF_NAME, RAID_LIMIT, RAID_ROUNDS, nextResetText, raidForm, raidMaxHp, type RaidDiff } from '../data/raid';
 import { DAILIES, DAILY_BY_ID, DAILY_LIMIT, DAILY_STAGES, dailyReward, kstDate } from '../data/daily';
-import { CRAFT_COST, MYTH_CRAFT_COST, MYTH_SET, RAID_CRAFT_COST, RAID_SET, SETS, SET_BASES, SET_BY_ID, SET_DROP_CHANCE, SET_RARITY, SHARD_CHANCE } from '../data/sets';
+import { CRAFT_COST, MYTH_CRAFT_COST, MYTH_SET, RAID_CRAFT_COST, RAID_SET, SETS, SET_BASES, SET_BY_ID, SET_DROP_CHANCE, SET_RARITY } from '../data/sets';
 import { PET_KINDS, EGG_ODDS, EGG_PRICE, PET_BY_ID, PET_GRADE_NAME, PET_GRADE_PCT, PET_MAX_STARS, PET_EVO_GOLD, petName, petEffectText, petSellPrice, type Pet } from '../data/pets';
 import { EQUIP_BASES, EQUIP_BY_ID, MAX_POTIONS, OPTION_SLOTS, POTIONS, REFINE_CHANCE, tierOfFloor, POT_NAME, POT_UP, POT_PITY, POT_POOLS, potSlot, potValue, type PotSlot } from '../data/items';
 import { ADVANCE_AT, JOBS, advanceOptions } from '../data/jobs';
@@ -22,7 +22,7 @@ import { TRAITS } from '../data/traits';
 import { QUESTS, rewardText } from '../data/quests';
 import { WB_LIMIT, wbInfo } from '../server/worldboss';
 import { slotsFor } from '../server/multi';
-import { DEFAULT_SETTINGS, Expedition } from '../core/dungeon';
+import { CARD_DUN_LIMIT, DEFAULT_SETTINGS, Expedition, cardDunPacks } from '../core/dungeon';
 import { Raid4Battle, type R4Member, type R4State } from '../core/raid4battle';
 import { mountStage, playEvents, setBanner, setPanel, speech, stageMounted, updateStage } from './r4stage';
 import * as Bgm from './bgm';
@@ -44,7 +44,7 @@ import { townScene } from './art';
 import { charSprite, avatarSprite, AVATAR_HAIRS, AVATAR_PARTS, AVATAR_SKINS, PART_KO } from './pixel';
 import { equipKind, equipSprite, itemSprite, monsterSprite, petSprite } from './sprites';
 
-type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex' | 'admin' | 'notice' | 'cards' | 'duel' | 'profile' | 'raid4' | 'ach' | 'avatar' | 'plaza';
+type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex' | 'admin' | 'notice' | 'cards' | 'duel' | 'profile' | 'raid4' | 'ach' | 'avatar' | 'plaza' | 'carddun';
 
 let S: G.GameState | null = null;
 let screen: Screen = 'title';
@@ -282,9 +282,9 @@ const traitTag = (id: string, focusable = true) => {
 const HUBS: { id: string; name: string; tabs: [string, string][] }[] = [
   { id: 'guild', name: '모험가 길드', tabs: [['guild', '용병 모집'], ['codex', '용병 도감'], ['training', '훈련소'], ['temple', '신전']] },
   { id: 'smith', name: '대장간', tabs: [['smith', '강화'], ['refinery', '제련'], ['forge', '제작']] },
-  { id: 'adv', name: '모험', tabs: [['gate', '던전'], ['tower', '무한 탑'], ['daily', '일일'], ['raid', '레이드']] },
+  { id: 'adv', name: '모험', tabs: [['gate', '던전'], ['tower', '무한 탑'], ['daily', '일일'], ['carddun', '카드 던전'], ['raid', '레이드']] },
 ];
-if (CLOUD) HUBS[2].tabs.push(['multi', '멀티'], ['raid4', '4인 레이드'], ['world', '월드보스'], ['duel', '결투']);
+if (CLOUD) HUBS[2].tabs.push(['raid4', '4인 레이드'], ['world', '월드보스'], ['duel', '결투']);
 const hubOf = (sc: string) => HUBS.find((h) => h.tabs.some(([t]) => t === sc));
 const hubTabs = () => {
   const h = hubOf(screen);
@@ -813,7 +813,7 @@ function viewForge() {
   return `<div class="wrap">${backBtn()}
     <h2>제작소</h2>
     <p class="small mute">마왕성 입구에서 모은 재료로 원하는 세트 장비를 만들어요. 만든 장비는 영웅 ${SET_RARITY[4]}% · 전설 ${SET_RARITY[5]}% 등급으로 나오고, 강화·제련도 그대로 할 수 있어요.<br>
-    재료 드롭(마왕성): 군단장의 핵 — 일반 ${SHARD_CHANCE.normal}% · 엘리트·보스 확정 (보스 25~38개) · 일일 던전 '군단의 잔해' · 레이드 / 세트 장비 직접 드롭 — 엘리트 ${SET_DROP_CHANCE.elite}% · 보스 ${SET_DROP_CHANCE.boss}%</p>
+    군단장의 핵: 마왕성·마왕방 보스 하루 첫 처치 (보스마다 25~37개) · 일일 던전 '군단의 잔해' · 4인 레이드 · 월드보스 · 일일 미션 / 세트 장비 직접 드롭 — 엘리트 ${SET_DROP_CHANCE.elite}% · 보스 ${SET_DROP_CHANCE.boss}%</p>
     <div class="panel row" style="gap:16px;flex-wrap:wrap">
       <span class="row" style="gap:6px">${equipSprite('accessory', 8, { size: 36, set: 'demon' })}<span>군단장의 핵 <b>${s.cores}</b></span></span>
       <span class="row" style="gap:6px">${monsterSprite('belialFire', { size: 36, tags: ['demon'] })}<span>벨리알의 파편 <b>${s.scales}</b></span></span>
@@ -1215,7 +1215,7 @@ function dropInfo(floor: number) {
       <div><div class="small mute">재료</div>
         <p class="small">강화석: 일반 몬스터 ${Math.round(st.normal * 10) / 10}% (${1 + Math.floor(floor / 15)}개) · 엘리트 ${st.elite}% · ${boss ? `보스 확정 ${st.bossCount}개` : `보스 처치 시 확정`}<br>
         축복 주문서: 엘리트 ${bl.elite}% · ${boss ? `보스 확정 ${bl.bossCount}장` : '보스 처치 시 확정'}<br>
-        제련석: 일반 몬스터 ${REFINE_CHANCE.normal}% · 엘리트 ${REFINE_CHANCE.elite}% · 보스 ${REFINE_CHANCE.boss}%${floor > 50 ? `<br>군단장의 핵: 일반 ${SHARD_CHANCE.normal}% · 엘리트·보스 확정<br><b class="r5">세트 장비</b>: 엘리트 ${SET_DROP_CHANCE.elite}% · 보스 ${SET_DROP_CHANCE.boss}% (4세트 중 무작위)` : ''}${boss ? '<br>보스 첫 처치: 희귀 이상 장비 1개 + 보너스 골드' : ''}</p></div>
+        제련석: 일반 몬스터 ${REFINE_CHANCE.normal}% · 엘리트 ${REFINE_CHANCE.elite}% · 보스 ${REFINE_CHANCE.boss}%${floor > 50 ? `<br>군단장의 핵: 보스만, 보스마다 하루 첫 처치 25~37개<br><b class="r5">세트 장비</b>: 엘리트 ${SET_DROP_CHANCE.elite}% · 보스 ${SET_DROP_CHANCE.boss}% (4세트 중 무작위)` : ''}${boss ? '<br>보스 첫 처치: 희귀 이상 장비 1개 + 보너스 골드' : ''}</p></div>
     </div>
     <p class="small mute" style="margin:8px 0 0">황금손 특성·탐욕의 물약 같은 효과로 골드·장비 획득량이 늘 수 있어요.</p>
   </details>`;
@@ -1251,7 +1251,7 @@ function viewRegions() {
 function runLabel(f: number) {
   if (EX?.settings.duel) return `${EX.party.length}:${EX.settings.duel.foes.length} 결투`;
   if (EX?.settings.tower) return `무한 탑 ${f}층`;
-  if (EX?.settings.rift) return `균열 ${f}층`;
+  if (EX?.settings.rift) return `카드 던전 ${f}층`;
   const rd = EX?.settings.raid;
   if (rd) return `레이드 · ${RAID_DIFF_NAME[rd.diff]}`;
   const d = EX?.settings.daily;
@@ -1841,7 +1841,7 @@ function viewWorld() {
     ${last}
     <div class="panel"><h3 style="margin-top:0">기여 순위 <span class="small mute">내 기여 ${wb?.mine ? `${fmt(wb.mine.total)} · ${wb.myRank}위` : '없음'}</span></h3>
       <ol class="ranklist">${top || `<p class="mute">${wbLoading ? '불러오는 중…' : '아직 아무도 도전하지 않았어요.'}</p>`}</ol>
-      <p class="small mute">보상: 1위 핵 300·전설 알 / 상위 10% 핵 200·영웅 알 / 30% 핵 140 / 60% 핵 90 / 참여 핵 50 (+제련석·골드)</p></div>
+      <p class="small mute">보상: 1위 핵 900·정수 40·전설 알 / 상위 10% 핵 600·정수 30·영웅 알 / 30% 핵 420·정수 20 / 60% 핵 270·정수 15 / 참여 핵 150·정수 10 (+제련석·룬석·골드)</p></div>
   </div>`;
 }
 async function wbTicket() {
@@ -1870,7 +1870,7 @@ async function wbClaim(season: number) {
   if (r?.error) { toast(r.error, true); return; }
   const extra = G.grantReward(S!, r.reward);
   saveGame(S!);
-  toast(`${r.rank}위 / ${r.total}명 (${r.reward.label}) 보상: 핵 ${r.reward.cores} · 제련석 ${r.reward.refineStones}${r.reward.runes ? ` · 룬석 ${r.reward.runes}` : ''} · ${fmt(r.reward.gold)}G${extra}`);
+  toast(`${r.rank}위 / ${r.total}명 (${r.reward.label}) 보상: 핵 ${r.reward.cores}${r.reward.mythEss ? ` · 신화의 정수 ${r.reward.mythEss}` : ''} · 제련석 ${r.reward.refineStones}${r.reward.runes ? ` · 룬석 ${r.reward.runes}` : ''} · ${fmt(r.reward.gold)}G${extra}`);
   await loadWB(true); render();
 }
 
@@ -2160,7 +2160,7 @@ function adProfile(sel: Cloud.AdminUser) {
     body = `<div class="row" style="gap:6px;flex-wrap:wrap;margin:4px 0 10px"><button class="btn ghost sm" data-a="adMute" data-v="${sel.id}">${sel.muted ? '채팅 금지 해제' : '채팅 금지'}</button>${sel.id !== Cloud.session?.user.id ? `<button class="btn ghost sm" data-a="adAdmin" data-v="${sel.id}">${sel.is_admin ? '관리자 해제' : '관리자 지정'}</button>` : ''}</div>
       <form class="adgift" data-form="adgift"><b class="small" style="flex-basis:100%">재료 지급</b>${[['gold', '골드'], ['stones', '강화석'], ['blessings', '축복'], ['refineStones', '제련석'], ['cores', '핵'], ['scales', '벨리알 파편'], ['runes', '고대 룬석'], ['mythEss', '신화의 정수'], ['cardPacks', '카드 팩']].map(([k, n]) => `<label class="small">${n}<input type="number" min="0" step="1" name="${k}" value="0" inputmode="numeric"></label>`).join('')}<button class="btn sm" type="submit">지급</button></form>
       <form class="adgift" data-form="adreset"><b class="small" style="flex-basis:100%">도전 횟수 초기화 <span class="mute">(오늘 것만)</span></b>${[['daily', '일일 던전'], ['raid', '개인 레이드'], ['r4', '4인 레이드'], ['wb', '월드보스']].map(([k, n]) => `<label class="small"><input type="checkbox" name="${k}" checked> ${n}</label>`).join('')}<button class="btn sm" type="submit">초기화</button>
-        <span class="small mute" style="flex-basis:100%">파티 던전·균열·무한의 탑은 횟수 제한이 없어요. 월드보스는 입힌 피해·순위를 그대로 두고 횟수만 되돌려요.</span></form>
+        <span class="small mute" style="flex-basis:100%">파티 던전·무한의 탑은 횟수 제한이 없어요. 월드보스는 입힌 피해·순위를 그대로 두고 횟수만 되돌려요.</span></form>
       <p class="small mute" style="margin:6px 0 0">지급하면 그 계정 서버 세이브에 바로 더해져요. 접속 중이면 새로고침해야 보여요 (그 전에 저장되면 덮어써짐).</p>`;
   }
   return `<div class="panel addetail">${head}
@@ -2228,7 +2228,7 @@ function viewCards() {
         ${so ? `<p class="small" style="margin:6px 0">효과: <b>${esc(cardEffectText(sel, so.awaken))}</b>${so.awaken < MAX_AWAKEN ? ` <span class="mute">→ 각성 시 ${esc(cardEffectText(sel, so.awaken + 1))}</span>` : ''}</p>
           <p class="small mute" style="margin:0 0 8px">각성 ${so.awaken}/${MAX_AWAKEN} · 여분 ${so.count - 1}장${so.awaken < MAX_AWAKEN ? ` · 다음 각성에 ${G.awakenNeed(so)}장 필요` : ''}</p>
           <div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sm" data-a="cardDeck" data-v="${sel.id}">${deck.includes(sel.id) ? '덱에서 빼기' : '덱에 넣기'}</button><button class="btn ghost sm" data-a="cardAwaken" data-v="${sel.id}" ${so.awaken < MAX_AWAKEN && so.count - 1 >= G.awakenNeed(so) ? '' : 'disabled'}>각성</button></div>`
-        : '<p class="small mute">아직 없는 카드예요. 균열에서 카드 팩을 모아 열어보세요.</p>'}</div>
+        : '<p class="small mute">아직 없는 카드예요. 카드 던전에서 카드 팩을 모아 열어보세요.</p>'}</div>
       <button class="btn ghost sm" data-a="cardSel" data-v="${sel.id}" aria-label="닫기">✕</button></div>` : '';
   let body = '';
   if (cardTab === 'deck') {
@@ -2259,7 +2259,7 @@ function viewCards() {
     const last = G.lastCards;
     body = `<div class="panel" style="text-align:center"><div class="row" style="justify-content:center;gap:10px;align-items:center;flex-wrap:wrap"><b>신비 카드 팩 ${s.cardPacks ?? 0}개</b>
       <button class="btn" data-a="cardOpen" data-v="1" ${(s.cardPacks ?? 0) >= 1 ? '' : 'disabled'}>1개 열기</button><button class="btn ghost" data-a="cardOpen" data-v="10" ${(s.cardPacks ?? 0) >= 1 ? '' : 'disabled'}>${Math.min(10, s.cardPacks ?? 0) || 10}개 열기</button></div>
-      <p class="small mute">확률: 일반 ${PACK_ODDS[1]}% · 고급 ${PACK_ODDS[2]}% · 희귀 ${PACK_ODDS[3]}% · 영웅 ${PACK_ODDS[4]}% · 전설 ${PACK_ODDS[5]}%<br>카드 팩은 <b>균열(멀티)</b>에서 나와요: 층마다 20%, 5층 정예·10층 보스 확정, 완주 보너스 +1</p>
+      <p class="small mute">확률: 일반 ${PACK_ODDS[1]}% · 고급 ${PACK_ODDS[2]}% · 희귀 ${PACK_ODDS[3]}% · 영웅 ${PACK_ODDS[4]}% · 전설 ${PACK_ODDS[5]}%<br>카드 팩은 <b>카드 던전</b>(하루 3회)에서 나와요: 5층 정예 1개 + 완주 2~4개 (기준 층이 깊을수록 많이)</p>
       ${last.length ? `<div class="copen">${last.map((g, i) => `<div class="cflip" style="animation-delay:${i * 0.08}s">${cardHtml(g.id, { awaken: owned[g.id]?.awaken ?? 0, size: 96 })}${g.isNew ? '<span class="cbadge new">NEW</span>' : ''}</div>`).join('')}</div>` : ''}</div>`;
   }
   return `<div class="wrap">${backBtn()}
@@ -2511,7 +2511,7 @@ function lootSection(r: G.ExpeditionSummary) {
 function autoLootPanel() {
   const s = S!;
   const a = s.autoLoot ?? { on: false, rarities: [1, 2] as Rarity[], mode: 'dismantle' as const };
-  return `<div class="panel autolp"><div class="row" style="justify-content:space-between;align-items:center;gap:8px"><div><h3 style="margin:0">줍자마자 자동 처리</h3><span class="small mute">체크한 등급은 가방에 안 들어오고 바로 정리돼요 (탐험·균열 보상)</span></div>
+  return `<div class="panel autolp"><div class="row" style="justify-content:space-between;align-items:center;gap:8px"><div><h3 style="margin:0">줍자마자 자동 처리</h3><span class="small mute">체크한 등급은 가방에 안 들어오고 바로 정리돼요 (탐험 보상)</span></div>
     <button class="btn sm ${a.on ? '' : 'ghost'}" data-a="autoLoot" data-v="toggle" aria-pressed="${a.on}">${a.on ? '켜짐' : '꺼짐'}</button></div>
     <div class="tabs" role="group" aria-label="자동 처리 등급" style="margin-top:8px">${([1, 2, 3, 4, 5] as Rarity[]).map((r) => `<button class="rr r${r} ${a.rarities.includes(r) ? 'on' : ''}" data-a="autoLoot" data-v="r" data-r="${r}" aria-pressed="${a.rarities.includes(r)}">${RARITY_NAME[r]}</button>`).join('')}</div>
     <div class="tabs" role="group" aria-label="처리 방법">${(['dismantle', 'sell'] as const).map((m) => `<button class="${a.mode === m ? 'on' : ''}" data-a="autoLoot" data-v="mode" data-m="${m}">${m === 'dismantle' ? '분해 (강화석)' : '판매 (골드)'}</button>`).join('')}</div>
@@ -2639,7 +2639,7 @@ function viewDungeon() {
   const ex = EX!;
   const zone = zoneOf(ex.floor);
   return `<div class="wrap">
-    <div class="dhead"><div><div class="small mute">${ex.settings.duel ? `친구 결투 · vs ${esc(ex.settings.duel.foeName)}` : ex.settings.rift ? `균열 · ${esc(zoneOf(ex.settings.rift.level).name)}` : ex.settings.tower ? `무한 탑 · ${esc(towerGimmick(ex.floor).icon)} ${esc(towerGimmick(ex.floor).name)}` : ex.settings.raid ? `개인 레이드 · ${esc(raidForm(ex.settings.raid.week).name)}` : ex.daily ? '일일 던전' : `${esc(regionOf(ex.floor).name)} · ${esc(zone.name)}`}</div><h2 id="floorTitle">${floorTitle(ex)}</h2></div>
+    <div class="dhead"><div><div class="small mute">${ex.settings.duel ? `친구 결투 · vs ${esc(ex.settings.duel.foeName)}` : ex.settings.rift ? `카드 던전 · ${esc(zoneOf(ex.settings.rift.level).name)}` : ex.settings.tower ? `무한 탑 · ${esc(towerGimmick(ex.floor).icon)} ${esc(towerGimmick(ex.floor).name)}` : ex.settings.raid ? `개인 레이드 · ${esc(raidForm(ex.settings.raid.week).name)}` : ex.daily ? '일일 던전' : `${esc(regionOf(ex.floor).name)} · ${esc(zone.name)}`}</div><h2 id="floorTitle">${floorTitle(ex)}</h2></div>
       <div class="speed" role="group" aria-label="전투 속도">${([1, 2, 0] as const).map((v) => `<button data-a="speed" data-v="${v}" class="${speed === v ? 'on' : ''}" ${EX?.settings.multi ? 'disabled title="멀티에서는 방장이 정한 배속으로 고정돼요"' : ''}>${v === 0 ? '스킵' : `${v}x`}</button>`).join('')}</div></div>
     <div class="stage"><div class="side" id="pside"></div><div class="vs">VS</div><div class="side" id="eside"></div></div>
     <div class="log" id="log" aria-live="polite"></div>
@@ -2794,6 +2794,30 @@ function renderDctl() {
 function startDailyRun(id: string, stage: number) {
   const s = S!;
   const ex = G.startDaily(s, id, stage, []);
+  if (typeof ex === 'string') { toast(ex, true); return; }
+  EX = ex;
+  saveGame(s);
+  units = {};
+  screen = 'dungeon';
+  render();
+  drawParty();
+  playFloor();
+}
+function viewCardDun() {
+  const s = S!;
+  const opts = ZONES.filter((z) => z.floors[1] <= 70).map((z) => ({ z, f: z.floors[0] + 2 })).filter((o) => (s.maxFloor || 0) >= o.f || o.z.floors[0] === 1);
+  const left = G.cardDunLeft(s);
+  const rows = [...opts].reverse().map((o) => `<div class="trow"><b class="tf">${o.f}층</b><div class="tg"><span><b>${esc(o.z.name)}</b> · 권장 ${fmt(floorPower(o.f))}</span><span class="small mute">완주 카드 팩 ${cardDunPacks(o.f)}개 + 5층 정예 1개</span></div><div class="row" style="grid-column:2;gap:6px"><button class="btn sm" data-a="cardDunGo" data-v="${o.f}" ${left <= 0 ? 'disabled' : ''}>출발</button></div></div>`).join('');
+  return `<div class="wrap">${backBtn()}
+    <h2>카드 던전</h2>
+    <p class="mute">지나온 구역 하나를 골라 <b>10층</b>(5층 정예 · 10층 보스, 3층부터 무작위 기믹)을 돌파해요. 출전 파티로 혼자 들어가고, 전멸해도 손실은 없어요.<br>보상은 <b>신비 카드 팩</b> 위주예요. 몬스터는 골드·경험치만 줘요. <b>하루 ${CARD_DUN_LIMIT}회</b>, 입장할 때 차감 (한국 시간 오전 4시 초기화).</p>
+    <div class="sum" style="margin:12px 0"><div><span class="small mute">오늘 남은 횟수</span><b>${left} / ${CARD_DUN_LIMIT}</b></div><div><span class="small mute">파티 전투력</span><b>${fmt(G.statePower(s))}</b></div><div><span class="small mute">카드 팩</span><b>${fmt(s.cardPacks ?? 0)}</b></div></div>
+    <div class="panel"><div class="tlist">${rows}</div></div>
+  </div>`;
+}
+function startCardDunRun(level: number) {
+  const s = S!;
+  const ex = G.startCardDun(s, level);
   if (typeof ex === 'string') { toast(ex, true); return; }
   EX = ex;
   saveGame(s);
@@ -3084,7 +3108,7 @@ function renderNow() {
   }
   const body = !S || screen === 'title' ? viewTitle()
     : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'ach' ? viewAch() : screen === 'avatar' ? viewAvatar() : screen === 'plaza' ? viewPlaza() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
-    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'admin' ? viewAdmin() : screen === 'notice' ? viewNotice() : screen === 'cards' ? viewCards() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : screen === 'duel' ? viewDuel() : screen === 'profile' ? viewProfile() : screen === 'raid4' ? viewRaid4() : viewResult();
+    : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'admin' ? viewAdmin() : screen === 'notice' ? viewNotice() : screen === 'cards' ? viewCards() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : screen === 'carddun' ? viewCardDun() : screen === 'duel' ? viewDuel() : screen === 'profile' ? viewProfile() : screen === 'raid4' ? viewRaid4() : viewResult();
   app.innerHTML = (screen === 'title' ? '' : topbar()) + body;
   if (screen === 'raid4' && r4?.phase === 'battle' && r4.st) r4Mount();
   if (screen === 'plaza') plazaMount();
@@ -3260,6 +3284,7 @@ app.addEventListener('click', (ev) => {
       commit(d.a === 'bulkSell' ? G.bulkSell(s!, f) : G.bulkDismantle(s!, f)); break;
     }
     case 'towerGo': startTowerRun(); break;
+    case 'cardDunGo': startCardDunRun(Number(d.v)); break;
     case 'authMode': authMode = d.v as 'login' | 'signup'; authErr = ''; render(); break;
     case 'logout': stopSocial(); Cloud.signOut().then(() => { S = null; lastSave = null; screen = 'title'; render(); }); break;
     case 'rankKind': rankKind = d.v as Cloud.RankKind; render(); break;

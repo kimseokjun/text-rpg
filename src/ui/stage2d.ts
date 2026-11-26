@@ -42,12 +42,34 @@ export function stageBg(theme: StageTheme): string {
   return BGS[theme]!;
 }
 
-/** 자리: 적은 왼쪽(최대 6), 파티는 오른쪽(최대 4). 퍼센트 좌표 = 발 위치 (땅은 위에서 67%부터) */
-export const ENEMY_POS = [{ x: 32, y: 80 }, { x: 18, y: 75 }, { x: 20, y: 90 }, { x: 36, y: 91 }, { x: 8, y: 83 }, { x: 44, y: 73 }];
-export const BOSS_POS = { x: 20, y: 88 };
-/** 보스가 있을 때 졸개 자리 (보스와 안 겹치게 앞쪽·위아래) */
-export const BOSS_ADD_POS = [{ x: 40, y: 77 }, { x: 44, y: 91 }, { x: 36, y: 71 }, { x: 8, y: 75 }, { x: 50, y: 84 }];
-export const PARTY_POS = [{ x: 64, y: 77 }, { x: 72, y: 91 }, { x: 80, y: 74 }, { x: 88, y: 88 }];
+/** 자리: 퍼센트 좌표 = 발 위치 (땅은 위에서 67%부터). 파티는 오른쪽, 적은 왼쪽.
+ *  전열은 상대 쪽(가운데)으로, 후열은 뒤쪽으로 20% 떨어진 줄에 세운다. */
+export interface Pos { x: number; y: number }
+/** 한 줄에 n명일 때 세로 자리 (위 = 화면 안쪽) */
+const COL_Y: Record<number, number[]> = { 1: [84], 2: [77, 91], 3: [73, 83, 93], 4: [72, 79, 86, 93] };
+/** 같은 줄 안에서 살짝 엇갈리게 (겹침 방지) */
+const ZIG = [-2, 2, -2, 2];
+const COL_X = { p: { front: 60, back: 80 }, e: { front: 40, back: 20 } } as const;
+function column(side: 'p' | 'e', row: 'front' | 'back', n: number): Pos[] {
+  const ys = COL_Y[Math.min(4, Math.max(1, n))];
+  const dir = side === 'p' ? 1 : -1;
+  return Array.from({ length: n }, (_, i) => ({ x: COL_X[side][row] + dir * ZIG[i % 4], y: ys[i % ys.length] + (i >= 4 ? 4 : 0) }));
+}
+/** 줄 정보(전열/후열) 목록 → 자리 목록 (같은 순서) */
+export function formation(side: 'p' | 'e', rows: ('front' | 'back')[]): Pos[] {
+  const f = column(side, 'front', rows.filter((r) => r === 'front').length);
+  const b = column(side, 'back', rows.filter((r) => r === 'back').length);
+  let fi = 0, bi = 0;
+  return rows.map((r) => (r === 'front' ? f[fi++] : b[bi++]));
+}
+/** 몬스터 무리: 앞줄 최대 3, 나머지 뒷줄. 보스가 있으면 보스는 뒤 가운데, 졸개는 전부 앞줄 */
+export function enemyFormation(n: number, withBoss: boolean): Pos[] {
+  if (withBoss) return column('e', 'front', n).map((p) => ({ ...p, x: p.x + 4 }));
+  return formation('e', Array.from({ length: n }, (_, i) => (i < 3 ? 'front' : 'back')));
+}
+export const BOSS_POS: Pos = { x: 18, y: 88 };
+/** 싸움 중에 불려 나온 졸개 (빈자리 쪽) */
+export const SUMMON_POS: Pos[] = [{ x: 30, y: 74 }, { x: 30, y: 93 }, { x: 8, y: 76 }, { x: 8, y: 93 }, { x: 46, y: 84 }];
 
 export function stageShell(theme: StageTheme) {
   return `<div class="s2" id="s2">${stageBg(theme)}
@@ -60,8 +82,8 @@ export function stageShell(theme: StageTheme) {
 }
 
 /** 유닛 하나 (적/파티 공통). 기존 setHp가 찾는 .bar i 와 small 을 포함 */
-export function unitBox(o: { id: string; name: string; icon: string; hp: number; max: number; dead: boolean; side: 'p' | 'e'; boss?: boolean; slot: number; owner?: string; withBoss?: boolean }) {
-  const p = o.side === 'p' ? PARTY_POS[o.slot % PARTY_POS.length] : o.boss ? BOSS_POS : o.withBoss ? BOSS_ADD_POS[o.slot % BOSS_ADD_POS.length] : ENEMY_POS[o.slot % ENEMY_POS.length];
+export function unitBox(o: { id: string; name: string; icon: string; hp: number; max: number; dead: boolean; side: 'p' | 'e'; boss?: boolean; pos: Pos; owner?: string }) {
+  const p = o.boss ? BOSS_POS : o.pos;
   const pct = Math.max(0, Math.min(100, (o.hp / Math.max(1, o.max)) * 100));
   return `<div class="s2u ${o.side} ${o.boss ? 'boss' : ''} ${o.dead ? 'dead' : ''}" id="${o.id}" data-name="${o.name.replace(/"/g, '&quot;')}" style="left:${p.x}%;top:${p.y}%;z-index:${Math.round(p.y)}">
     <div class="s2spr">${o.icon}</div>

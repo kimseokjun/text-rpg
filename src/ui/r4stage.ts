@@ -43,7 +43,16 @@ function background() {
 const snow = () => `<div class="r4snow" aria-hidden="true">${Array.from({ length: 36 }, (_, i) => `<i style="left:${(i * 37) % 100}%;animation-delay:${-(i * 0.73) % 9}s;animation-duration:${6 + (i % 5)}s;width:${i % 3 ? 2 : 3}px;height:${i % 3 ? 2 : 3}px"></i>`).join('')}</div>`;
 
 // ── 위치 ──
-const PARTY_POS = [{ x: 35, y: 85 }, { x: 27, y: 94 }, { x: 19, y: 83 }, { x: 11, y: 92 }];
+// 파티는 왼쪽: 전열은 보스 쪽(x 34), 후열은 뒤(x 14). 같은 줄은 위아래로 나눠 섬
+const COL_Y: Record<number, number[]> = { 1: [87], 2: [80, 94], 3: [78, 87, 96], 4: [77, 83, 89, 95] };
+function partyPos(rows: ('front' | 'back' | undefined)[]) {
+  const nf = rows.filter((r) => r !== 'back').length, nb = rows.length - nf;
+  let fi = 0, bi = 0;
+  return rows.map((r) => {
+    const back = r === 'back', i = back ? bi++ : fi++, n = back ? nb : nf;
+    return { x: (back ? 14 : 34) + (i % 2 ? -2 : 2), y: COL_Y[Math.min(4, n)][i % 4] };
+  });
+}
 const BOSS_POS = { x: 72, y: 90 };
 const ADD_POS = [{ x: 56, y: 74 }, { x: 59, y: 93 }, { x: 51, y: 84 }];
 
@@ -59,7 +68,7 @@ export function mountStage(el: HTMLElement, st: R4State, h: StageHelpers) {
     <div class="r4top"><div class="r4order2" id="r4order"></div><div class="r4banner" id="r4banner"></div></div>
     <div class="r4round" id="r4round"></div>
     <div class="r4cast" id="r4cast"></div>
-    ${party.map((u, i) => unitHtml(u, PARTY_POS[i % 4], false)).join('')}
+    ${(() => { const pp = partyPos(party.map((u) => u.row)); return party.map((u, i) => unitHtml(u, pp[i], false)).join(''); })()}
     ${unitHtml(boss, BOSS_POS, true)}
     ${st.units.filter((u) => !u.boss && !u.owner).map((u, i) => unitHtml(u, ADD_POS[i % 3], false, true)).join('')}
     <div class="r4fx" id="r4fx"></div>

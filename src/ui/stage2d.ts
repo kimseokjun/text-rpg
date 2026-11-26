@@ -42,12 +42,12 @@ export function stageBg(theme: StageTheme): string {
   return BGS[theme]!;
 }
 
-/** 자리: 적은 왼쪽(최대 6), 파티는 오른쪽(최대 4). 퍼센트 좌표 (발 위치) */
-export const ENEMY_POS = [{ x: 30, y: 74 }, { x: 18, y: 66 }, { x: 18, y: 86 }, { x: 34, y: 92 }, { x: 8, y: 76 }, { x: 40, y: 60 }];
-export const BOSS_POS = { x: 20, y: 84 };
+/** 자리: 적은 왼쪽(최대 6), 파티는 오른쪽(최대 4). 퍼센트 좌표 = 발 위치 (땅은 위에서 67%부터) */
+export const ENEMY_POS = [{ x: 32, y: 80 }, { x: 18, y: 75 }, { x: 20, y: 90 }, { x: 36, y: 91 }, { x: 8, y: 83 }, { x: 44, y: 73 }];
+export const BOSS_POS = { x: 20, y: 88 };
 /** 보스가 있을 때 졸개 자리 (보스와 안 겹치게 앞쪽·위아래) */
-export const BOSS_ADD_POS = [{ x: 40, y: 70 }, { x: 42, y: 92 }, { x: 34, y: 58 }, { x: 8, y: 60 }, { x: 48, y: 80 }];
-export const PARTY_POS = [{ x: 66, y: 70 }, { x: 74, y: 86 }, { x: 82, y: 68 }, { x: 90, y: 84 }];
+export const BOSS_ADD_POS = [{ x: 40, y: 77 }, { x: 44, y: 91 }, { x: 36, y: 71 }, { x: 8, y: 75 }, { x: 50, y: 84 }];
+export const PARTY_POS = [{ x: 64, y: 77 }, { x: 72, y: 91 }, { x: 80, y: 74 }, { x: 88, y: 88 }];
 
 export function stageShell(theme: StageTheme) {
   return `<div class="s2" id="s2">${stageBg(theme)}

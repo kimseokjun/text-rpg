@@ -773,6 +773,7 @@ svg.px{image-rendering:pixelated;flex:none}
 .dg-pl .dg-spr svg,.dg-pl .dg-spr img{width:100%;height:auto;display:block}
 .dg-pl .dg-spr img{height:auto!important}
 .dg-pl .dg-spr .s2atk{display:none}
+.dg-pl .dg-spr .r4face.flip{transform:none}
 .dg-pl.face-right .dg-spr img{transform:scaleX(-1)}
 .dg-pl.duck .dg-spr{transform:scaleY(.5) scaleX(1.15)}
 .dg-pl span{font-size:10px;color:#fff;text-shadow:0 1px 2px #000;white-space:nowrap;margin-bottom:2px}

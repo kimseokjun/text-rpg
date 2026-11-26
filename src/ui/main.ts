@@ -27,6 +27,7 @@ import { Raid4Battle, type R4Member, type R4State } from '../core/raid4battle';
 import { mountStage, playEvents, setBanner, setPanel, speech, stageMounted, updateStage } from './r4stage';
 import * as Bgm from './bgm';
 import { mountPlaza, EMOTES, type PlazaRun } from './plaza';
+import { stageShell, unitBox, fxCaption, fxLunge, fxNumber, fxBossBar, statusPanel, statusHp, type StageTheme } from './stage2d';
 import { FISH, FISH_GRADE_NAME, MASTERY_MAX, fishCosChance, fishWeights, masteryNeed } from '../data/fish';
 import { COSMETICS, COS_BY_ID, COS_KIND_KO, FREE_HEADS, MERC_KINDS, OUTFIT_COLORS, TRIM_COLORS, type AvatarState, type CosKind } from '../data/cosmetics';
 import { CHESTS, dRewardText } from '../data/missions';
@@ -2638,7 +2639,18 @@ function viewStorage() {
 let EX: Expedition | null = null;
 let speed: 1 | 2 | 0 = 1;
 let playToken = 0;
-let units: Record<string, { id: string; hp: number; max: number; dead: boolean; side: 'p' | 'e' }> = {};
+let units: Record<string, { id: string; hp: number; max: number; dead: boolean; side: 'p' | 'e'; boss?: boolean }> = {};
+let logOpen = false;
+function stageTheme(ex: Expedition): StageTheme {
+  if (ex.settings.duel) return 'arena';
+  if (ex.settings.raid) return 'raid';
+  if (ex.settings.tower) return 'tower';
+  const d = ex.settings.daily?.id;
+  if (d) return d === 'vault' ? 'gold' : d === 'vein' ? 'crystal' : d === 'legion' ? 'castle' : 'arena';
+  const f = ex.settings.rift ? ex.settings.rift.level : ex.floor;
+  const r = regionOf(f).id;
+  return r === 'chamber' ? 'chamber' : r === 'castle' ? 'castle' : f > 40 ? 'chamber' : f > 20 ? 'crystal' : 'forest';
+}
 let uidSeq = 0;
 let phase: 'playing' | 'between' | 'bossAsk' | 'done' = 'playing';
 let lastFloor: FloorResult | null = null;
@@ -2649,8 +2661,8 @@ function viewDungeon() {
   return `<div class="wrap">
     <div class="dhead"><div><div class="small mute">${ex.settings.duel ? `친구 결투 · vs ${esc(ex.settings.duel.foeName)}` : ex.settings.rift ? `카드 던전 · ${esc(zoneOf(ex.settings.rift.level).name)}` : ex.settings.tower ? `무한 탑 · ${esc(towerGimmick(ex.floor).icon)} ${esc(towerGimmick(ex.floor).name)}` : ex.settings.raid ? `개인 레이드 · ${esc(raidForm(ex.settings.raid.week).name)}` : ex.daily ? '일일 던전' : `${esc(regionOf(ex.floor).name)} · ${esc(zone.name)}`}</div><h2 id="floorTitle">${floorTitle(ex)}</h2></div>
       <div class="speed" role="group" aria-label="전투 속도">${([1, 2, 0] as const).map((v) => `<button data-a="speed" data-v="${v}" class="${speed === v ? 'on' : ''}" ${EX?.settings.multi ? 'disabled title="멀티에서는 방장이 정한 배속으로 고정돼요"' : ''}>${v === 0 ? '스킵' : `${v}x`}</button>`).join('')}</div></div>
-    <div class="stage"><div class="side" id="pside"></div><div class="vs">VS</div><div class="side" id="eside"></div></div>
-    <div class="log" id="log" aria-live="polite"></div>
+    ${stageShell(stageTheme(ex))}
+    <details class="s2log" ${logOpen ? 'open' : ''}><summary>전투 기록</summary><div class="log" id="log" aria-live="polite"></div></details>
     <div class="dctl" id="dctl"></div>
     ${ex.settings.multi && myRoom ? `<div class="panel dchat"><div class="small mute" style="margin-bottom:4px">💬 파티 채팅</div><div id="roomlog" class="roomlog">${roomLogHtml()}</div>
       <form class="cin" data-form="room" style="display:flex;gap:6px;margin-top:6px"><input id="roomIn" maxlength="200" placeholder="파티원에게 한마디" value="${esc(roomDraft)}" autocomplete="off" enterkeyhint="send" style="flex:1;min-width:0"><button class="btn sm" type="submit">보내기</button></form></div>` : ''}
@@ -2666,10 +2678,11 @@ const unitHtml = (name: string, u: { id: string; hp: number; max: number; dead: 
 function drawParty() {
   const el = document.getElementById('pside');
   if (!el || !EX) return;
-  el.innerHTML = EX.party.map((p) => {
+  el.innerHTML = EX.party.map((p, i) => {
     const u = (units[p.name] ??= { id: `u${uidSeq++}`, hp: p.hp, max: p.maxHp, dead: !p.alive, side: 'p' });
-    return unitHtml(p.name, u, avatar(p.char!, 52), '', mOwners[p.id] ?? '');
+    return unitBox({ id: u.id, name: esc(p.name), icon: avatar(p.char!, 72), hp: u.hp, max: u.max, dead: u.dead, side: 'p', slot: i, owner: mOwners[p.id] ? esc(mOwners[p.id]) : undefined });
   }).join('');
+  statusPanel(EX.party.map((p) => ({ name: esc(p.name), hp: units[p.name]?.hp ?? p.hp, max: p.maxHp, mp: p.mp, mpMax: p.maxMp, dead: units[p.name]?.dead ?? !p.alive, icon: avatar(p.char!, 22) })));
 }
 function syncPartyFromEx() {
   if (!EX) return;
@@ -2679,10 +2692,14 @@ function syncPartyFromEx() {
 function drawEnemies(list: UnitSnap[], append = false) {
   const el = document.getElementById('eside');
   if (!el) return;
-  if (!append) { el.innerHTML = ''; for (const k of Object.keys(units)) if (units[k].side === 'e') delete units[k]; }
+  if (!append) { el.innerHTML = ''; for (const k of Object.keys(units)) if (units[k].side === 'e') delete units[k]; fxBossBar(null); }
+  let slot = Object.values(units).filter((u) => u.side === 'e' && !u.boss).length;
+  const withBoss = list.some((m) => m.boss) || Object.values(units).some((u) => u.side === 'e' && u.boss);
   for (const m of list) {
-    const u = (units[m.name] = { id: `e${uidSeq++}`, hp: m.hp, max: m.maxHp, dead: false, side: 'e' });
-    el.insertAdjacentHTML('beforeend', unitHtml(m.name, u, m.job ? charSprite(JOBS[m.job as JobId].base, m.name.replace('(상대)', ''), JOBS[m.job as JobId].tier, { size: 52 }) : monsterSprite(m.id ?? '', { size: m.boss ? 72 : 52, boss: m.boss, elite: m.elite, tags: m.tags }), m.boss ? 'boss' : m.elite ? 'elite' : ''));
+    const u = (units[m.name] = { id: `e${uidSeq++}`, hp: m.hp, max: m.maxHp, dead: false, side: 'e', boss: !!m.boss });
+    const icon = m.job ? charSprite(JOBS[m.job as JobId].base, m.name.replace('(상대)', ''), JOBS[m.job as JobId].tier, { size: 72 }) : monsterSprite(m.id ?? '', { size: m.boss ? 128 : m.elite ? 80 : 64, boss: m.boss, elite: m.elite, tags: m.tags });
+    el.insertAdjacentHTML('beforeend', unitBox({ id: u.id, name: esc(m.name), icon, hp: m.hp, max: m.maxHp, dead: false, side: 'e', boss: !!m.boss, slot: m.boss ? 0 : slot++, withBoss }));
+    if (m.boss) fxBossBar(m.name, m.hp, m.maxHp);
   }
 }
 function setHp(name: string, hp: number, max: number, hit: boolean) {
@@ -2694,12 +2711,15 @@ function setHp(name: string, hp: number, max: number, hit: boolean) {
   (el.querySelector('.bar i') as HTMLElement).style.width = pctW(hp, max);
   el.querySelector('small')!.textContent = `${Math.round(hp)}/${max}`;
   if (hit && speed !== 0) { el.classList.remove('hit'); void el.offsetWidth; el.classList.add('hit'); }
+  if (u.side === 'p') statusHp(name, hp, max);
+  if (u.boss) fxBossBar(name, hp, max);
 }
 function setDead(name: string, dead: boolean) {
   const u = units[name];
   if (!u) return;
   u.dead = dead;
   document.getElementById(u.id)?.classList.toggle('dead', dead);
+  if (u.side === 'p') statusHp(name, u.hp, u.max, dead);
 }
 
 function logLine(cls: string, text: string) {
@@ -2719,11 +2739,12 @@ function applyEvent(e: BattleEvent): boolean {
       drawEnemies(e.enemies);
       logLine('w', e.boss ? `${runLabel(e.floor)} 보스전 · ${e.enemies.map((x) => x.name).join(', ')}` : `${runLabel(e.floor)} ${e.wave}웨이브${e.elite ? ' · 엘리트 출현' : ''} · ${e.enemies.map((x) => x.name).join(', ')}`);
       return true;
-    case 'round': case 'attack': return false;
-    case 'skill': logLine('sk', `${e.actor}의 [${e.skill}]`); return true;
-    case 'damage': setHp(e.to, e.hpLeft, e.maxHp, true); logLine(e.crit ? 'cr' : 'dm', `  ${e.from} → ${e.to} ${e.amount}${e.crit ? ' 치명타!' : ''}`); return true;
-    case 'evade': logLine('st', `  ${e.to}이(가) 공격을 피했다`); return true;
-    case 'heal': setHp(e.to, e.hpLeft, e.maxHp, false); logLine('hl', `  ${e.to} +${e.amount} 회복`); return true;
+    case 'round': return false;
+    case 'attack': if (speed !== 0) fxLunge(e.actor, speed === 2); return false;
+    case 'skill': if (speed !== 0) { fxCaption(`${e.actor} · ${e.skill}`, units[e.actor]?.side === 'e' ? 'e' : 'p'); fxLunge(e.actor, speed === 2); } logLine('sk', `${e.actor}의 [${e.skill}]`); return true;
+    case 'damage': if (speed !== 0) fxNumber(e.to, e.crit ? `${fmt(e.amount)}!` : fmt(e.amount), e.crit ? 'crit' : 'dmg'); setHp(e.to, e.hpLeft, e.maxHp, true); logLine(e.crit ? 'cr' : 'dm', `  ${e.from} → ${e.to} ${e.amount}${e.crit ? ' 치명타!' : ''}`); return true;
+    case 'evade': if (speed !== 0) fxNumber(e.to, 'MISS', 'miss'); logLine('st', `  ${e.to}이(가) 공격을 피했다`); return true;
+    case 'heal': if (speed !== 0) fxNumber(e.to, `+${fmt(e.amount)}`, 'heal'); setHp(e.to, e.hpLeft, e.maxHp, false); logLine('hl', `  ${e.to} +${e.amount} 회복`); return true;
     case 'status': logLine('st', `  ${e.to}: ${e.label}`); return true;
     case 'dot': setHp(e.to, e.hpLeft, e.maxHp, false); logLine('st', `  ${e.to} ${e.status === 'poison' ? '독' : '화상'} 피해 ${e.amount}`); return true;
     case 'stunned': logLine('st', `  ${e.who}은(는) 기절해 움직이지 못한다`); return true;
@@ -3094,6 +3115,7 @@ function renderBgmBtn() {
   el.innerHTML = `<button type="button" aria-pressed="${Bgm.bgmOn()}" title="${Bgm.bgmOn() ? '배경음악 끄기' : '배경음악 켜기'}" aria-label="${Bgm.bgmOn() ? '배경음악 끄기' : '배경음악 켜기'}">${Bgm.bgmOn() ? '🔊' : '🔇'}</button>${Bgm.bgmOn() ? `<input type="range" min="0" max="100" value="${Math.round(Bgm.bgmVol() * 100)}" aria-label="배경음악 음량">` : ''}`;
 }
 document.addEventListener('pointerdown', () => Bgm.unlock(), { capture: true });
+document.addEventListener('toggle', (e) => { const t = e.target as HTMLElement; if (t?.classList?.contains('s2log')) logOpen = (t as HTMLDetailsElement).open; }, true);
 function renderNow() {
   if (pz && screen !== 'plaza') plazaLeave();
   if (screen === 'plaza' && pz && document.getElementById('pzbox')?.isConnected) {

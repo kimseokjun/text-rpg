@@ -1642,16 +1642,19 @@ export function gainMastery(s: GameState, k: string, xp: number): number {
 }
 
 // ───────── 광장 낚시 ─────────
+/** 자동 낚시 숙련 경험치 배율 (손으로 하는 것의 1/4) */
+export const AUTO_FISH_XP = 0.25;
 /** 잡은 물고기: 도감 기록 + 바로 팔아 골드 + 숙련도, 낮은 확률로 꾸미기, 전설 첫 낚시면 이름표 */
-export function catchFish(s: GameState, f: FishDef): string {
+export function catchFish(s: GameState, f: FishDef, auto = false): string {
   const first = !s.fish?.caught[f.id];
   s.fish = { caught: { ...(s.fish?.caught ?? {}), [f.id]: (s.fish?.caught[f.id] ?? 0) + 1 } };
   s.gold += f.price;
   bump(s, 'fish');
   const out = [`${f.price.toLocaleString('ko-KR')}G에 팔았어요`];
   const lv0 = masteryOf(s, 'fishing').lv;
-  const ups = gainMastery(s, 'fishing', FISH_XP[f.grade]);
-  out.push(`숙련 +${FISH_XP[f.grade]}`);
+  const xp = FISH_XP[f.grade] * (auto ? AUTO_FISH_XP : 1);
+  const ups = gainMastery(s, 'fishing', xp);
+  out.push(`숙련 +${+xp.toFixed(1)}`);
   if (ups) out.push(`🎣 낚시 숙련도 Lv.${lv0 + ups}!`);
   if (first) out.push(`📖 도감 등록 (${Object.keys(s.fish.caught).length}/${FISH.length})`);
   if (f.grade === 5 && !cosOwned(s, 'plate:fish')) { (s.cos ??= []).push('plate:fish'); out.push('🎨 꾸미기 「낚시왕 이름표」 획득!'); }
@@ -1664,8 +1667,9 @@ export function catchFish(s: GameState, f: FishDef): string {
   return out.join(' · ');
 }
 /** 놓쳐도 숙련 조금 */
-export function missFish(s: GameState): string {
+export function missFish(s: GameState, auto = false): string {
   const lv0 = masteryOf(s, 'fishing').lv;
-  const ups = gainMastery(s, 'fishing', FISH_MISS_XP);
-  return `숙련 +${FISH_MISS_XP}${ups ? ` · 🎣 낚시 숙련도 Lv.${lv0 + ups}!` : ''}`;
+  const xp = FISH_MISS_XP * (auto ? AUTO_FISH_XP : 1);
+  const ups = gainMastery(s, 'fishing', xp);
+  return `숙련 +${+xp.toFixed(1)}${ups ? ` · 🎣 낚시 숙련도 Lv.${lv0 + ups}!` : ''}`;
 }

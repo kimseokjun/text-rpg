@@ -14,9 +14,9 @@ export interface PlazaOpts {
   onPick: (id: string, name: string) => void;
   onLog: (line: string) => void;
   /** 낚시로 잡음 → 저장·보상, 돌려준 글은 결과로 보여줌 */
-  onCatch: (f: FishDef) => string;
+  onCatch: (f: FishDef, auto: boolean) => string;
   /** 놓쳤을 때 (숙련도 조금) */
-  onMiss: () => string;
+  onMiss: (auto: boolean) => string;
   /** 낚시 숙련도 Lv (높을수록 상위 등급 확률↑) */
   fishLv: () => number;
 }
@@ -72,6 +72,7 @@ export function mountPlaza(o: PlazaOpts) {
   host.innerHTML = `<div class="plaza" tabindex="0" aria-label="마을 광장 (방향키·WASD로 이동, 바닥을 누르면 그쪽으로 걸어가요)">
     ${background()}<div class="pzdoors">${DOORS.map((d) => `<button class="pzdoor" data-to="${d.to}" style="left:${d.x}%;top:${(WALL_Y + 1) / PH * 100}%">${h.esc(d.label)} <kbd>E</kbd></button>`).join('')}</div>
     <button class="pzdoor pzfish" id="pzfishbtn" style="left:${POND.x - POND.rx - 4}%;top:${(POND.y + POND.ry) / PH * 100}%">🎣 낚시하기 <kbd>E</kbd></button>
+    <button class="pzdoor pzfish" id="pzautobtn" style="left:${POND.x - POND.rx - 4}%;top:${(POND.y + POND.ry + 4.5) / PH * 100}%">🤖 자동 낚시 <span class="small">(숙련 ¼)</span></button>
     <div class="pzlayer" id="pzlayer"></div>
     <div class="fishui" id="fishui" hidden></div>
     <div class="pzjoy" id="pzjoy" aria-hidden="true"><i></i></div>
@@ -103,7 +104,7 @@ export function mountPlaza(o: PlazaOpts) {
     const k = map[e.key];
     if (k) { e.preventDefault(); keys[k] = true; tap = null; }
     const act = e.key === 'e' || e.key === 'E' || e.key === 'Enter' || e.key === ' ';
-    if (act && fs) { e.preventDefault(); if (!e.repeat) fishPress(true); return; }
+    if (act && fs) { e.preventDefault(); if (!e.repeat && !fs.auto) fishPress(true); return; }
     if ((e.key === 'e' || e.key === 'E' || e.key === 'Enter') && nearPond) { e.preventDefault(); startFish(); return; }
     if ((e.key === 'e' || e.key === 'E' || e.key === 'Enter') && near) { e.preventDefault(); o.onDoor(near.to); }
   };
@@ -112,10 +113,16 @@ export function mountPlaza(o: PlazaOpts) {
   const fishBtn = root.querySelector<HTMLElement>('#pzfishbtn')!, fui = root.querySelector<HTMLElement>('#fishui')!;
   const ZW = 0.3;
   let nearPond = false;
-  let fs: { st: 'wait' | 'bite' | 'reel' | 'done'; t: number; fish?: FishDef; pos: number; vel: number; zone: number; hold: boolean; prog: number; msg: string } | null = null;
+  let fs: { st: 'wait' | 'bite' | 'reel' | 'done'; t: number; fish?: FishDef; pos: number; vel: number; zone: number; hold: boolean; prog: number; msg: string; auto?: boolean; n?: number; got?: number } | null = null;
+  const AUTO_OK = [0, 98, 92, 70, 50, 30];
+  const autoBtn = root.querySelector<HTMLElement>('#pzautobtn')!;
   const fishView = () => {
     if (!fs) { fui.hidden = true; return; }
     fui.hidden = false;
+    if (fs.auto) {
+      fui.innerHTML = `<div class="fishtitle">🤖 자동 낚시 중 · ${fs.n ?? 0}번 던져 ${fs.got ?? 0}마리 <span class="small">(숙련도 ¼)</span><br>${fs.msg}</div><div class="row" style="gap:6px;justify-content:center"><button class="btn ghost sm" data-fish="close">그만두기</button></div>`;
+      return;
+    }
     if (fs.st === 'reel') {
       fui.innerHTML = `<div class="fishtitle">🎣 버튼(E·스페이스)을 누르고 있으면 오른쪽, 떼면 왼쪽! 물고기를 초록 칸 안에</div>
         <div class="fishbar"><i class="fz" style="left:${fs.zone * 100}%;width:${ZW * 100}%"></i><b class="ff" style="left:${fs.pos * 100}%">🐟</b></div>
@@ -124,9 +131,9 @@ export function mountPlaza(o: PlazaOpts) {
       fui.innerHTML = `<div class="fishtitle">${fs.msg}</div><div class="row" style="gap:6px;justify-content:center">${fs.st === 'bite' ? '<button class="btn sm" data-fish="hook">낚아채기!</button>' : ''}<button class="btn ghost sm" data-fish="close">${fs.st === 'done' ? '닫기' : '그만두기'}</button></div>`;
     }
   };
-  const startFish = () => {
+  const startFish = (auto = false) => {
     if (fs) return;
-    fs = { st: 'wait', t: 3 + Math.random() * 5, pos: 0.5, vel: 0, zone: 0.35, hold: false, prog: 30, msg: `찌를 던졌다… 입질을 기다리는 중 (기다렸다가 「입질!」이 뜨면 누르세요)<br><span class="small">🎣 낚시 숙련도 Lv.${o.fishLv()}</span>` };
+    fs = { auto, n: 1, got: 0, st: 'wait', t: 3 + Math.random() * 5, pos: 0.5, vel: 0, zone: 0.35, hold: false, prog: 30, msg: `찌를 던졌다… 입질을 기다리는 중 (기다렸다가 「입질!」이 뜨면 누르세요)<br><span class="small">🎣 낚시 숙련도 Lv.${o.fishLv()}</span>` };
     tap = null; keys.L = keys.R = keys.U = keys.D = false;
     o.send('emo', { id: o.me.id, e: '🎣' }); bubble(me, '🎣', true);
     fishView();
@@ -149,8 +156,25 @@ export function mountPlaza(o: PlazaOpts) {
   window.addEventListener('pointerup', () => { if (fs?.st === 'reel') fs.hold = false; });
   fui.addEventListener('click', (e) => e.stopPropagation());
   fishBtn.addEventListener('click', (e) => { e.stopPropagation(); startFish(); });
+  autoBtn.addEventListener('click', (e) => { e.stopPropagation(); startFish(true); });
   const fishTick = (dt: number) => {
     if (!fs) return;
+    if (fs.auto) {
+      fs.t -= dt;
+      if (fs.t > 0) return;
+      if (fs.st === 'wait') { fs.st = 'reel'; fs.fish = rollFish(Math.random, o.fishLv()); fs.t = 2.5; fs.msg = '❗ 입질! 당기는 중…'; fishView(); return; }
+      if (fs.st === 'reel' && fs.fish) {
+        const f = fs.fish;
+        if (Math.random() * 100 < AUTO_OK[f.grade]) {
+          const msg = o.onCatch(f, true); fs.got = (fs.got ?? 0) + 1;
+          o.send('fish', { id: o.me.id, f: f.id }); bubble(me, `${f.emoji} ${f.name}!`);
+          fs.msg = `<b class="r${f.grade}">${FISH_GRADE_NAME[f.grade]} · ${f.emoji} ${f.name}</b> · <span class="small">${msg}</span>`;
+        } else fs.msg = `${f.emoji} ${FISH_GRADE_NAME[f.grade]} 물고기를 놓쳤다… <span class="small">${o.onMiss(true)}</span>`;
+        fs.st = 'done'; fs.t = 1.8; fishView(); return;
+      }
+      if (fs.st === 'done') { fs.st = 'wait'; fs.t = 3 + Math.random() * 5; fs.n = (fs.n ?? 0) + 1; fs.fish = undefined; fishView(); }
+      return;
+    }
     if (fs.st === 'wait') { fs.t -= dt; if (fs.t <= 0) { fs.st = 'bite'; fs.t = 1.1; fs.msg = '❗ 입질! 지금 누르세요 (E·스페이스)'; fishView(); } return; }
     if (fs.st === 'bite') { fs.t -= dt; if (fs.t <= 0) endFish('놓쳤다… 다시 던져보자'); return; }
     if (fs.st !== 'reel' || !fs.fish) return;
@@ -164,13 +188,13 @@ export function mountPlaza(o: PlazaOpts) {
     fs.prog = Math.max(0, Math.min(100, fs.prog + (inside ? 20 : -14 - 3 * fs.fish.grade) * dt));
     if (fs.prog >= 100) {
       const f = fs.fish;
-      const msg = o.onCatch(f);
+      const msg = o.onCatch(f, false);
       o.send('fish', { id: o.me.id, f: f.id });
       bubble(me, `${f.emoji} ${f.name}!`);
       endFish(`<b class="r${f.grade}">${FISH_GRADE_NAME[f.grade]} · ${f.emoji} ${f.name}</b> 을(를) 낚았다!<br><span class="small">${f.desc}</span><br>${msg}`);
       return;
     }
-    if (fs.prog <= 0) { endFish(`${fs.fish.emoji} 물고기가 줄을 끊고 도망갔다… <span class="small">${o.onMiss()}</span>`); return; }
+    if (fs.prog <= 0) { endFish(`${fs.fish.emoji} 물고기가 줄을 끊고 도망갔다… <span class="small">${o.onMiss(false)}</span>`); return; }
     const z = fui.querySelector<HTMLElement>('.fz'), ff = fui.querySelector<HTMLElement>('.ff'), pr = fui.querySelector<HTMLElement>('.fishprog i');
     if (z) z.style.left = `${fs.zone * 100}%`; if (ff) ff.style.left = `${fs.pos * 100}%`; if (pr) pr.style.width = `${fs.prog}%`;
   };
@@ -228,7 +252,7 @@ export function mountPlaza(o: PlazaOpts) {
     place(me);
     // 낚시터 근처
     const np = !fs && inPond(me.x, me.y, 4);
-    if (np !== nearPond) { nearPond = np; fishBtn.classList.toggle('show', np); }
+    if (np !== nearPond) { nearPond = np; fishBtn.classList.toggle('show', np); autoBtn.classList.toggle('show', np); }
     // 문 근처
     const d = DOORS.find((x) => Math.abs(me.x - x.x) < 6 && me.y < WALL_Y + 5);
     if (d !== near) { near = d ?? null; root.querySelectorAll<HTMLElement>('.pzdoor[data-to]').forEach((b) => b.classList.toggle('show', !!near && b.dataset.to === near.to)); }

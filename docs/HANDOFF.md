@@ -2,6 +2,17 @@
 
 작업 완료 시 최신 항목을 위에 추가한다. 날짜, 담당, 기준 커밋, 브랜치 또는 PR, 변경 사항, 검증 명령과 결과, 다음 작업을 남긴다. 실패하거나 실행하지 못한 검증에는 이유를 적는다.
 
+## 2026-11-26 · 전투 그림 스펙·요청 목록
+
+- 담당 및 브랜치는 Claude Code, `claude/art-spec`
+- 기준 커밋 `abe7e6f` (PR #4 병합 후 `origin/main`).
+- `docs/ART_SPEC.md`를 추가했다. 스타일, 파일 규격(투명 PNG·왼쪽 보기·전신), 포즈(`idle`, 일부 `atk`), 파일 위치(`public/sprites/<job|mon>/<ID>.png`, `<ID>_atk.png`), 생성 프롬프트 예시, 4단계 계획, 요청 목록(직업 36 + 몬스터 118 = 154항목, atk 63장)이 들어 있다.
+- 레퍼런스 그림 2장을 `docs/art/ref_job.png`, `docs/art/ref_monster.png`로 넣었다(투명 처리, 왼쪽 보기).
+- `docs/CLAUDE_RESUME.md`에 이미지 요청 내역 위치 한 줄을 추가했다.
+- 공격 모션: 모든 유닛에 코드 모션(돌진·흔들림·베기 궤적)을 붙이고, 직업과 보스만 `atk` 그림으로 바꾼다.
+- Codex 참고: 그림 파일만 `codex/art-<단계>` 브랜치로 올리면 된다. 코드와 요청 목록 상태 칸은 Claude Code가 적용할 때 갱신한다.
+- 문서만 바꿨다. 링크 경로와 `git diff --check`를 확인했다. 코드 변경이 없어 typecheck, smoke, build는 실행하지 않았다.
+
 ## 2026-11-26 · 2D 전투 무대 전열·후열 배치
 
 - 담당 및 브랜치는 Claude Code, `claude/stage-rows`

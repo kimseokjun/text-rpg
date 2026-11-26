@@ -10,6 +10,7 @@
 | 2D 전투 무대 전열·후열 배치 (일반 전투·결투·4인 레이드) | Claude Code | `src/ui/stage2d.ts`, `src/ui/r4stage.ts`, `src/ui/main.ts`, `src/core/combat.ts`, `src/core/types.ts`, `src/core/raid4battle.ts` | 완료 | `claude/stage-rows` (#4) |
 | 4인 레이드 무대에 전투 그림 적용 | Claude Code | `src/ui/main.ts`(`unitIcon`), `src/ui/r4stage.ts`, `src/ui/stage2d.ts`, `src/ui/style.css` | 완료 | `claude/r4-art` (#11) |
 | 일반 전투 무대 스킬 이펙트 (레이드 이펙트 공용화) | Claude Code | `src/ui/r4stage.ts`, `src/ui/stage2d.ts`, `src/ui/main.ts` | 완료 | `claude/stage-fx` (#12) |
+| 알려진 문제 수정: 전투 중 MP 갱신, 모바일 2D 무대 겹침 | Claude Code | `src/core/types.ts`, `src/core/combat.ts`, `src/ui/stage2d.ts`, `src/ui/main.ts`, `src/ui/style.css` | 완료 | `claude/known-fixes` (#16) |
 | 랜덤 디펜스 디자인 재작업 (11/26 배포 후 롤백) | Claude Code | `src/core/defense.ts`, `src/ui/defense.ts` | 대기 | `feat/defense` |
 | 전투 그림 스펙·요청 목록 작성 | Claude Code | `docs/ART_SPEC.md`, `docs/art/`, `docs/CLAUDE_RESUME.md` | 완료 | `claude/art-spec` (#5) |
 | 전투 그림 제작·업로드 (1단계: 기본 직업 4 + 지하묘지 몬스터 6) | Codex | `public/sprites/` (그림 파일만) | 완료 | `codex/art-1` (#6, `claude/art-apply-1`에 포함해 병합) |

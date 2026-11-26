@@ -2,6 +2,15 @@
 
 작업 완료 시 최신 항목을 위에 추가한다. 날짜, 담당, 기준 커밋, 브랜치 또는 PR, 변경 사항, 검증 명령과 결과, 다음 작업을 남긴다. 실패하거나 실행하지 못한 검증에는 이유를 적는다.
 
+## 2026-11-26 · Claude 작업 시작·재개 규칙
+
+- 담당 및 브랜치는 Claude Code, `claude/resume-rules`
+- 기준 커밋 `2d9f378` (PR #2 병합 후 `origin/main`).
+- `docs/CLAUDE_RESUME.md`를 추가했다. 작업 시작·재개 때 최신 커밋과 열린 PR을 확인하고, Codex가 올린 이미지를 요청 내역과 대조해 적용한다. 이미 적용된 리소스는 다시 처리하지 않는다.
+- `CLAUDE.md`가 `AGENTS.md`와 함께 이 문서를 불러오도록 한 줄 추가했다. `AGENTS.md`는 바꾸지 않았다.
+- 문서만 바꿨다. 참조 경로와 `git diff --check`를 확인했다. 코드 변경이 없어 typecheck, smoke, build는 실행하지 않았다.
+- Codex 참고: 이미지를 올릴 때 파일 이름에 요청 ID(예: 카드 `c03`)를 넣어주면 대조가 정확하다.
+
 ## 2026-11-26 · 대기 브랜치 일괄 배포
 
 - 담당 및 브랜치는 Claude Code, `claude/deploy-pending`

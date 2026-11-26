@@ -993,8 +993,8 @@ function plazaMount() {
     send: (ev, p) => pz?.ch.send(ev, p),
     onDoor: (to) => { if (to === 'raid4' && !Cloud.session) return; screen = to as Screen; render(); },
     onPick: (id, name) => { pzPick = { id, name }; render(); },
-    onCatch: (f, auto) => { const m = G.catchFish(S!, f, auto); saveGame(S!); const t = document.querySelector('.top'); if (t) t.outerHTML = topbar(); const side = document.getElementById('pzside'); if (side) side.innerHTML = plazaSide(); return m; },
-    onMiss: (auto) => { const m = G.missFish(S!, auto); saveGame(S!); return m; },
+    onCatch: (f, auto) => { const m = G.catchFish(S!, f, auto); fishSave(); return m; },
+    onMiss: (auto) => { const m = G.missFish(S!, auto); fishSave(); return m; },
     fishLv: () => G.masteryOf(S!, 'fishing').lv,
     onLog: (line) => { pzLog = [...pzLog, line].slice(-6); const side = document.getElementById('pzside'); if (side) side.innerHTML = plazaSide(); },
   });
@@ -3552,6 +3552,16 @@ function renderUpdate() {
   if (newVersion) app.insertAdjacentHTML('beforeend', '<button class="updbar" data-a="reload">✨ 새 버전이 나왔어요 · 눌러서 새로고침</button>');
 }
 setInterval(checkVersion, 300000);
+// 낚시 저장은 몰아서 한 번에 (자리 비운 동안 수천 번 낚아도 멈추지 않게)
+let fishSavePending = false;
+function fishSave() {
+  if (fishSavePending) return; fishSavePending = true;
+  setTimeout(() => {
+    fishSavePending = false; if (!S) return; saveGame(S);
+    const t = document.querySelector('.top'); if (t) t.outerHTML = topbar();
+    const side = document.getElementById('pzside'); if (side) side.innerHTML = plazaSide();
+  }, 0);
+}
 document.addEventListener('visibilitychange', () => { if (!document.hidden) checkVersion(); });
 
 async function boot() {

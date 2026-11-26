@@ -113,14 +113,14 @@ export function mountPlaza(o: PlazaOpts) {
   const fishBtn = root.querySelector<HTMLElement>('#pzfishbtn')!, fui = root.querySelector<HTMLElement>('#fishui')!;
   const ZW = 0.3;
   let nearPond = false;
-  let fs: { st: 'wait' | 'bite' | 'reel' | 'done'; t: number; fish?: FishDef; pos: number; vel: number; zone: number; hold: boolean; prog: number; msg: string; auto?: boolean; n?: number; got?: number } | null = null;
+  let fs: { st: 'wait' | 'bite' | 'reel' | 'done'; t: number; fish?: FishDef; pos: number; vel: number; zone: number; hold: boolean; prog: number; msg: string; auto?: boolean; n?: number; got?: number; note?: string } | null = null;
   const AUTO_OK = [0, 98, 92, 70, 50, 30];
   const autoBtn = root.querySelector<HTMLElement>('#pzautobtn')!;
   const fishView = () => {
     if (!fs) { fui.hidden = true; return; }
     fui.hidden = false;
     if (fs.auto) {
-      fui.innerHTML = `<div class="fishtitle">🤖 자동 낚시 중 · ${fs.n ?? 0}번 던져 ${fs.got ?? 0}마리 <span class="small">(숙련도 ¼)</span><br>${fs.msg}</div><div class="row" style="gap:6px;justify-content:center"><button class="btn ghost sm" data-fish="close">그만두기</button></div>`;
+      fui.innerHTML = `<div class="fishtitle">🤖 자동 낚시 중 · ${fs.n ?? 0}번 던져 ${fs.got ?? 0}마리 <span class="small">(숙련도 ¼)</span>${fs.note ? `<br>${fs.note}` : ''}<br>${fs.msg}</div><div class="row" style="gap:6px;justify-content:center"><button class="btn ghost sm" data-fish="close">그만두기</button></div>`;
       return;
     }
     if (fs.st === 'reel') {
@@ -133,6 +133,7 @@ export function mountPlaza(o: PlazaOpts) {
   };
   const startFish = (auto = false) => {
     if (fs) return;
+    autoLast = Date.now(); away = null;
     fs = { auto, n: 1, got: 0, st: 'wait', t: 3 + Math.random() * 5, pos: 0.5, vel: 0, zone: 0.35, hold: false, prog: 30, msg: `찌를 던졌다… 입질을 기다리는 중 (기다렸다가 「입질!」이 뜨면 누르세요)<br><span class="small">🎣 낚시 숙련도 Lv.${o.fishLv()}</span>` };
     tap = null; keys.L = keys.R = keys.U = keys.D = false;
     o.send('emo', { id: o.me.id, e: '🎣' }); bubble(me, '🎣', true);
@@ -157,24 +158,50 @@ export function mountPlaza(o: PlazaOpts) {
   fui.addEventListener('click', (e) => e.stopPropagation());
   fishBtn.addEventListener('click', (e) => { e.stopPropagation(); startFish(); });
   autoBtn.addEventListener('click', (e) => { e.stopPropagation(); startFish(true); });
+  // 자동 낚시: 화면 루프와 별개로 실제 지난 시간 기준 진행 (창을 내려도 진행, 최대 8시간)
+  const AWAY_MAX = 8 * 3600 * 1000;
+  let away: { at: number; n: number; got: number; capped: boolean } | null = null;
+  const autoStep = (quiet: boolean) => {
+    if (!fs) return;
+    if (fs.st === 'wait') { fs.st = 'reel'; fs.fish = rollFish(Math.random, o.fishLv()); fs.t = 2.5; fs.msg = '❗ 입질! 당기는 중…'; if (!quiet) fishView(); return; }
+    if (fs.st === 'reel' && fs.fish) {
+      const f = fs.fish;
+      if (Math.random() * 100 < AUTO_OK[f.grade]) {
+        const msg = o.onCatch(f, true); fs.got = (fs.got ?? 0) + 1; if (away) away.got++;
+        if (!quiet) { o.send('fish', { id: o.me.id, f: f.id }); bubble(me, `${f.emoji} ${f.name}!`); }
+        fs.msg = `<b class="r${f.grade}">${FISH_GRADE_NAME[f.grade]} · ${f.emoji} ${f.name}</b> · <span class="small">${msg}</span>`;
+      } else fs.msg = `${f.emoji} ${FISH_GRADE_NAME[f.grade]} 물고기를 놓쳤다… <span class="small">${o.onMiss(true)}</span>`;
+      fs.st = 'done'; fs.t = 1.8; if (!quiet) fishView(); return;
+    }
+    if (fs.st === 'done') { fs.st = 'wait'; fs.t = 3 + Math.random() * 5; fs.n = (fs.n ?? 0) + 1; if (away) away.n++; fs.fish = undefined; if (!quiet) fishView(); }
+  };
+  let autoLast = 0;
+  const autoPump = () => {
+    if (!fs?.auto) return;
+    const now = Date.now();
+    let until = now;
+    if (away && now - away.at > AWAY_MAX) { until = Math.max(autoLast, away.at + AWAY_MAX); away.capped = true; }
+    let el = Math.max(0, (until - autoLast) / 1000);
+    autoLast = now;
+    const quiet = document.hidden;
+    for (let guard = 0; el > 0 && fs?.auto && guard < 20000; guard++) {
+      const step = Math.min(el, fs.t);
+      fs.t -= step; el -= step;
+      if (fs.t <= 1e-6) autoStep(quiet); else break;
+    }
+  };
+  const autoTimer = setInterval(autoPump, 1000);
+  const onVis = () => {
+    if (!fs?.auto) { away = null; return; }
+    if (document.hidden) { autoPump(); away = { at: Date.now(), n: 0, got: 0, capped: false }; return; }
+    autoPump();
+    if (away && away.n > 0) fs.note = `💤 자리 비운 동안 ${away.n}번 던져 ${away.got}마리 낚았다${away.capped ? ' <span class="small">(최대 8시간까지만 진행)</span>' : ''}`;
+    away = null; fishView();
+  };
+  document.addEventListener('visibilitychange', onVis);
   const fishTick = (dt: number) => {
     if (!fs) return;
-    if (fs.auto) {
-      fs.t -= dt;
-      if (fs.t > 0) return;
-      if (fs.st === 'wait') { fs.st = 'reel'; fs.fish = rollFish(Math.random, o.fishLv()); fs.t = 2.5; fs.msg = '❗ 입질! 당기는 중…'; fishView(); return; }
-      if (fs.st === 'reel' && fs.fish) {
-        const f = fs.fish;
-        if (Math.random() * 100 < AUTO_OK[f.grade]) {
-          const msg = o.onCatch(f, true); fs.got = (fs.got ?? 0) + 1;
-          o.send('fish', { id: o.me.id, f: f.id }); bubble(me, `${f.emoji} ${f.name}!`);
-          fs.msg = `<b class="r${f.grade}">${FISH_GRADE_NAME[f.grade]} · ${f.emoji} ${f.name}</b> · <span class="small">${msg}</span>`;
-        } else fs.msg = `${f.emoji} ${FISH_GRADE_NAME[f.grade]} 물고기를 놓쳤다… <span class="small">${o.onMiss(true)}</span>`;
-        fs.st = 'done'; fs.t = 1.8; fishView(); return;
-      }
-      if (fs.st === 'done') { fs.st = 'wait'; fs.t = 3 + Math.random() * 5; fs.n = (fs.n ?? 0) + 1; fs.fish = undefined; fishView(); }
-      return;
-    }
+    if (fs.auto) { autoPump(); return; }
     if (fs.st === 'wait') { fs.t -= dt; if (fs.t <= 0) { fs.st = 'bite'; fs.t = 1.1; fs.msg = '❗ 입질! 지금 누르세요 (E·스페이스)'; fishView(); } return; }
     if (fs.st === 'bite') { fs.t -= dt; if (fs.t <= 0) endFish('놓쳤다… 다시 던져보자'); return; }
     if (fs.st !== 'reel' || !fs.fish) return;
@@ -307,7 +334,7 @@ export function mountPlaza(o: PlazaOpts) {
     say(text: string) { bubble(me, text); },
     emote(e: string) { bubble(me, e, true); },
     updateMe(av: AvatarState, title?: string | null) { me.av = av; me.title = title; me.el.querySelector('.pzfig')!.innerHTML = h.figure(av, o.me.name, title); },
-    stop() { alive = false; cancelAnimationFrame(raf); window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku); host.innerHTML = ''; },
+    stop() { alive = false; cancelAnimationFrame(raf); clearInterval(autoTimer); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku); host.innerHTML = ''; },
     fishing: () => !!fs,
   };
 }

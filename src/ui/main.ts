@@ -548,13 +548,14 @@ let presetOver: number | null = null;
 function presetBar(full: boolean) {
   const s = S!;
   const list = G.presetList(s);
-  const same = (p: G.Preset) => p.party.join() === s.party.join() && p.pet === s.activePet && p.deck.join() === (s.deck ?? []).join() && (p.title ?? '') === (s.title ?? '');
+  const gearSame = (p: G.Preset) => !p.gear || G.partyChars(s).every((c) => Object.entries(p.gear![c.uid] ?? {}).every(([k, u]) => c.equipment[k as EquipSlot]?.uid === u));
+  const same = (p: G.Preset) => p.party.join() === s.party.join() && gearSame(p) && p.pet === s.activePet && p.deck.join() === (s.deck ?? []).join() && (p.title ?? '') === (s.title ?? '');
   if (!full) {
     const filled = list.map((p, i) => [p, i] as const).filter(([p]) => p);
     if (!filled.length) return '';
     return `<div class="presets mini"><span class="small mute">프리셋</span>${filled.map(([p, i]) => `<button class="btn ghost sm ${same(p!) ? 'on' : ''}" data-a="presetLoad" data-i="${i}" title="${esc(presetSum(p!))}">${esc(p!.name)}</button>`).join('')}</div>`;
   }
-  return `<div class="presets"><div class="row" style="justify-content:space-between"><b>편성 프리셋</b><span class="small mute">파티·전열/후열·공격 대상·펫·카드 덱·칭호 (장비는 그대로)</span></div>
+  return `<div class="presets"><div class="row" style="justify-content:space-between"><b>편성 프리셋</b><span class="small mute">파티·장비·전열/후열·공격 대상·펫·카드 덱·칭호</span></div>
     <div class="pslots">${list.map((p, i) => p ? `<div class="pslot ${same(p) ? 'on' : ''}">
         <button class="pname" data-a="presetLoad" data-i="${i}"><b>${esc(p.name)}</b>${same(p) ? ' <span class="tag">사용 중</span>' : ''}<span class="small mute">${esc(presetSum(p))}</span></button>
         <div class="row pact2">${presetOver === i ? `<button class="btn sm" data-a="presetSave" data-i="${i}">덮어쓰기 확인</button><button class="btn ghost sm" data-a="presetCancel">취소</button>`
@@ -565,7 +566,8 @@ function presetSum(p: G.Preset) {
   const s = S!;
   const names = p.party.map((u) => s.roster.find((c) => c.uid === u)?.name).filter(Boolean) as string[];
   const pet = p.pet ? s.pets.find((x) => x.uid === p.pet) : null;
-  return [names.join(', ') || '단원 없음', pet ? PET_BY_ID[pet.kind].name : '', p.deck.length ? `카드 ${p.deck.length}장` : '', p.title && TITLE_BY_ID[p.title] ? `「${TITLE_BY_ID[p.title].name}」` : ''].filter(Boolean).join(' · ');
+  const gearN = p.gear ? Object.values(p.gear).reduce((a, g) => a + Object.keys(g).length, 0) : -1;
+  return [names.join(', ') || '단원 없음', gearN < 0 ? '장비 미저장(다시 저장하면 포함)' : `장비 ${gearN}개`, pet ? PET_BY_ID[pet.kind].name : '', p.deck.length ? `카드 ${p.deck.length}장` : '', p.title && TITLE_BY_ID[p.title] ? `「${TITLE_BY_ID[p.title].name}」` : ''].filter(Boolean).join(' · ');
 }
 
 function viewParty() {

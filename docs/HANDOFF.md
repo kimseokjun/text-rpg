@@ -15,6 +15,20 @@
   - `npm run typecheck`, `npm run smoke`, `npm run build`, `git diff --check`가 통과했다.
   - Playwright로 지하묘지 3층에서 메테오(낙하·폭발)와 늑대 소환 이펙트를 확인했다.
   - 레이드 무대는 가짜 상태 임시 페이지(커밋 안 함)에서 메테오 이펙트가 그대로 나오는 것을 확인했다.
+## 2026-11-26 · 4인 레이드 무대 전투 그림 적용
+
+- 담당 및 브랜치는 Claude Code, `claude/r4-art`
+- 기준 커밋 `b257803` (PR #10 병합 후 `origin/main`). 시작 시 Codex의 새 그림·열린 PR이 없음을 확인했다.
+- 변경 사항
+  - `src/ui/main.ts`의 `unitIcon`: 파티는 직업 그림(없으면 같은 계열 1차 → 도트), 보스·졸개는 `mon/<mid>` 그림(없으면 도트)을 쓴다. 파티는 왼쪽에 서므로 `.r4face.flip`으로 좌우를 뒤집는다. 36px 이하(순서 막대)는 도트를 그대로 쓴다.
+  - 크기는 예전 도트 크기 기준이다. 파티 ×1.7, 보스 ×1.45, 졸개 ×1.8. 모바일은 `.r4stage2 --k: .55`.
+  - `src/ui/r4stage.ts`: 공격·스킬 순간 `.r4face`에 `atking`을 붙여 공격 자세를 보인다(보통 650ms, 빠르게 300ms).
+  - `src/ui/stage2d.ts`의 `spriteImg`: `var(--k, 1)`로 무대 밖에서도 크기가 잡힌다. 공격 자세 CSS를 `.atking` 공용 규칙으로 바꿨다.
+  - 전투 꾸미기(오라·이름표·등장 효과)는 기존 레이드 표시를 그대로 둔다. 망토는 그림에 표시하지 않는다(사용자 결정: 전투 꾸미기 작업 안 함).
+- 검증
+  - `npm run typecheck`, `npm run smoke`, `npm run build`, `git diff --check`가 통과했다.
+  - 실시간 서버 없이 `mountStage`·`playEvents`를 가짜 상태로 띄우는 임시 페이지(커밋 안 함)를 만들었다. 거기서 파티 공격·보스 공격 자세와 PC·모바일 크기를 확인했다.
+- 남은 점: 4인 레이드 보스 3종(`abyssKing`·`frostLord`·`bloodEmpress`)은 4단계 그림이 올 때까지 도트다.
 
 ## 2026-11-26 · 전투 그림 2단계 게임 적용
 

@@ -77,8 +77,8 @@ export const SUMMON_POS: Pos[] = [{ x: 30, y: 74 }, { x: 30, y: 93 }, { x: 8, y:
  *  h = PC 기준 표시 높이(px). 모바일은 .s2 의 --k 로 줄어듦. 공격 자세가 있으면 겹쳐 두고 공격 순간에만 보임 */
 export function spriteImg(key: string, h: number): string | null {
   const sp = SPRITES[key]; if (!sp) return null;
-  const idle = `<img class="s2i" src="./sprites/${key}.webp" alt="" style="height:calc(var(--k) * ${h}px)" draggable="false">`;
-  const px = (v: number) => `calc(var(--k) * ${Math.round((h * v) / sp.h)}px)`;
+  const idle = `<img class="s2i" src="./sprites/${key}.webp" alt="" style="height:calc(var(--k, 1) * ${h}px)" draggable="false">`;
+  const px = (v: number) => `calc(var(--k, 1) * ${Math.round((h * v) / sp.h)}px)`;
   const atk = sp.ah ? `<img class="s2i s2atk" src="./sprites/${key}_atk.webp" alt="" style="height:${px(sp.ah)};right:${px(sp.ar ?? 0)};bottom:${px(sp.ab ?? 0)}" draggable="false" loading="eager">` : '';
   return idle + atk;
 }

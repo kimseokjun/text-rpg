@@ -2,6 +2,21 @@
 
 작업 완료 시 최신 항목을 위에 추가한다. 날짜, 담당, 기준 커밋, 브랜치 또는 PR, 변경 사항, 검증 명령과 결과, 다음 작업을 남긴다. 실패하거나 실행하지 못한 검증에는 이유를 적는다.
 
+## 2026-11-26 · AGENTS.md 배포 규칙 (Codex 인수인계)
+
+- 담당 및 브랜치는 Claude Code, `claude/deploy-rules`
+- 기준 커밋 `af010ac` (PR #18 병합 후 `origin/main`).
+- `AGENTS.md`에 「배포 규칙」 절을 추가했다. 지금까지 대화로만 지켜온 규칙을 문서로 옮긴 것이다.
+  - 병합이 곧 배포이고, 사용자가 요청할 때만 병합한다. 00~04시에는 배포하지 않는다.
+  - 공지 migration을 추가한다. 적용된 migration은 지우지 않는다.
+  - Supabase CLI 다운로드 횟수 제한 실패는 재실행한다.
+  - 그림 변환 스크립트를 쓴다. 시트 「패치 기록」은 Claude Code가 맡는다.
+- 사용자가 주간 사용량 때문에 남은 개발을 Codex에 맡길 수 있다. Codex에 넘기기 좋은 다음 작업:
+  1. 절대영도(`src/ui/dodge.ts`): 회피 수단 추가(대쉬 0.25초 무적·쿨 1.5초 또는 2단 점프 — 사용자 결정 대기). 미니게임에서 직업 그림이 세로로 늘어나는 버그도 고쳐야 한다. 원인은 `.dg-spr img{width:100%}`와 `spriteImg`의 고정 height다. 미니게임에서는 비율을 유지하고 `.s2atk`를 숨긴다.
+  2. 전투 그림 4단계(`docs/ART_SPEC.md` 단계 4, 20항목): 레이드 보스 `abyssKing`·`frostLord`·`bloodEmpress`, 일일 던전·특수 몬스터.
+- Claude Code가 다음에 할 일: Codex가 배포한 변경을 「패치 기록」 시트에 옮기기(98행까지 기록됨).
+- 문서만 바꿨다. `git diff --check`를 확인했다.
+
 ## 2026-11-26 · 전투 그림 3단계 게임 적용 (몬스터 92종)
 
 - 담당 및 브랜치는 Claude Code, `claude/art-apply-3`. Codex의 `codex/art-3a`(#13), `codex/art-3b`(#14), `codex/art-3c`(#17), `codex/art-3-tracking`(#15)을 병합해 포함했다.

@@ -10,7 +10,8 @@
 | 2D 전투 무대 전열·후열 배치 (일반 전투·결투·4인 레이드) | Claude Code | `src/ui/stage2d.ts`, `src/ui/r4stage.ts`, `src/ui/main.ts`, `src/core/combat.ts`, `src/core/types.ts`, `src/core/raid4battle.ts` | 완료 | `claude/stage-rows` (#4) |
 | 랜덤 디펜스 디자인 재작업 (11/26 배포 후 롤백) | Claude Code | `src/core/defense.ts`, `src/ui/defense.ts` | 대기 | `feat/defense` |
 | 전투 그림 스펙·요청 목록 작성 | Claude Code | `docs/ART_SPEC.md`, `docs/art/`, `docs/CLAUDE_RESUME.md` | 완료 | `claude/art-spec` (#5) |
-| 전투 그림 제작·업로드 (1단계: 기본 직업 4 + 지하묘지 몬스터 6) | Codex | `public/sprites/` (그림 파일만) | 대기 | `codex/art-1` |
-| 전투 그림 게임 적용 (업로드된 단계부터) | Claude Code | `src/ui/stage2d.ts`, `src/ui/r4stage.ts`, `docs/ART_SPEC.md` 상태 칸 | 대기 | - |
+| 전투 그림 제작·업로드 (1단계: 기본 직업 4 + 지하묘지 몬스터 6) | Codex | `public/sprites/` (그림 파일만) | 완료 | `codex/art-1` (#6, `claude/art-apply-1`에 포함해 병합) |
+| 전투 그림 게임 적용 1단계 (일반 전투·결투 무대) | Claude Code | `scripts/sprites.py`, `src/data/spriteManifest.ts`, `src/ui/stage2d.ts`, `src/ui/main.ts`, `src/ui/style.css`, `docs/ART_SPEC.md` 상태 칸 | 검토 대기 | `claude/art-apply-1` |
+| 전투 그림 제작·업로드 2단계 (나머지 직업 32종, idle+atk) | Codex | `public/sprites/job/` (그림 파일만) | 대기 | `codex/art-2` |
 
 Claude Code의 작업은 배정 시 행을 추가하고 `claude/<작업명>` 브랜치를 기록한다. 두 AI가 동시에 작업할 때는 각자의 행을 갱신한다.

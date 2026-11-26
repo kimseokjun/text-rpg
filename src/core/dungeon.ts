@@ -34,7 +34,7 @@ export interface ExpeditionSettings {
   /** 멀티 던전 (보상은 서버에서) */
   multi?: boolean;
   /** 카드 던전 (구 균열, 혼자 · 하루 3회): level = 기준 층 (1~70), 10층 진행 */
-  rift?: { level: number };
+  rift?: { level: number; packs?: number };
   /** 친구 결투: 상대 캐릭터와 상대 공용 효과(펫·카드) */
   duel?: { foes: Character[]; foeMods: Modifier[]; foeName: string };
   /** 오늘 이미 군단장의 핵을 받은 마왕성·마왕방 보스 id (보스마다 하루 첫 처치만 핵) */
@@ -60,8 +60,14 @@ export type StopReason = 'wipe' | 'timeout' | 'lowHp' | 'down' | 'target' | 'bos
 export const RIFT_FLOORS = 10;
 /** 카드 던전: 하루 3회 (한국 시간 오전 4시 초기화) */
 export const CARD_DUN_LIMIT = 3;
-/** 카드 던전 완주 카드 팩: 기준 층 ~20층 2개 · ~50층 3개 · 51층~ 4개 */
-export const cardDunPacks = (level: number) => (level > 50 ? 4 : level > 20 ? 3 : 2);
+export type CardDunDiff = 'easy' | 'normal' | 'hard';
+/** 카드 던전 난이도: 기준 층 = 내 최고 층 × 비율 (3~70층), 완주 카드 팩 */
+export const CARD_DUN_DIFF: Record<CardDunDiff, { name: string; ratio: number; packs: number }> = {
+  easy: { name: '쉬움', ratio: 0.5, packs: 1 },
+  normal: { name: '보통', ratio: 0.8, packs: 2 },
+  hard: { name: '어려움', ratio: 1, packs: 3 },
+};
+export const cardDunLevel = (diff: CardDunDiff, maxFloor: number) => Math.max(3, Math.min(70, Math.round(Math.max(3, maxFloor) * CARD_DUN_DIFF[diff].ratio)));
 /** 마왕성·마왕방 보스 하루 첫 처치 군단장의 핵 (최소, 최대) */
 export const BOSS_CORES: [number, number] = [25, 37];
 /** 균열 난이도 배율 (src/cli/rifttest.ts): 기준 층 표준 파티가 완주 약 60% */
@@ -257,7 +263,7 @@ export class Expedition {
     // 신비 카드 팩: 5층 정예 1개 + 완주 시 기준 층에 따라 2~4개
     if (t === 5) this.loot.cardPacks = (this.loot.cardPacks ?? 0) + 1;
     if (t === RIFT_FLOORS) {
-      this.loot.cardPacks = (this.loot.cardPacks ?? 0) + cardDunPacks(F);
+      this.loot.cardPacks = (this.loot.cardPacks ?? 0) + (this.settings.rift!.packs ?? 2);
       this.loot.gold += Math.round(600 * rewardScale(F) * this.goldMult);
       log.push({ t: 'special', who: '카드 던전', text: '카드 던전을 끝까지 돌파했다! 완주 보상 획득' });
     }

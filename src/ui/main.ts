@@ -22,7 +22,7 @@ import { TRAITS } from '../data/traits';
 import { QUESTS, rewardText } from '../data/quests';
 import { WB_LIMIT, wbInfo } from '../server/worldboss';
 import { slotsFor } from '../server/multi';
-import { CARD_DUN_LIMIT, DEFAULT_SETTINGS, Expedition, cardDunPacks } from '../core/dungeon';
+import { CARD_DUN_DIFF, CARD_DUN_LIMIT, DEFAULT_SETTINGS, Expedition, cardDunLevel, type CardDunDiff } from '../core/dungeon';
 import { Raid4Battle, type R4Member, type R4State } from '../core/raid4battle';
 import { mountStage, playEvents, setBanner, setPanel, speech, stageMounted, updateStage } from './r4stage';
 import * as Bgm from './bgm';
@@ -2259,7 +2259,7 @@ function viewCards() {
     const last = G.lastCards;
     body = `<div class="panel" style="text-align:center"><div class="row" style="justify-content:center;gap:10px;align-items:center;flex-wrap:wrap"><b>신비 카드 팩 ${s.cardPacks ?? 0}개</b>
       <button class="btn" data-a="cardOpen" data-v="1" ${(s.cardPacks ?? 0) >= 1 ? '' : 'disabled'}>1개 열기</button><button class="btn ghost" data-a="cardOpen" data-v="10" ${(s.cardPacks ?? 0) >= 1 ? '' : 'disabled'}>${Math.min(10, s.cardPacks ?? 0) || 10}개 열기</button></div>
-      <p class="small mute">확률: 일반 ${PACK_ODDS[1]}% · 고급 ${PACK_ODDS[2]}% · 희귀 ${PACK_ODDS[3]}% · 영웅 ${PACK_ODDS[4]}% · 전설 ${PACK_ODDS[5]}%<br>카드 팩은 <b>카드 던전</b>(하루 3회)에서 나와요: 5층 정예 1개 + 완주 2~4개 (기준 층이 깊을수록 많이)</p>
+      <p class="small mute">확률: 일반 ${PACK_ODDS[1]}% · 고급 ${PACK_ODDS[2]}% · 희귀 ${PACK_ODDS[3]}% · 영웅 ${PACK_ODDS[4]}% · 전설 ${PACK_ODDS[5]}%<br>카드 팩은 <b>카드 던전</b>(하루 3회)에서 나와요: 쉬움 2개 · 보통 3개 · 어려움 4개</p>
       ${last.length ? `<div class="copen">${last.map((g, i) => `<div class="cflip" style="animation-delay:${i * 0.08}s">${cardHtml(g.id, { awaken: owned[g.id]?.awaken ?? 0, size: 96 })}${g.isNew ? '<span class="cbadge new">NEW</span>' : ''}</div>`).join('')}</div>` : ''}</div>`;
   }
   return `<div class="wrap">${backBtn()}
@@ -2805,19 +2805,18 @@ function startDailyRun(id: string, stage: number) {
 }
 function viewCardDun() {
   const s = S!;
-  const opts = ZONES.filter((z) => z.floors[1] <= 70).map((z) => ({ z, f: z.floors[0] + 2 })).filter((o) => (s.maxFloor || 0) >= o.f || o.z.floors[0] === 1);
   const left = G.cardDunLeft(s);
-  const rows = [...opts].reverse().map((o) => `<div class="trow"><b class="tf">${o.f}층</b><div class="tg"><span><b>${esc(o.z.name)}</b> · 권장 ${fmt(floorPower(o.f))}</span><span class="small mute">완주 카드 팩 ${cardDunPacks(o.f)}개 + 5층 정예 1개</span></div><div class="row" style="grid-column:2;gap:6px"><button class="btn sm" data-a="cardDunGo" data-v="${o.f}" ${left <= 0 ? 'disabled' : ''}>출발</button></div></div>`).join('');
+  const rows = (Object.keys(CARD_DUN_DIFF) as CardDunDiff[]).map((d) => { const lv = cardDunLevel(d, s.maxFloor || 0); return `<div class="trow"><b class="tf">${CARD_DUN_DIFF[d].name}</b><div class="tg"><span><b>${esc(zoneOf(lv).name)}</b> · 기준 ${lv}층 · 권장 ${fmt(floorPower(lv))}</span><span class="small mute">카드 팩 ${1 + CARD_DUN_DIFF[d].packs}개 (5층 정예 1 + 완주 ${CARD_DUN_DIFF[d].packs})</span></div><div class="row" style="grid-column:2;gap:6px"><button class="btn sm" data-a="cardDunGo" data-v="${d}" ${left <= 0 ? 'disabled' : ''}>출발</button></div></div>`; }).join('');
   return `<div class="wrap">${backBtn()}
     <h2>카드 던전</h2>
-    <p class="mute">지나온 구역 하나를 골라 <b>10층</b>(5층 정예 · 10층 보스, 3층부터 무작위 기믹)을 돌파해요. 출전 파티로 혼자 들어가고, 전멸해도 손실은 없어요.<br>보상은 <b>신비 카드 팩</b> 위주예요. 몬스터는 골드·경험치만 줘요. <b>하루 ${CARD_DUN_LIMIT}회</b>, 입장할 때 차감 (한국 시간 오전 4시 초기화).</p>
+    <p class="mute">난이도를 골라 <b>10층</b>(5층 정예 · 10층 보스, 3층부터 무작위 기믹)을 돌파해요. 기준 층은 내 최고 층에 맞춰 정해져요 (쉬움 50% · 보통 80% · 어려움 100%, 최대 70층). 출전 파티로 혼자 들어가고, 전멸해도 손실은 없어요.<br>보상은 <b>신비 카드 팩</b> 위주예요. 몬스터는 골드·경험치만 줘요. <b>하루 ${CARD_DUN_LIMIT}회</b>, 입장할 때 차감 (한국 시간 오전 4시 초기화).</p>
     <div class="sum" style="margin:12px 0"><div><span class="small mute">오늘 남은 횟수</span><b>${left} / ${CARD_DUN_LIMIT}</b></div><div><span class="small mute">파티 전투력</span><b>${fmt(G.statePower(s))}</b></div><div><span class="small mute">카드 팩</span><b>${fmt(s.cardPacks ?? 0)}</b></div></div>
     <div class="panel"><div class="tlist">${rows}</div></div>
   </div>`;
 }
-function startCardDunRun(level: number) {
+function startCardDunRun(diff: CardDunDiff) {
   const s = S!;
-  const ex = G.startCardDun(s, level);
+  const ex = G.startCardDun(s, diff);
   if (typeof ex === 'string') { toast(ex, true); return; }
   EX = ex;
   saveGame(s);
@@ -3284,7 +3283,7 @@ app.addEventListener('click', (ev) => {
       commit(d.a === 'bulkSell' ? G.bulkSell(s!, f) : G.bulkDismantle(s!, f)); break;
     }
     case 'towerGo': startTowerRun(); break;
-    case 'cardDunGo': startCardDunRun(Number(d.v)); break;
+    case 'cardDunGo': startCardDunRun(d.v as CardDunDiff); break;
     case 'authMode': authMode = d.v as 'login' | 'signup'; authErr = ''; render(); break;
     case 'logout': stopSocial(); Cloud.signOut().then(() => { S = null; lastSave = null; screen = 'title'; render(); }); break;
     case 'rankKind': rankKind = d.v as Cloud.RankKind; render(); break;

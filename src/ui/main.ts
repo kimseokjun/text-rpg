@@ -1337,10 +1337,10 @@ function r4UpdateUI() {
       <button class="r4skb atk" data-a="r4Skill" data-v="attack"><b>일반 공격</b><span>MP 0</span></button><button class="r4skb auto" data-a="r4Skill" data-v=""><b>자동</b><span>알아서</span></button></div>` : '');
 }
 /** 4인 레이드 빠른 채팅 */
-const R4_QC_ALL = ['쉴드 걸어주세요', '힐 부탁해요', '그로기! 몰아쳐요', '나이스 커버입니다', '고마워요 🙏', '죄송해요 😅'];
-const R4_QC_BOSS: Record<R4BossId, string[]> = { abaddon: ['제가 기절 걸겠습니다', '제가 침묵 걸겠습니다', '끊기 부탁해요!', '표식 대상 회복해 주세요'], frost: ['회피 준비!', '감옥 부숴주세요!', '감옥 깨러 갑니다', '점프! 점프!'], blood: ['보호막 집중 공격!', '딜 몰아주세요!', '박쥐부터 잡아요', '흡혈 조심!'] };
+const R4_QC_ALL = ['쉴드 걸어주세요', '힐 부탁해요', '정화 부탁해요!', '그로기! 몰아쳐요', '나이스 커버입니다', '고마워요 🙏', '죄송해요 😅'];
+const R4_QC_BOSS: Record<R4BossId, string[]> = { abaddon: ['제가 기절 걸겠습니다', '제가 침묵 걸겠습니다', '끊기 부탁해요!', '표식 대상 회복해 주세요'], frost: ['회피 준비!', '감옥 부숴주세요!', '정화 부탁해요!', '점프! 점프!'], blood: ['보호막 집중 공격!', '딜 몰아주세요!', '박쥐부터 잡아요', '흡혈 조심!'] };
 const R4_QC = [...new Set([...Object.values(R4_QC_BOSS).flat(), ...R4_QC_ALL])];
-const r4QcList = (b: R4BossId) => [...R4_QC_BOSS[b], ...R4_QC_ALL];
+const r4QcList = (b: R4BossId) => [...new Set([...R4_QC_BOSS[b], ...R4_QC_ALL])];
 let r4QcAt = 0;
 function r4Qc(i: number) {
   const text = R4_QC[i];

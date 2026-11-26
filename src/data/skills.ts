@@ -70,6 +70,7 @@ export const SKILLS: Record<string, SkillDef> = {
   frostBind: { id: 'frostBind', name: '빙결', mp: 12, effects: [{ type: 'damage', scale: 'mag', power: 1.2, target: 'single', status: { type: 'stun', turns: 1, chance: 45 }, interrupt: 40 }] },
   silenceArrow: { id: 'silenceArrow', name: '침묵 화살', mp: 10, effects: [{ type: 'damage', scale: 'atk', power: 1.3, target: 'single', status: { type: 'silence', turns: 2, chance: 60 }, interrupt: 35 }] },
   sealPrayer: { id: 'sealPrayer', name: '봉인의 기도', mp: 10, effects: [{ type: 'debuff', target: 'single', mods: [], turns: 1, status: { type: 'silence', turns: 2, chance: 75 }, interrupt: 35 }] },
+  cleanse: { id: 'cleanse', name: '정화', mp: 12, effects: [{ type: 'cleanse', pctMaxHp: 12 }] },
   vitalShot: { id: 'vitalShot', name: '급소 사격', mp: 12, effects: [{ type: 'damage', scale: 'atk', power: 1.8, target: 'single', guaranteedCrit: true }] },
   trap: {
     id: 'trap', name: '함정 설치', mp: 10,

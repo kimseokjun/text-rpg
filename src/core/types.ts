@@ -69,6 +69,8 @@ export type SkillEffect =
     }
   | { type: 'heal'; target: 'lowestAlly' | 'party'; pctMaxHp: number }
   | { type: 'shield'; target: 'party' | 'lowestAlly'; pctMaxHp: number; turns: number }
+  /** 정화: 아군 하나의 해로운 효과(독·화상·기절·침묵, 얼음 감옥) 제거 + 약간 회복 */
+  | { type: 'cleanse'; pctMaxHp: number }
   | { type: 'buff'; target: 'self' | 'party'; mods: Modifier[]; turns: number; flag?: BuffFlag }
   | { type: 'debuff'; target: 'single' | 'all'; mods: Modifier[]; turns: number; status?: { type: StatusType; turns: number; chance: number }; interrupt?: number }
   | { type: 'taunt'; turns: number }

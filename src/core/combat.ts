@@ -361,6 +361,9 @@ function isActive(ctx: BattleContext, c: Combatant, sk: SkillDef): boolean {
   return false;
 }
 
+/** 정화로 지울 게 있는가 (얼음 감옥 = 'frozen' 태그) */
+const harmScore = (p: Combatant) => (p.tags.has('frozen') ? 4 : 0) + (p.status.stun ? 3 : 0) + (p.status.silence ? 2 : 0) + (p.status.poison ? 1 : 0) + (p.status.burn ? 1 : 0);
+const harmed = (p: Combatant) => harmScore(p) > 0;
 function skillUsable(ctx: BattleContext, c: Combatant, sk: SkillDef): boolean {
   for (const e of sk.effects) {
     if (e.type === 'damage' && e.hpCostPct && pctOf(c) < 35) return false;
@@ -369,6 +372,7 @@ function skillUsable(ctx: BattleContext, c: Combatant, sk: SkillDef): boolean {
       if (!(ctx.round === 1 || ctx.round % 4 === 1)) return false;
     }
     if (e.type === 'heal' && !alive(allies(ctx, c)).some((a) => pctOf(a) < 90)) return false;
+    if (e.type === 'cleanse' && !alive(allies(ctx, c)).some(harmed)) return false;
   }
   return true;
 }
@@ -451,6 +455,16 @@ function useSkill(ctx: BattleContext, c: Combatant, sk: SkillDef) {
           if (e.status) applyStatus(ctx, c, t, e.status);
         }
         if (e.mods.length) ctx.log.push({ t: 'status', to: e.target === 'all' ? (c.side === 'party' ? '적 전체' : '아군 전체') : targets[0]?.name ?? '', status: 'debuff', label: sk.name });
+        break;
+      }
+      case 'cleanse': {
+        const pool = alive(allies(ctx, c)).filter(harmed);
+        if (!pool.length) break;
+        const t = pool.reduce((a, b) => (harmScore(b) > harmScore(a) ? b : a));
+        delete t.status.stun; delete t.status.silence; delete t.status.poison; delete t.status.burn;
+        const freed = t.tags.delete('frozen');
+        ctx.log.push({ t: 'status', to: t.name, status: 'buff', label: freed ? `${sk.name} (얼음 감옥 해제)` : sk.name });
+        heal(ctx, c, t, (t.maxHp * e.pctMaxHp * (1 + eff(c).extra.healPower / 100)) / 100);
         break;
       }
       case 'taunt':

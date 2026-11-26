@@ -61,7 +61,7 @@ const BASE: Record<BaseJob, JobDef> = {
     desc: '회복과 축복으로 파티를 지키는 서포터. 홀리 라이트는 언데드에게 2배 피해.',
     id: 'priest', name: '성직자', base: 'priest', tier: 1,
     aptitude: letters('B A C A B A C D'),
-    skills: [{ level: 1, skillId: 'holyLight' }, { level: 5, skillId: 'heal' }, { level: 10, skillId: 'bless' }, { level: 12, skillId: 'barrier' }, { level: 15, skillId: 'sealPrayer' }],
+    skills: [{ level: 1, skillId: 'holyLight' }, { level: 5, skillId: 'heal' }, { level: 10, skillId: 'bless' }, { level: 12, skillId: 'barrier' }, { level: 15, skillId: 'sealPrayer' }, { level: 18, skillId: 'cleanse' }],
     passives: [{ level: 15, name: '신앙', desc: '파티 층 클리어 회복량 +10%p', mods: [flat('floorRegen', 10, { scope: 'party' })] }],
   },
 };

@@ -17,6 +17,8 @@ export const R4_PRESSURE = { heal: 0.6, enrageFrom: 12, enragePerRound: 10 };
 export let R4_K_EXP = 0.68;
 export const setR4Exp = (v: number) => { R4_K_EXP = v; };
 const BOSS_FLOOR = 70;
+/** 얼음 감옥은 이 라운드 수가 지나면 녹아서 풀림 */
+const PRISON_ROUNDS = 2;
 
 export interface R4Unit { id: string; name: string; owner?: string; ownerName?: string; jobId?: string; mid?: string; hp: number; maxHp: number; mp: number; maxMp: number; alive: boolean; boss?: boolean; frozen?: boolean }
 export type WipeKind = 'interrupt' | 'dodge' | 'shield';
@@ -57,7 +59,7 @@ export function makeR4Boss(diff: R4Diff, tune = R4_TUNE, bossId: R4BossId = 'aba
   const base = { ...b.base };
   // 공격 기준 능력치를 보스에 맞게 (아바돈 = 마력, 나머지 = 공격력)
   const strong = Math.max(base.atk, base.mag);
-  const bossHp = { abaddon: 1, frost: 0.95, blood: 0.94 }[bossId];
+  const bossHp = { abaddon: 1, frost: 0.97, blood: 0.94 }[bossId];
   b.base = { ...base, hp: base.hp * k * tune.hp * bossHp, atk: strong * k * tune.dmg, mag: strong * k * tune.dmg, def: base.def * k, res: base.res * k };
   b.maxHp = b.hp = Math.round(b.base.hp);
   b.attackScale = def.attackScale;
@@ -91,6 +93,9 @@ export class Raid4Battle {
   rot = 0;
   /** 얼음 감옥: 갇힌 파티원 id → 감옥 */
   prisons = new Map<string, Combatant>();
+  /** 감옥이 생긴 라운드 · 직전에 갇혔던 사람 (연속 지목 금지) */
+  prisonAt = new Map<string, number>();
+  lastPrisoner: string | null = null;
   /** 회피 타임 진행 중이면 결과가 올 때까지 멈춤 */
   dodge: R4Dodge | null = null;
   /** 자동 선택 때 끊기 스킬을 쓸 확률 % (사람이 자리 비웠을 때) */
@@ -133,6 +138,7 @@ export class Raid4Battle {
       if (over === 1) this.fx('enrage', `${this.boss.name}이(가) 점점 분노한다! (${R4_PRESSURE.enrageFrom}라운드부터 매 라운드 공격 +${R4_PRESSURE.enragePerRound}%)`);
     }
     this.order = startRound(this.ctx);
+    this.releasePrisons();
     this.idx = 0;
     this.skipDead();
   }
@@ -211,10 +217,16 @@ export class Raid4Battle {
   }
   /** 감옥이 부서지면 풀어줌 */
   private releasePrisons() {
-    for (const [id, p] of this.prisons) if (!p.alive) {
-      this.prisons.delete(id);
+    for (const [id, p] of this.prisons) {
       const c = this.ctx.party.find((x) => x.id === id);
-      if (c?.alive) this.fx('summon', `얼음 감옥이 부서지며 ${c.name}이(가) 풀려났다!`, { target: c.name });
+      // 정화로 풀렸거나 · 2라운드가 지나 녹았으면 감옥도 사라짐
+      const cleansed = p.alive && c && !c.tags.has('frozen');
+      const melted = p.alive && this.ctx.round - (this.prisonAt.get(id) ?? this.ctx.round) >= PRISON_ROUNDS;
+      if (cleansed || melted) { p.alive = false; p.hp = 0; }
+      if (p.alive) continue;
+      this.prisons.delete(id); this.prisonAt.delete(id);
+      c?.tags.delete('frozen');
+      if (c?.alive) this.fx('summon', cleansed ? `정화의 빛! ${c.name}이(가) 얼음 감옥에서 풀려났다` : melted ? `얼음 감옥이 녹아 ${c.name}이(가) 풀려났다` : `얼음 감옥이 부서지며 ${c.name}이(가) 풀려났다!`, { target: c.name });
     }
   }
   private alivePartyList() { return this.ctx.party.filter((p) => p.alive); }
@@ -346,16 +358,18 @@ export class Raid4Battle {
         break;
       }
       case 'prison': {
-        const list = this.alivePartyList().filter((x) => !this.prisons.has(x.id));
+        const all = this.alivePartyList().filter((x) => !this.prisons.has(x.id));
+        const list = all.filter((x) => x.id !== this.lastPrisoner).length ? all.filter((x) => x.id !== this.lastPrisoner) : all;
         const back = list.filter((x) => x.row === 'back');
         const t = ctx.rng.pick(back.length ? back : list);
         if (!t) break;
         const m = this.makeAdd('iceSpirit', 'icePrison', '얼음 감옥', BOSS_PAT.prisonHpPct);
         m.tags.add('prison'); m.base = { ...m.base, atk: 0, mag: 0 };
-        this.prisons.set(t.id, m);
+        this.prisons.set(t.id, m); this.prisonAt.set(t.id, ctx.round); this.lastPrisoner = t.id;
+        t.tags.add('frozen');
         nameUnique(ctx.enemies);
         ctx.log.push({ t: 'summon', who: b.name, summoned: [snap(m)] });
-        this.fx('mark', `${t.name}이(가) 얼음 감옥에 갇혔다! 감옥을 부숴야 풀려나요 (단일 공격은 감옥부터)`, { target: t.name });
+        this.fx('mark', `${t.name}이(가) 얼음 감옥에 갇혔다! 감옥을 부수거나 성직자 「정화」로 풀 수 있어요 · 2라운드 뒤엔 녹아요`, { target: t.name });
         break;
       }
       case 'summon': case 'bats': {

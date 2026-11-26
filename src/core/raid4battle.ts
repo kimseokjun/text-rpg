@@ -10,7 +10,9 @@ import type { BattleEvent, Character, Modifier, RaidFx } from './types';
 export interface R4Member { owner: string; ownerName: string; char: Character; mods: Modifier[] }
 /** 보스 기준: 1인 전투력 BASE_POWER 파티를 상대로 맞춘 능력치를 난이도 배율(k)로 키움 */
 export const R4_BASE_POWER = 125000;
-export const R4_TUNE = { hp: 2.1, dmg: 4.6 };
+export const R4_TUNE = { hp: 2.4, dmg: 13 };
+/** 받는 치유 배율 · 소프트 광폭(이 라운드부터 매 라운드 보스 공격 +%) */
+export const R4_PRESSURE = { heal: 0.6, enrageFrom: 12, enragePerRound: 10 };
 /** 전투력은 능력치보다 빠르게 커져서 보스는 지수 0.68로 키움 */
 export let R4_K_EXP = 0.68;
 export const setR4Exp = (v: number) => { R4_K_EXP = v; };
@@ -55,7 +57,8 @@ export function makeR4Boss(diff: R4Diff, tune = R4_TUNE, bossId: R4BossId = 'aba
   const base = { ...b.base };
   // 공격 기준 능력치를 보스에 맞게 (아바돈 = 마력, 나머지 = 공격력)
   const strong = Math.max(base.atk, base.mag);
-  b.base = { ...base, hp: base.hp * k * tune.hp, atk: strong * k * tune.dmg, mag: strong * k * tune.dmg, def: base.def * k, res: base.res * k };
+  const bossHp = { abaddon: 1, frost: 0.95, blood: 0.94 }[bossId];
+  b.base = { ...base, hp: base.hp * k * tune.hp * bossHp, atk: strong * k * tune.dmg, mag: strong * k * tune.dmg, def: base.def * k, res: base.res * k };
   b.maxHp = b.hp = Math.round(b.base.hp);
   b.attackScale = def.attackScale;
   b.name = def.name;
@@ -107,7 +110,7 @@ export class Raid4Battle {
     const seen = new Set<string>();
     for (const c of party) { if (seen.has(c.name)) c.name = `${c.name}(${this.owners[c.id].ownerName})`; seen.add(c.name); }
     this.boss = makeR4Boss(diff, tune, bossId);
-    this.ctx = { rng: new Rng(seed), log: [], party, enemies: [this.boss], round: 0, hasBoss: true, floor: BOSS_FLOOR, maxRounds: R4_ROUNDS };
+    this.ctx = { rng: new Rng(seed), log: [], party, enemies: [this.boss], round: 0, hasBoss: true, floor: BOSS_FLOOR, maxRounds: R4_ROUNDS, partyHealMult: R4_PRESSURE.heal };
     const def = R4_BOSSES[bossId];
     this.ctx.log.push({ t: 'wave', floor: 0, wave: 1, enemies: [snap(this.boss)], elite: false, boss: true });
     this.ctx.log.push({ t: 'special', who: this.boss.name, text: `${def.greet} (${R4[diff].name} · ${R4_ROUNDS}라운드 안에 쓰러뜨려라)` });
@@ -121,6 +124,14 @@ export class Raid4Battle {
   private nextRound() {
     this.ctx.round++;
     if (this.ctx.round > R4_ROUNDS) return this.finish(false);
+    // 소프트 광폭: 오래 끌수록 보스가 점점 강해짐
+    const over = this.ctx.round - R4_PRESSURE.enrageFrom + 1;
+    if (over > 0 && R4_PRESSURE.enragePerRound > 0) {
+      const v = over * R4_PRESSURE.enragePerRound;
+      this.boss.buffs = this.boss.buffs.filter((x) => x.id !== 'fury');
+      addBuff(this.boss, { id: 'fury', label: `분노 +${v}%`, mods: [{ key: 'atk', kind: 'pct', value: v }, { key: 'mag', kind: 'pct', value: v }], turns: 999 });
+      if (over === 1) this.fx('enrage', `${this.boss.name}이(가) 점점 분노한다! (${R4_PRESSURE.enrageFrom}라운드부터 매 라운드 공격 +${R4_PRESSURE.enragePerRound}%)`);
+    }
     this.order = startRound(this.ctx);
     this.idx = 0;
     this.skipDead();

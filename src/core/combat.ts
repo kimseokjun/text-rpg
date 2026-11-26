@@ -131,6 +131,8 @@ export interface BattleContext {
   hit?: { mag: boolean; bulwark: boolean };
   /** 친구 결투: 양쪽 모두 캐릭터 → 같은 규칙 */
   pvp?: boolean;
+  /** 4인 레이드: 파티가 받는 치유 배율 (보스의 압박) */
+  partyHealMult?: number;
 }
 
 const alive = (list: Combatant[]) => list.filter((c) => c.alive);
@@ -597,6 +599,7 @@ export function applyHpLoss(ctx: BattleContext, t: Combatant, dmg: number, src: 
 export function heal(ctx: BattleContext, src: Combatant, t: Combatant, amount: number) {
   if (!t.alive) return;
   if (ctx.pvp) amount *= PVP_HEAL;
+  if (ctx.partyHealMult !== undefined && t.side === 'party') amount *= ctx.partyHealMult;
   const v = Math.round(Math.min(amount, t.maxHp - t.hp));
   t.hp += v;
   if (ctx.rep) {

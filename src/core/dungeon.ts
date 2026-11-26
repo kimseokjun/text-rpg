@@ -33,7 +33,7 @@ export interface ExpeditionSettings {
   tower?: boolean;
   /** 멀티 던전 (보상은 서버에서) */
   multi?: boolean;
-  /** 멀티 전용 던전 '균열': level = 기준 층 (1~70), 10층 진행 */
+  /** 카드 던전 (구 균열, 혼자 · 하루 3회): level = 기준 층 (1~70), 10층 진행 */
   rift?: { level: number };
   /** 친구 결투: 상대 캐릭터와 상대 공용 효과(펫·카드) */
   duel?: { foes: Character[]; foeMods: Modifier[]; foeName: string };
@@ -58,6 +58,10 @@ export const DEFAULT_SETTINGS: ExpeditionSettings = {
 export type StopReason = 'wipe' | 'timeout' | 'lowHp' | 'down' | 'target' | 'bossAhead' | 'cleared' | 'regionEnd' | 'manual';
 
 export const RIFT_FLOORS = 10;
+/** 카드 던전: 하루 3회 (한국 시간 오전 4시 초기화) */
+export const CARD_DUN_LIMIT = 3;
+/** 카드 던전 완주 카드 팩: 기준 층 ~20층 2개 · ~50층 3개 · 51층~ 4개 */
+export const cardDunPacks = (level: number) => (level > 50 ? 4 : level > 20 ? 3 : 2);
 /** 마왕성·마왕방 보스 하루 첫 처치 군단장의 핵 (최소, 최대) */
 export const BOSS_CORES: [number, number] = [25, 37];
 /** 균열 난이도 배율 (src/cli/rifttest.ts): 기준 층 표준 파티가 완주 약 60% */
@@ -221,7 +225,7 @@ export class Expedition {
     return { floor: t, win: true, log };
   }
 
-  /** 균열 (멀티 전용): 기준 층 몬스터로 10층, 5층 정예 · 10층 보스, 3층부터 무작위 기믹 */
+  /** 카드 던전 (구 균열, 혼자): 기준 층 몬스터로 10층, 5층 정예 · 10층 보스, 3층부터 무작위 기믹. 보상은 카드 팩 중심 */
   private runRift(): FloorResult {
     const log: BattleEvent[] = [];
     const t = this.floor, F = this.settings.rift!.level;
@@ -245,23 +249,20 @@ export class Expedition {
     if (g) g.apply(enemies);
     nameUnique(enemies);
     log.push({ t: 'wave', floor: t, wave: 1, enemies: enemies.map(snap), elite: t === 5, boss: t === RIFT_FLOORS });
-    if (g) log.push({ t: 'special', who: `균열 ${t}층`, text: `${g.icon} ${g.name} — ${g.desc}` });
+    if (g) log.push({ t: 'special', who: `카드 던전 ${t}층`, text: `${g.icon} ${g.name} — ${g.desc}` });
     const ctx = { rng: this.rng, log, party: this.party, enemies, round: 0, hasBoss: enemies.some((e) => e.tags.has('boss')), floor: F, rep: this.report };
     const win = runBattle(ctx);
     this.collect(ctx.enemies.filter((e) => !e.alive), F);
     if (!win) { this.finish(this.party.some((c) => c.alive) ? 'timeout' : 'wipe'); return { floor: t, win: false, log }; }
-    // 신비 카드 팩: 층마다 20%, 5층 정예·10층 보스 확정
-    this.loot.cardPacks = (this.loot.cardPacks ?? 0) + (t === 5 || t === RIFT_FLOORS ? 1 : this.rng.chance(20) ? 1 : 0);
+    // 신비 카드 팩: 5층 정예 1개 + 완주 시 기준 층에 따라 2~4개
+    if (t === 5) this.loot.cardPacks = (this.loot.cardPacks ?? 0) + 1;
     if (t === RIFT_FLOORS) {
-      this.loot.cardPacks += 1;
+      this.loot.cardPacks = (this.loot.cardPacks ?? 0) + cardDunPacks(F);
       this.loot.gold += Math.round(600 * rewardScale(F) * this.goldMult);
-      this.loot.refineStones += 3;
-      this.loot.stones += 2 + Math.floor(F / 10);
-      if (F > 50) this.loot.cores += 30;
-      log.push({ t: 'special', who: '균열', text: '균열을 끝까지 돌파했다! 완주 보상 획득' });
+      log.push({ t: 'special', who: '카드 던전', text: '카드 던전을 끝까지 돌파했다! 완주 보상 획득' });
     }
     this.floorsCleared++;
-    if (t === 5) { for (const c of this.party) { if (!c.alive) { c.alive = true; c.hp = 0; } c.hp = c.maxHp; c.mp = c.maxMp; c.status = {}; } log.push({ t: 'special', who: '균열', text: '정예를 쓰러뜨리고 숨을 고른다 (전원 회복)' }); }
+    if (t === 5) { for (const c of this.party) { if (!c.alive) { c.alive = true; c.hp = 0; } c.hp = c.maxHp; c.mp = c.maxMp; c.status = {}; } log.push({ t: 'special', who: '카드 던전', text: '정예를 쓰러뜨리고 숨을 고른다 (전원 회복)' }); }
     else this.floorRegen();
     return { floor: t, win: true, log };
   }
@@ -310,6 +311,7 @@ export class Expedition {
       const low = lowFloorRate(f, this.settings.bestFloor);
       this.loot.exp += d.exp * sc * low;
       this.loot.gold += d.gold * sc * this.goldMult * low;
+      if (this.settings.rift) continue; // 카드 던전: 몬스터는 골드·경험치만
       if (boss) { this.loot.stones += 3 + Math.floor(f / 2); this.loot.blessings += 1 + Math.floor(f / 20); if (f > 70) this.loot.ess = (this.loot.ess ?? 0) + (f >= 80 ? 25 : 10); }
       else if (elite) { if (this.rng.chance(STONE_CHANCE(f).elite)) this.loot.stones += 1; if (this.rng.chance(BLESS_CHANCE(f).elite)) this.loot.blessings += 1; }
       else if (this.rng.chance(STONE_CHANCE(f).normal)) this.loot.stones += 1 + Math.floor(f / 15);
@@ -317,7 +319,7 @@ export class Expedition {
       // 마왕성: 세트 재료·세트 장비
       if (f > 50) {
         const k = boss ? 'boss' : elite ? 'elite' : 'normal';
-        // 군단장의 핵: 일반·정예는 없음, 보스는 보스마다 하루 첫 처치만 (균열은 완주 보상으로만)
+        // 군단장의 핵: 일반·정예는 없음, 보스는 보스마다 하루 첫 처치만 (카드 던전은 핵 없음)
         if (boss && !this.settings.rift && !(this.settings.coreBossDone ?? []).includes(d.id) && !this.coreBosses.includes(d.id)) {
           this.loot.cores += BOSS_CORES[0] + this.rng.int(0, BOSS_CORES[1] - BOSS_CORES[0]);
           this.coreBosses.push(d.id);

@@ -13,7 +13,7 @@ export const MISSIONS: Mission[] = [
   { id: 'enh', name: '장비 강화 5번 시도', key: 'enh', need: 5, pts: 15 },
   { id: 'refine', name: '제련 3번', key: 'refine', need: 3, pts: 15 },
   { id: 'buy', name: '잡화점에서 구매 1번', key: 'buy', need: 1, pts: 10 },
-  { id: 'multi', name: '균열 1번', key: 'multi', need: 1, pts: 20, cloud: true },
+  { id: 'cardDun', name: '카드 던전 1번', key: 'cardDun', need: 1, pts: 20 },
   { id: 'duel', name: '친구 결투 1번', key: 'duel', need: 1, pts: 10, cloud: true },
   { id: 'raid4', name: '4인 레이드 1번', key: 'raid4', need: 1, pts: 15, cloud: true },
 ];

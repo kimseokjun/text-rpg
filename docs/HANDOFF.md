@@ -2,6 +2,20 @@
 
 작업 완료 시 최신 항목을 위에 추가한다. 날짜, 담당, 기준 커밋, 브랜치 또는 PR, 변경 사항, 검증 명령과 결과, 다음 작업을 남긴다. 실패하거나 실행하지 못한 검증에는 이유를 적는다.
 
+## 2026-11-26 · 일반 전투 무대 스킬 이펙트
+
+- 담당 및 브랜치는 Claude Code, `claude/stage-fx`
+- 기준 커밋 `b257803`. 같은 시각에 열린 `claude/r4-art`(PR #11)와 `src/ui/r4stage.ts`·`src/ui/main.ts`를 함께 고친다. 병합 순서는 상관없지만 두 번째 병합 때 충돌을 확인한다.
+- 변경 사항
+  - `src/ui/r4stage.ts`: 이펙트 함수들(`center`·`fxEl`·`lunge`·`shake`·`areaFx`·`selfFx` 등)이 모듈의 `host` 대신 `fxH()`·`fxLayer()`·`SPR()`·`sideOf()`를 쓰게 바꿨다. 기본값은 레이드 무대 그대로다.
+  - `stageSkillFx(stage, skill, actor, targets, opts)`를 추가했다. 그리는 동안만 무대를 바꾼다(`FX`). 레이드와 같은 `fxFor()` 표를 쓴다.
+  - `src/ui/stage2d.ts`: `fxSkill(skill, actor, targets, opts)`를 추가했다. 이름으로 유닛을 찾고, 편은 `.s2u.p`/`.s2u.e`로 나눈다.
+  - `src/ui/main.ts`의 `playFloor`: `skill` 이벤트에서 다음 공격 전까지의 피해(없으면 회복) 대상을 모아 이펙트를 재생하고 기다린다(최대 1.5초). 2배속은 짧게, 스킵은 재생하지 않는다. 기본 공격은 기존 돌진만 있다.
+- 검증
+  - `npm run typecheck`, `npm run smoke`, `npm run build`, `git diff --check`가 통과했다.
+  - Playwright로 지하묘지 3층에서 메테오(낙하·폭발)와 늑대 소환 이펙트를 확인했다.
+  - 레이드 무대는 가짜 상태 임시 페이지(커밋 안 함)에서 메테오 이펙트가 그대로 나오는 것을 확인했다.
+
 ## 2026-11-26 · 전투 그림 2단계 게임 적용
 
 - 담당 및 브랜치는 Claude Code, `claude/art-apply-2`. Codex의 `codex/art-2`(#8, 그림 64장)와 `codex/art-2-tracking`(#9, TASKS 상태)을 병합해 포함했다.

@@ -27,7 +27,7 @@ import { Raid4Battle, type R4Member, type R4State } from '../core/raid4battle';
 import { mountStage, playEvents, setBanner, setPanel, speech, stageMounted, updateStage } from './r4stage';
 import * as Bgm from './bgm';
 import { mountPlaza, EMOTES, type PlazaRun } from './plaza';
-import { stageShell, unitBox, spriteImg, monSpriteH, JOB_SPRITE_H, formation, enemyFormation, SUMMON_POS, fxCaption, fxLunge, fxNumber, fxBossBar, statusPanel, statusHp, type StageTheme } from './stage2d';
+import { stageShell, unitBox, fxSkill, spriteImg, monSpriteH, JOB_SPRITE_H, formation, enemyFormation, SUMMON_POS, fxCaption, fxLunge, fxNumber, fxBossBar, statusPanel, statusHp, type StageTheme } from './stage2d';
 import { FISH, FISH_GRADE_NAME, MASTERY_MAX, fishCosChance, fishWeights, masteryNeed } from '../data/fish';
 import { COSMETICS, COS_BY_ID, COS_KIND_KO, FREE_HEADS, MERC_KINDS, OUTFIT_COLORS, TRIM_COLORS, type AvatarState, type CosKind } from '../data/cosmetics';
 import { CHESTS, dRewardText } from '../data/missions';
@@ -2794,9 +2794,22 @@ async function playFloor() {
   document.getElementById('floorTitle')!.textContent = floorTitle(ex);
   const r = ex.runFloor();
   lastFloor = r;
-  for (const e of r.log) {
+  for (let i = 0; i < r.log.length; i++) {
+    const e = r.log[i];
     if (token !== playToken) return;
     const shown = applyEvent(e);
+    if (e.t === 'skill' && speed !== 0) {
+      // 스킬 이펙트: 다음 공격 전까지 맞히거나 회복한 대상에게 (레이드와 같은 연출). 최대 1.5초만 기다림
+      const next = r.log.findIndex((x, j) => j > i && (x.t === 'skill' || x.t === 'attack'));
+      const seg = r.log.slice(i + 1, next < 0 ? undefined : next);
+      const dmg = seg.filter((x): x is Extract<BattleEvent, { t: 'damage' }> => x.t === 'damage');
+      const heal = seg.filter((x): x is Extract<BattleEvent, { t: 'heal' }> => x.t === 'heal');
+      const fx = fxSkill(e.skill, e.actor, (dmg.length ? dmg : heal).map((x) => x.to), { heal: !dmg.length && heal.length > 0, crit: dmg.some((x) => x.crit), fast: speed === 2 }).catch(() => {});
+      await Promise.race([fx, sleep(1500)]);
+      if (token !== playToken) return;
+      await sleep(speed === 1 ? 160 : 60);
+      continue;
+    }
     if (shown && speed !== 0) {
       // 웨이브 시작·전투 결과 줄은 조금 더 오래 보여줌
       const pause = e.t === 'wave' || e.t === 'result' ? 2.2 : 1;

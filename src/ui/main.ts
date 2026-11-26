@@ -27,6 +27,7 @@ import { Raid4Battle, type R4Member, type R4State } from '../core/raid4battle';
 import { mountStage, playEvents, setBanner, setPanel, speech, stageMounted, updateStage } from './r4stage';
 import * as Bgm from './bgm';
 import { mountPlaza, EMOTES, type PlazaRun } from './plaza';
+import { FISH, FISH_GRADE_NAME, MASTERY_MAX, fishCosChance, fishWeights, masteryNeed } from '../data/fish';
 import { COSMETICS, COS_BY_ID, COS_KIND_KO, FREE_HEADS, MERC_KINDS, OUTFIT_COLORS, TRIM_COLORS, type AvatarState, type CosKind } from '../data/cosmetics';
 import { CHESTS, dRewardText } from '../data/missions';
 import { ACHS, ACH_CAT, ACH_MAX_PTS, ACH_MS, ACH_REWARD, TITLES, TITLE_BY_ID, achPoints, achReady, unlockedTitles, type AchCat } from '../data/achievements';
@@ -992,6 +993,9 @@ function plazaMount() {
     send: (ev, p) => pz?.ch.send(ev, p),
     onDoor: (to) => { if (to === 'raid4' && !Cloud.session) return; screen = to as Screen; render(); },
     onPick: (id, name) => { pzPick = { id, name }; render(); },
+    onCatch: (f) => { const m = G.catchFish(S!, f); saveGame(S!); const t = document.querySelector('.top'); if (t) t.outerHTML = topbar(); const side = document.getElementById('pzside'); if (side) side.innerHTML = plazaSide(); return m; },
+    onMiss: () => { const m = G.missFish(S!); saveGame(S!); return m; },
+    fishLv: () => G.masteryOf(S!, 'fishing').lv,
     onLog: (line) => { pzLog = [...pzLog, line].slice(-6); const side = document.getElementById('pzside'); if (side) side.innerHTML = plazaSide(); },
   });
   pz.run.sync(pz.ch.members());
@@ -1004,6 +1008,9 @@ function plazaSide() {
         ${friend ? `<button class="btn sm" data-a="profile" data-v="${esc(pzPick.id)}">프로필</button><button class="btn sm" data-a="go" data-to="duel">결투하러 가기</button>` : fr ? '<span class="small mute">친구 요청 대기 중</span>' : `<button class="btn sm" data-a="friendAdd" data-v="${esc(pzPick.name)}">친구 신청</button>`}
         ${r4 ? `<button class="btn ghost sm" data-a="r4Invite" data-v="${esc(pzPick.id)}">레이드 초대</button>` : ''}
       </div></div>` : ''}
+    ${(() => { const m = G.masteryOf(S!, 'fishing'), W = fishWeights(m.lv), max = m.lv >= MASTERY_MAX; return `<div class="panel fishm"><div class="row" style="justify-content:space-between;gap:8px"><b>🎣 낚시 숙련도 Lv.${m.lv}${max ? ' (MAX)' : ''}</b><span class="small mute">도감 ${Object.keys(S!.fish?.caught ?? {}).length}/${FISH.length}</span></div>
+      ${max ? '' : `<div class="fishprog" style="margin:6px 0"><i style="width:${Math.min(100, (m.xp / masteryNeed(m.lv)) * 100)}%"></i></div><span class="small mute">다음 레벨까지 ${fmt(masteryNeed(m.lv) - m.xp)} (흔함 10 · 보통 20 · 희귀 40 · 영웅 80 · 전설 160)</span><br>`}
+      <span class="small">확률: ${FISH_GRADE_NAME.slice(1).map((n, i) => `${n} ${W[i + 1].toFixed(1)}%`).join(' · ')} · 꾸미기 ${fishCosChance(m.lv).toFixed(1)}%</span></div>`; })()}
     <div class="pzlog">${pzLog.map((l) => `<div>${esc(l)}</div>`).join('') || '<div class="small mute">광장에서 한 말이 여기 남아요</div>'}</div>`;
 }
 function viewPlaza() {

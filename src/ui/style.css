@@ -881,3 +881,15 @@ svg.px{image-rendering:pixelated;flex:none}
 .pzlog{margin-top:8px;font-size:13px;line-height:1.6;max-height:140px;overflow:auto;padding:6px 10px;border-radius:8px;background:#0003}
 kbd{font-family:inherit;font-size:.85em;padding:0 4px;border:1px solid #ffffff40;border-radius:3px}
 @media (max-width:700px){.pzbox{aspect-ratio:3/4;max-height:none}}
+
+.cosplate.pl-fish{background:linear-gradient(180deg,#8ad8ff,#1a5a9a);color:#fff;border-color:#d0f0ff;box-shadow:0 0 8px #6ac8ff88}
+/* ── 광장 낚시 ── */
+.pzdoor.pzfish{transform:translate(-50%,0)}
+.fishui{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);width:min(440px,92%);z-index:2002;background:#140e1cee;border:2px solid #6ac8ff;border-radius:12px;padding:10px 12px;color:#fff;text-align:center}
+.fishtitle{font-size:13px;margin-bottom:8px;line-height:1.5}
+.fishbar{position:relative;height:30px;border-radius:8px;background:#1a3a5a;overflow:hidden;margin:6px 0}
+.fishbar .fz{position:absolute;top:0;bottom:0;background:#5ae07a66;border:2px solid #5ae07a;border-radius:6px}
+.fishbar .ff{position:absolute;top:50%;transform:translate(-50%,-50%);font-size:20px;line-height:1}
+.fishprog{height:8px;border-radius:4px;background:#0006;overflow:hidden}.fishprog i{display:block;height:100%;background:linear-gradient(90deg,#ffd95e,#5ae07a)}
+.fishhold{margin-top:8px;width:100%;touch-action:none;user-select:none}
+.cosplate.pl-wave{background:linear-gradient(180deg,#bfe8ff,#2a7ab8);color:#04203a;border-color:#e8f8ff}

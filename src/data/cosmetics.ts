@@ -51,6 +51,14 @@ export const COSMETICS: CosItem[] = [
   C('plate', 'silver', '은빛 이름표', 'silver', { price: 300000 }), C('plate', 'royal', '왕실 이름표', 'royal', { price: 1500000 }),
   C('plate', 'gold', '황금 이름표', 'gold', { src: 'ach:3', desc: '업적 점수 450점' }),
   C('plate', 'abyss', '심연 이름표', 'abyss', { src: 'raid:abaddon:normal', desc: '아바돈 처치' }),
+  C('plate', 'fish', '낚시왕 이름표', 'fish', { src: 'fish:legend', desc: '광장 낚시에서 전설 물고기 낚기' }),
+  // 낚시 중 낮은 확률로 (숙련도가 높을수록 잘 나옴)
+  C('cape', 'angler', '어부의 망토', '#3a6a8a', { src: 'fish:drop', desc: '광장 낚시 중 낮은 확률' }),
+  C('cape', 'coral', '산호 망토', '#e8706a', { src: 'fish:drop', desc: '광장 낚시 중 낮은 확률' }),
+  C('aura', 'wave', '물결 오라', '#4ac0ff', { src: 'fish:drop', desc: '광장 낚시 중 낮은 확률' }),
+  C('aura', 'pearl', '진주 오라', '#f0e6ff', { src: 'fish:drop', desc: '광장 낚시 중 낮은 확률' }),
+  C('hairColor', 'sea', '바다빛', '#2a8ad8', { src: 'fish:drop', desc: '광장 낚시 중 낮은 확률' }),
+  C('plate', 'wave', '파도 이름표', 'wave', { src: 'fish:drop', desc: '광장 낚시 중 낮은 확률' }),
   C('plate', 'frost', '서리 이름표', 'frost', { src: 'raid:frost:normal', desc: '니플헤임 처치' }),
   C('plate', 'blood', '핏빛 이름표', 'blood', { src: 'raid:blood:normal', desc: '세레네 처치' }),
   // 등장 효과 (레이드·결투 시작할 때)

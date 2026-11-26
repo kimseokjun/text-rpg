@@ -2,7 +2,7 @@
 import { CARD_BY_ID, SET_BY_ID, type CardDef } from '../data/cards';
 
 /** 그림 파일이 준비된 카드 id (이미지를 넣으면 여기에 추가) */
-export const CARD_IMAGES = new Set<string>(['c01', 'c02']);
+export const CARD_IMAGES = new Set<string>(Array.from({ length: 30 }, (_, i) => `c${String(i + 1).padStart(2, '0')}`));
 
 const GRADE_FRAME: Record<number, [string, string]> = { 1: ['#9aa3ad', '#5b636b'], 2: ['#7fd48a', '#2f7a3a'], 3: ['#7fb3ff', '#2a5aa8'], 4: ['#d08cff', '#6a2aa8'], 5: ['#ffe7a0', '#c8902c'] };
 

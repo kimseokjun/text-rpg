@@ -9,7 +9,7 @@ import { equipStats } from '../core/stats';
 import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Row, type TargetPref, type UnitSnap, type BaseJob, type BattleEvent, type JobId, type Character, type Equip, type EquipSlot, type BaseSlot, type Rarity, type StatKey, type Modifier, EQUIP_SLOTS, wornSlots } from '../core/types';
 import { raidWeek, MILESTONE_SCALES, RAID_DIFF, RAID_DIFFS, RAID_DIFF_NAME, RAID_LIMIT, RAID_ROUNDS, nextResetText, raidForm, raidMaxHp, type RaidDiff } from '../data/raid';
 import { DAILIES, DAILY_BY_ID, DAILY_LIMIT, DAILY_STAGES, dailyReward, kstDate } from '../data/daily';
-import { CRAFT_COST, MYTH_CRAFT_COST, MYTH_SET, RAID_CRAFT_COST, RAID_SET, SETS, SET_BASES, SET_BY_ID, SET_DROP_CHANCE, SET_RARITY, SHARD_CHANCE } from '../data/sets';
+import { CRAFT_COST, MYTH_CRAFT_COST, MYTH_SET, RAID_CRAFT_COST, RAID_SET, SETS, SET_BASES, SET_BY_ID, SET_DROP_CHANCE, SET_RARITY } from '../data/sets';
 import { PET_KINDS, EGG_ODDS, EGG_PRICE, PET_BY_ID, PET_GRADE_NAME, PET_GRADE_PCT, PET_MAX_STARS, PET_EVO_GOLD, petName, petEffectText, petSellPrice, type Pet } from '../data/pets';
 import { EQUIP_BASES, EQUIP_BY_ID, MAX_POTIONS, OPTION_SLOTS, POTIONS, REFINE_CHANCE, tierOfFloor, POT_NAME, POT_UP, POT_PITY, POT_POOLS, potSlot, potValue, type PotSlot } from '../data/items';
 import { ADVANCE_AT, JOBS, advanceOptions } from '../data/jobs';
@@ -807,7 +807,7 @@ function viewForge() {
   return `<div class="wrap">${backBtn()}
     <h2>제작소</h2>
     <p class="small mute">마왕성 입구에서 모은 재료로 원하는 세트 장비를 만들어요. 만든 장비는 영웅 ${SET_RARITY[4]}% · 전설 ${SET_RARITY[5]}% 등급으로 나오고, 강화·제련도 그대로 할 수 있어요.<br>
-    재료 드롭(마왕성): 군단장의 핵 — 일반 ${SHARD_CHANCE.normal}% · 엘리트·보스 확정 (보스 25~38개) · 일일 던전 '군단의 잔해' · 레이드 / 세트 장비 직접 드롭 — 엘리트 ${SET_DROP_CHANCE.elite}% · 보스 ${SET_DROP_CHANCE.boss}%</p>
+    군단장의 핵: 마왕성·마왕방 보스 하루 첫 처치 (보스마다 25~37개) · 일일 던전 '군단의 잔해' · 4인 레이드 · 월드보스 · 일일 미션 / 세트 장비 직접 드롭 — 엘리트 ${SET_DROP_CHANCE.elite}% · 보스 ${SET_DROP_CHANCE.boss}%</p>
     <div class="panel row" style="gap:16px;flex-wrap:wrap">
       <span class="row" style="gap:6px">${equipSprite('accessory', 8, { size: 36, set: 'demon' })}<span>군단장의 핵 <b>${s.cores}</b></span></span>
       <span class="row" style="gap:6px">${monsterSprite('belialFire', { size: 36, tags: ['demon'] })}<span>벨리알의 파편 <b>${s.scales}</b></span></span>
@@ -1073,7 +1073,7 @@ function dropInfo(floor: number) {
       <div><div class="small mute">재료</div>
         <p class="small">강화석: 일반 몬스터 ${Math.round(st.normal * 10) / 10}% (${1 + Math.floor(floor / 15)}개) · 엘리트 ${st.elite}% · ${boss ? `보스 확정 ${st.bossCount}개` : `보스 처치 시 확정`}<br>
         축복 주문서: 엘리트 ${bl.elite}% · ${boss ? `보스 확정 ${bl.bossCount}장` : '보스 처치 시 확정'}<br>
-        제련석: 일반 몬스터 ${REFINE_CHANCE.normal}% · 엘리트 ${REFINE_CHANCE.elite}% · 보스 ${REFINE_CHANCE.boss}%${floor > 50 ? `<br>군단장의 핵: 일반 ${SHARD_CHANCE.normal}% · 엘리트·보스 확정<br><b class="r5">세트 장비</b>: 엘리트 ${SET_DROP_CHANCE.elite}% · 보스 ${SET_DROP_CHANCE.boss}% (4세트 중 무작위)` : ''}${boss ? '<br>보스 첫 처치: 희귀 이상 장비 1개 + 보너스 골드' : ''}</p></div>
+        제련석: 일반 몬스터 ${REFINE_CHANCE.normal}% · 엘리트 ${REFINE_CHANCE.elite}% · 보스 ${REFINE_CHANCE.boss}%${floor > 50 ? `<br>군단장의 핵: 보스만, 보스마다 하루 첫 처치 25~37개<br><b class="r5">세트 장비</b>: 엘리트 ${SET_DROP_CHANCE.elite}% · 보스 ${SET_DROP_CHANCE.boss}% (4세트 중 무작위)` : ''}${boss ? '<br>보스 첫 처치: 희귀 이상 장비 1개 + 보너스 골드' : ''}</p></div>
     </div>
     <p class="small mute" style="margin:8px 0 0">황금손 특성·탐욕의 물약 같은 효과로 골드·장비 획득량이 늘 수 있어요.</p>
   </details>`;
@@ -1699,7 +1699,7 @@ function viewWorld() {
     ${last}
     <div class="panel"><h3 style="margin-top:0">기여 순위 <span class="small mute">내 기여 ${wb?.mine ? `${fmt(wb.mine.total)} · ${wb.myRank}위` : '없음'}</span></h3>
       <ol class="ranklist">${top || `<p class="mute">${wbLoading ? '불러오는 중…' : '아직 아무도 도전하지 않았어요.'}</p>`}</ol>
-      <p class="small mute">보상: 1위 핵 300·전설 알 / 상위 10% 핵 200·영웅 알 / 30% 핵 140 / 60% 핵 90 / 참여 핵 50 (+제련석·골드)</p></div>
+      <p class="small mute">보상: 1위 핵 900·정수 40·전설 알 / 상위 10% 핵 600·정수 30·영웅 알 / 30% 핵 420·정수 20 / 60% 핵 270·정수 15 / 참여 핵 150·정수 10 (+제련석·룬석·골드)</p></div>
   </div>`;
 }
 async function wbTicket() {
@@ -1728,7 +1728,7 @@ async function wbClaim(season: number) {
   if (r?.error) { toast(r.error, true); return; }
   const extra = G.grantReward(S!, r.reward);
   saveGame(S!);
-  toast(`${r.rank}위 / ${r.total}명 (${r.reward.label}) 보상: 핵 ${r.reward.cores} · 제련석 ${r.reward.refineStones}${r.reward.runes ? ` · 룬석 ${r.reward.runes}` : ''} · ${fmt(r.reward.gold)}G${extra}`);
+  toast(`${r.rank}위 / ${r.total}명 (${r.reward.label}) 보상: 핵 ${r.reward.cores}${r.reward.mythEss ? ` · 신화의 정수 ${r.reward.mythEss}` : ''} · 제련석 ${r.reward.refineStones}${r.reward.runes ? ` · 룬석 ${r.reward.runes}` : ''} · ${fmt(r.reward.gold)}G${extra}`);
   await loadWB(true); render();
 }
 

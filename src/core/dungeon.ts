@@ -1,7 +1,7 @@
 import { EQUIP_BASES, OPTION_POOL, POTIONS, REFINE_CHANCE, rollLines, rollOption, tierOfFloor } from '../data/items';
 import { DAILY_BY_ID, DAILY_TUNE, dailyReward } from '../data/daily';
 import { RAID_DIFF, RAID_ROUNDS, raidForm, type RaidDiff } from '../data/raid';
-import { CORE_CHANCE, MYTH_SET, RAID_SET, SET_BASES, SET_DROP_CHANCE, SET_RARITY, SHARD_CHANCE } from '../data/sets';
+import { MYTH_SET, RAID_SET, SET_BASES, SET_DROP_CHANCE, SET_RARITY } from '../data/sets';
 import { DIFF_TUNE, MAX_FLOOR, MONSTERS, regionOf, rewardScale, zoneOf } from '../data/monsters';
 import { gainExp, newUid } from './character';
 import { newReport, type Report } from './report';
@@ -37,6 +37,8 @@ export interface ExpeditionSettings {
   rift?: { level: number };
   /** 친구 결투: 상대 캐릭터와 상대 공용 효과(펫·카드) */
   duel?: { foes: Character[]; foeMods: Modifier[]; foeName: string };
+  /** 오늘 이미 군단장의 핵을 받은 마왕성·마왕방 보스 id (보스마다 하루 첫 처치만 핵) */
+  coreBossDone?: string[];
 }
 
 /** 최고 기록보다 낮은 층의 골드·경험치 배율: 5층 이상 아래 75%, 10층 이상 아래 50% */
@@ -56,6 +58,8 @@ export const DEFAULT_SETTINGS: ExpeditionSettings = {
 export type StopReason = 'wipe' | 'timeout' | 'lowHp' | 'down' | 'target' | 'bossAhead' | 'cleared' | 'regionEnd' | 'manual';
 
 export const RIFT_FLOORS = 10;
+/** 마왕성·마왕방 보스 하루 첫 처치 군단장의 핵 (최소, 최대) */
+export const BOSS_CORES: [number, number] = [25, 37];
 /** 균열 난이도 배율 (src/cli/rifttest.ts): 기준 층 표준 파티가 완주 약 60% */
 export const RIFT_TUNE = { normal: 0.6, elite: 0.5, boss: 0.8 };
 /** 구역별 보정 (src/cli/rifttune.ts) */
@@ -70,6 +74,8 @@ export class Expedition {
   floor: number;
   loot: Loot = { gold: 0, exp: 0, stones: 0, blessings: 0, refineStones: 0, shards: 0, cores: 0, equips: [] };
   bossesKilled: string[] = [];
+  /** 이번 탐험에서 핵을 받은 보스 id */
+  coreBosses: string[] = [];
   report: Report;
   floorsCleared = 0;
   finished = false;
@@ -311,8 +317,11 @@ export class Expedition {
       // 마왕성: 세트 재료·세트 장비
       if (f > 50) {
         const k = boss ? 'boss' : elite ? 'elite' : 'normal';
-        if (this.rng.chance(SHARD_CHANCE[k])) this.loot.cores += boss ? 5 + this.rng.int(0, 3) : elite ? 1 + this.rng.int(0, 2) : 1;
-        if (this.rng.chance(CORE_CHANCE[k])) this.loot.cores += 10 * (boss ? 2 + this.rng.int(0, 1) : 1);
+        // 군단장의 핵: 일반·정예는 없음, 보스는 보스마다 하루 첫 처치만 (균열은 완주 보상으로만)
+        if (boss && !this.settings.rift && !(this.settings.coreBossDone ?? []).includes(d.id) && !this.coreBosses.includes(d.id)) {
+          this.loot.cores += BOSS_CORES[0] + this.rng.int(0, BOSS_CORES[1] - BOSS_CORES[0]);
+          this.coreBosses.push(d.id);
+        }
         if (this.rng.chance(SET_DROP_CHANCE[k] * this.itemMult)) this.loot.equips.push(rollSetEquip(this.rng));
       }
       const dropChance = (boss ? DROP_CHANCE.boss : elite ? DROP_CHANCE.elite : DROP_CHANCE.normal) * this.itemMult;

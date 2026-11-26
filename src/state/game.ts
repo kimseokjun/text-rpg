@@ -28,6 +28,8 @@ export const SAVE_VERSION = 1;
 
 export interface GameState {
   v: number;
+  /** 오늘 군단장의 핵을 받은 마왕성·마왕방 보스 (한국 시간 오전 4시 초기화) */
+  coreBoss?: { date: string; ids: string[] };
   heroName: string;
   gold: number;
   stones: number;
@@ -927,6 +929,8 @@ export function canDepart(s: GameState): Result {
   return { ok: true };
 }
 
+/** 오늘 이미 핵을 받은 보스 */
+export const coreBossToday = (s: GameState) => (s.coreBoss?.date === kstDate() ? s.coreBoss.ids : []);
 export function startExpedition(s: GameState, settings: ExpeditionSettings): Expedition | string {
   const ok = canDepart(s);
   if (!ok.ok) return ok.msg;
@@ -944,7 +948,7 @@ export function startExpedition(s: GameState, settings: ExpeditionSettings): Exp
   s.settings = { ...settings, potions: [] };
   if (settings.startFloor > maxStartFloor(s)) settings.startFloor = maxStartFloor(s);
   // 낮은 층 보상 감소는 같은 지역 기록 기준
-  return new Expedition(withGuest(s), { ...settings, potions, bestFloor: Math.min(s.maxFloor, regionEnd), petMods: petPartyMods(s) }, rngOf(s));
+  return new Expedition(withGuest(s), { ...settings, potions, bestFloor: Math.min(s.maxFloor, regionEnd), petMods: petPartyMods(s), coreBossDone: coreBossToday(s) }, rngOf(s));
 }
 
 export interface ExpeditionSummary {
@@ -992,6 +996,7 @@ export function finishExpedition(s: GameState, ex: Expedition): ExpeditionSummar
   if (ex.loot.gold > 0) bump(s, 'goldEarn', ex.loot.gold);
   s.shards += ex.loot.shards;
   s.cores += ex.loot.cores;
+  if (ex.coreBosses.length) s.coreBoss = { date: kstDate(), ids: [...coreBossToday(s), ...ex.coreBosses] };
   if (!ex.settings.daily && !ex.settings.raid && !ex.settings.tower && !ex.settings.duel) bump(s, 'run');
   const auto = applyAutoLoot(s, ex.loot.equips);
   ex.loot.equips = auto.kept;
@@ -1128,8 +1133,8 @@ export function applyMultiReward(s: GameState, r: { gold: number; exp: number; s
 }
 
 /** 서버 보상 지급 (월드보스 등) */
-export function grantReward(s: GameState, r: { gold?: number; cores?: number; refineStones?: number; runes?: number; egg?: number }): string {
-  s.gold += r.gold ?? 0; s.cores += r.cores ?? 0; s.refineStones += r.refineStones ?? 0; s.runes = (s.runes ?? 0) + (r.runes ?? 0);
+export function grantReward(s: GameState, r: { gold?: number; cores?: number; mythEss?: number; refineStones?: number; runes?: number; egg?: number }): string {
+  s.gold += r.gold ?? 0; s.cores += r.cores ?? 0; s.mythEss = (s.mythEss ?? 0) + (r.mythEss ?? 0); s.refineStones += r.refineStones ?? 0; s.runes = (s.runes ?? 0) + (r.runes ?? 0);
   let extra = '';
   if (r.egg) { const p = addPet(s, hatch(rngOf(s), r.egg as Grade)); extra = ` · ${PET_GRADE_NAME[p.grade]} ${PET_BY_ID[p.kind].name} 부화!`; }
   return extra;

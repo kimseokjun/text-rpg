@@ -6,7 +6,7 @@
 | --- | --- | --- | --- | --- |
 | 공동 개발 문서 설정 | Codex | `AGENTS.md`, `CLAUDE.md`, `docs/HANDOFF.md`, `docs/TASKS.md` | 완료 | `codex/ai-collaboration` (#1) |
 | 대기 브랜치 일괄 배포 (2D 전투 무대, 4인 레이드 심연, 프리셋 장비, 스킬 이펙트) | Claude Code | `src/ui/stage2d.ts`, `src/ui/skillfx.ts`, `src/ui/r4stage.ts`, `src/ui/main.ts`, `src/state/game.ts`, `src/data/raid4.ts`, `src/data/cosmetics.ts`, `src/data/achievements.ts`, `src/ui/style.css`, 공지 migration | 완료 | `claude/deploy-pending` (#2) |
-| Claude 작업 시작·재개 규칙 문서 (Codex 이미지 확인) | Claude Code | `docs/CLAUDE_RESUME.md`, `CLAUDE.md` | 검토 대기 | `claude/resume-rules` |
+| Claude 작업 시작·재개 규칙 문서 (Codex 이미지 확인) | Claude Code | `docs/CLAUDE_RESUME.md`, `CLAUDE.md` | 완료 | `claude/resume-rules` (#3) |
 | 랜덤 디펜스 디자인 재작업 (11/26 배포 후 롤백) | Claude Code | `src/core/defense.ts`, `src/ui/defense.ts` | 대기 | `feat/defense` |
 | 전투 캐릭터·몬스터 그림 교체 (GPT SD 도트, 공격 모션 방식 결정 필요) | Claude Code | `src/ui/stage2d.ts`, `public/` | 대기 | - |
 

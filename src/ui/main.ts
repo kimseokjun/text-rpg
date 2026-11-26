@@ -992,6 +992,7 @@ function plazaMount() {
     send: (ev, p) => pz?.ch.send(ev, p),
     onDoor: (to) => { if (to === 'raid4' && !Cloud.session) return; screen = to as Screen; render(); },
     onPick: (id, name) => { pzPick = { id, name }; render(); },
+    onCatch: (f) => { const m = G.catchFish(S!, f); saveGame(S!); const t = document.querySelector('.top'); if (t) t.outerHTML = topbar(); return m; },
     onLog: (line) => { pzLog = [...pzLog, line].slice(-6); const side = document.getElementById('pzside'); if (side) side.innerHTML = plazaSide(); },
   });
   pz.run.sync(pz.ch.members());

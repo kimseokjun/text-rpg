@@ -51,6 +51,7 @@ export const COSMETICS: CosItem[] = [
   C('plate', 'silver', '은빛 이름표', 'silver', { price: 300000 }), C('plate', 'royal', '왕실 이름표', 'royal', { price: 1500000 }),
   C('plate', 'gold', '황금 이름표', 'gold', { src: 'ach:3', desc: '업적 점수 450점' }),
   C('plate', 'abyss', '심연 이름표', 'abyss', { src: 'raid:abaddon:normal', desc: '아바돈 처치' }),
+  C('plate', 'fish', '낚시왕 이름표', 'fish', { src: 'fish:legend', desc: '광장 낚시에서 전설 물고기 낚기' }),
   C('plate', 'frost', '서리 이름표', 'frost', { src: 'raid:frost:normal', desc: '니플헤임 처치' }),
   C('plate', 'blood', '핏빛 이름표', 'blood', { src: 'raid:blood:normal', desc: '세레네 처치' }),
   // 등장 효과 (레이드·결투 시작할 때)

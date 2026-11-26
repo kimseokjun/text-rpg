@@ -13,6 +13,7 @@ import { CRAFT_COST, MYTH_CRAFT_COST, MYTH_SET, RAID_CRAFT_COST, RAID_SET } from
 import { DAILY_BY_ID, DAILY_LIMIT, dailyReward, kstDate, type DailyDef } from '../data/daily';
 import { rewardScale } from '../data/monsters';
 import { MILESTONES, MILESTONE_SCALES, RAID_DIFF, RAID_DIFF_NAME, RAID_LIMIT, attemptReward, raidMaxHp, raidWeek, type RaidDiff } from '../data/raid';
+import { FISH, type FishDef } from '../data/fish';
 import { COS_BY_ID, FREE_HEADS, MERC_KINDS, raidCosmetics, type AvatarLook, type AvatarState, type CosKind } from '../data/cosmetics';
 import { ACHS, ACH_BY_ID, ACH_MS, ACH_REWARD, achPoints, achReady, titleMods, unlockedTitles, TITLE_BY_ID } from '../data/achievements';
 import { EGG_PRICE, PET_BY_ID, PET_EVO_GOLD, PET_GRADE_NAME, PET_MAX_STARS, hatch, petMods, petSellPrice, type Pet } from '../data/pets';
@@ -29,6 +30,8 @@ export const SAVE_VERSION = 1;
 
 export interface GameState {
   v: number;
+  /** 광장 낚시 도감 (물고기 id → 잡은 수) */
+  fish?: { caught: Record<string, number> };
   /** 오늘 군단장의 핵을 받은 마왕성·마왕방 보스 (한국 시간 오전 4시 초기화) */
   coreBoss?: { date: string; ids: string[] };
   heroName: string;
@@ -1621,4 +1624,18 @@ export function wearCos(s: GameState, target: 'avatar' | string, kind: CosKind, 
   c.cos ??= {};
   if (id) c.cos[kind as 'cape'] = id; else delete c.cos[kind as 'cape'];
   return { ok: true, msg: it ? `${c.name}에게 「${it.name}」` : '해제했어요' };
+}
+
+// ───────── 광장 낚시 ─────────
+/** 잡은 물고기: 도감 기록 + 바로 팔아 골드, 전설 첫 낚시면 이름표 */
+export function catchFish(s: GameState, f: FishDef): string {
+  const first = !s.fish?.caught[f.id];
+  s.fish = { caught: { ...(s.fish?.caught ?? {}), [f.id]: (s.fish?.caught[f.id] ?? 0) + 1 } };
+  s.gold += f.price;
+  bump(s, 'fish');
+  const out = [`${f.price.toLocaleString('ko-KR')}G에 팔았어요`];
+  if (first) out.push(`📖 도감 등록 (${Object.keys(s.fish.caught).length}/${FISH.length})`);
+  if (f.grade === 5 && !cosOwned(s, 'plate:fish')) { (s.cos ??= []).push('plate:fish'); out.push('🎨 꾸미기 「낚시왕 이름표」 획득!'); }
+  if (f.grade >= 4) news(s, `광장 연못에서 ${f.name}을(를) 낚았다!`);
+  return out.join(' · ');
 }

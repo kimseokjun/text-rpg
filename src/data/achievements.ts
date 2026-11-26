@@ -12,6 +12,7 @@ export interface AchState {
   cnt?: Record<string, number>; tower?: { best: number };
   cards?: Record<string, OwnedCard>; codex?: string[]; bossesKilled: string[];
   ach?: Record<string, number>; achMs?: number; title?: string;
+  fish?: { caught: Record<string, number> };
 }
 
 export type AchCat = 'explore' | 'battle' | 'growth' | 'gear' | 'collect' | 'social' | 'life';
@@ -20,6 +21,7 @@ export const ACH_CAT: [AchCat, string][] = [['explore', '탐험'], ['battle', '�
 export interface Title { id: string; name: string; tone: 3 | 4 | 5; mods: Modifier[]; desc: string }
 const pm = (key: Modifier['key'], value: number, kind: 'pct' | 'flat' = 'pct'): Modifier => ({ key, kind, value, scope: 'party' });
 export const TITLES: Title[] = [
+  { id: 'angler', name: '강태공', tone: 4, mods: [pm('goldGain', 5)], desc: '골드 획득 +5%' },
   { id: 'demonSlayer', name: '마왕 토벌자', tone: 5, mods: [pm('atk', 2), pm('mag', 2)], desc: '공격력·마력 +2%' },
   { id: 'towerLord', name: '탑의 지배자', tone: 5, mods: [pm('hp', 3)], desc: '생명력 +3%' },
   { id: 'slaughter', name: '학살자', tone: 4, mods: [pm('skillDmg', 3)], desc: '스킬 피해 +3%' },
@@ -89,6 +91,8 @@ export const ACHS: AchDef[] = [
   { id: 'lend', cat: 'social', name: '친구에게 단원 빌려주기', unit: '회', goals: [1, 10, 50], titles: { 2: 'loyal' }, get: (s) => c(s, 'lent') },
   { id: 'multi', cat: 'social', name: '카드 던전', unit: '회', goals: [10, 50, 200], get: (s) => c(s, 'multi') + c(s, 'cardDun') },
   // 일상
+  { id: 'fishDex', cat: 'life', name: '낚시 도감', unit: '종', goals: [4, 8, 12], titles: { 2: 'angler' }, get: (s) => Object.keys(s.fish?.caught ?? {}).length },
+  { id: 'fish', cat: 'life', name: '물고기 낚기', unit: '마리', goals: [10, 100, 500], get: (s) => c(s, 'fish') },
   { id: 'goldEarn', cat: 'life', name: '골드 벌이', unit: 'G', goals: [1e6, 1e7, 1e8, 1e9], titles: { 3: 'tycoon' }, get: (s) => c(s, 'goldEarn') },
   { id: 'buy', cat: 'life', name: '단골손님', unit: '회', goals: [10, 100, 500], get: (s) => c(s, 'buy') },
 ];

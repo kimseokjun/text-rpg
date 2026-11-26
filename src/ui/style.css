@@ -893,3 +893,40 @@ kbd{font-family:inherit;font-size:.85em;padding:0 4px;border:1px solid #ffffff40
 .fishprog{height:8px;border-radius:4px;background:#0006;overflow:hidden}.fishprog i{display:block;height:100%;background:linear-gradient(90deg,#ffd95e,#5ae07a)}
 .fishhold{margin-top:8px;width:100%;touch-action:none;user-select:none}
 .cosplate.pl-wave{background:linear-gradient(180deg,#bfe8ff,#2a7ab8);color:#04203a;border-color:#e8f8ff}
+
+/* ── 2D 전투 무대 (모든 전투) ── */
+.s2{position:relative;width:100%;aspect-ratio:16/9;max-height:62vh;border-radius:14px;overflow:hidden;border:2px solid #3a2a40;background:#1a1422}
+.s2bg{position:absolute;inset:0;width:100%;height:100%}
+.s2units{position:absolute;inset:0}
+.s2u{position:absolute;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center;transition:opacity .4s,filter .4s}
+.s2u .s2spr{line-height:0;filter:drop-shadow(0 3px 0 #0006)}
+.s2u.e .s2spr{transform:scaleX(-1)}
+.s2u .s2spr svg{display:block}
+.s2u.dead{opacity:.25;filter:grayscale(1)}
+.s2u.hit .s2spr{animation:s2hit .25s}
+@keyframes s2hit{50%{filter:brightness(3)}}
+.s2tag{display:flex;flex-direction:column;align-items:center;gap:1px;margin-top:2px;min-width:64px}
+.s2n{font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 2px #000,0 0 3px #000;white-space:nowrap}.s2n i{font-style:normal;color:#ffd95e;font-weight:400}
+.s2tag .bar{width:64px;height:5px;border-radius:3px;background:#0009;overflow:hidden}.s2tag .bar i{display:block;height:100%;background:linear-gradient(90deg,#e04a4a,#ff8a5a)}
+.s2u.p .s2tag .bar i{background:linear-gradient(90deg,#3ac06a,#8ae08a)}
+.s2tag small{font-size:9px;color:#fffc;text-shadow:0 1px 2px #000}
+.s2u.boss .s2tag{display:none}
+.s2boss{position:absolute;left:3%;right:3%;top:3%;display:flex;align-items:center;gap:8px;z-index:300;background:#0008;border-radius:8px;padding:4px 10px}
+.s2boss b{color:#ffe9a8;font-size:13px;white-space:nowrap}.s2boss small{font-size:11px;color:#fff;white-space:nowrap}
+.s2bossbar{flex:1;height:10px;border-radius:5px;background:#000a;overflow:hidden;border:1px solid #ffffff30}.s2bossbar i{display:block;height:100%;background:linear-gradient(90deg,#a01a2a,#ff4a4a);transition:width .3s}
+.s2cap{position:absolute;left:50%;top:16%;transform:translate(-50%,-6px);z-index:301;opacity:0;pointer-events:none;background:#140e1ce6;border:2px solid #ffd95e;color:#ffe9a8;font-weight:700;font-size:14px;padding:5px 14px;border-radius:10px;white-space:nowrap;transition:opacity .15s,transform .15s}
+.s2cap.on{opacity:1;transform:translate(-50%,0)}.s2cap.e{border-color:#ff6a5a;color:#ffd0c8}
+.s2fx{position:absolute;inset:0;pointer-events:none;z-index:302}
+.s2num{position:absolute;transform:translate(-50%,0);font-weight:900;font-size:18px;color:#fff;text-shadow:0 2px 0 #000,0 0 4px #000;animation:s2num .9s ease-out forwards}
+.s2num.crit{color:#ffd95e;font-size:24px}.s2num.heal{color:#7af08a}.s2num.miss{color:#bfe8ff;font-size:14px}
+@keyframes s2num{0%{transform:translate(-50%,6px) scale(.6);opacity:0}15%{transform:translate(-50%,0) scale(1.15);opacity:1}100%{transform:translate(-50%,-28px) scale(1);opacity:0}}
+.s2status{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:4px;margin-top:6px;background:#140e1c;border:2px solid #3a2a40;border-radius:10px;padding:6px 8px}
+.s2row{display:grid;grid-template-columns:22px auto 20px 1fr 34px 20px 1fr 30px;align-items:center;gap:4px;font-size:12px}
+.s2row:not(:has(.s2mpb)){grid-template-columns:22px auto 20px 1fr 34px}
+.s2row b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px}.s2row.dead{opacity:.4}
+.s2ri{line-height:0}.s2ri svg{width:22px;height:22px}
+.s2lbl{font-size:10px;color:var(--mute)}
+.s2hp,.s2mpb{height:7px;border-radius:4px;background:#0008;overflow:hidden}.s2hp i{display:block;height:100%;background:#4ad06a}.s2mpb i{display:block;height:100%;background:#4a8aff}
+.s2row small{font-variant-numeric:tabular-nums;text-align:right}
+.s2log{margin-top:6px}.s2log summary{cursor:pointer;font-size:13px;color:var(--mute)}.s2log .log{max-height:200px}
+@media(max-width:600px){.s2{aspect-ratio:4/3}.s2n{font-size:9px}.s2tag .bar{width:40px}.s2tag small{display:none}.s2u .s2spr svg{width:44px;height:44px}.s2u.boss .s2spr svg{width:88px;height:88px}.s2cap{font-size:12px}}

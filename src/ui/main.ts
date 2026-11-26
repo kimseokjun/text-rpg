@@ -27,7 +27,7 @@ import { Raid4Battle, type R4Member, type R4State } from '../core/raid4battle';
 import { mountStage, playEvents, setBanner, setPanel, speech, stageMounted, updateStage } from './r4stage';
 import * as Bgm from './bgm';
 import { mountPlaza, EMOTES, type PlazaRun } from './plaza';
-import { stageShell, unitBox, formation, enemyFormation, SUMMON_POS, fxCaption, fxLunge, fxNumber, fxBossBar, statusPanel, statusHp, type StageTheme } from './stage2d';
+import { stageShell, unitBox, spriteImg, monSpriteH, JOB_SPRITE_H, formation, enemyFormation, SUMMON_POS, fxCaption, fxLunge, fxNumber, fxBossBar, statusPanel, statusHp, type StageTheme } from './stage2d';
 import { FISH, FISH_GRADE_NAME, MASTERY_MAX, fishCosChance, fishWeights, masteryNeed } from '../data/fish';
 import { COSMETICS, COS_BY_ID, COS_KIND_KO, FREE_HEADS, MERC_KINDS, OUTFIT_COLORS, TRIM_COLORS, type AvatarState, type CosKind } from '../data/cosmetics';
 import { CHESTS, dRewardText } from '../data/missions';
@@ -2691,13 +2691,17 @@ const floorTitle = (ex: Expedition) =>
 const unitHtml = (name: string, u: { id: string; hp: number; max: number; dead: boolean }, icon: string, cls = '', owner = '') =>
   `<div class="unit ${cls} ${u.dead ? 'dead' : ''}" id="${u.id}"><div class="un"><span class="row" style="gap:6px"><span class="uico">${icon}</span>${esc(name)}${owner ? `<span class="uown ${owner === Cloud.username ? 'me' : ''}">${esc(owner)}</span>` : ''}</span><small>${Math.round(u.hp)}/${u.max}</small></div><div class="bar ${u.id.startsWith('e') ? 'e' : ''}"><i style="width:${pctW(u.hp, u.max)}"></i></div></div>`;
 
+/** 전투 무대용 직업 그림: 그 직업 그림 → 같은 계열 1차 그림 → 도트 아바타 */
+function jobSprite(jobId: JobId, fallback: () => string) {
+  return spriteImg(`job/${jobId}`, JOB_SPRITE_H) ?? spriteImg(`job/${JOBS[jobId].base}`, JOB_SPRITE_H) ?? fallback();
+}
 function drawParty() {
   const el = document.getElementById('pside');
   if (!el || !EX) return;
   const pos = formation('p', EX.party.map((p) => (p.char ? rowOf(p.char) : 'front')));
   el.innerHTML = EX.party.map((p, i) => {
     const u = (units[p.name] ??= { id: `u${uidSeq++}`, hp: p.hp, max: p.maxHp, dead: !p.alive, side: 'p' });
-    return unitBox({ id: u.id, name: esc(p.name), icon: avatar(p.char!, 72), hp: u.hp, max: u.max, dead: u.dead, side: 'p', pos: pos[i], owner: mOwners[p.id] ? esc(mOwners[p.id]) : undefined });
+    return unitBox({ id: u.id, name: esc(p.name), icon: jobSprite(p.char!.jobId, () => avatar(p.char!, 72)), hp: u.hp, max: u.max, dead: u.dead, side: 'p', pos: pos[i], owner: mOwners[p.id] ? esc(mOwners[p.id]) : undefined });
   }).join('');
   statusPanel(EX.party.map((p) => ({ name: esc(p.name), hp: units[p.name]?.hp ?? p.hp, max: p.maxHp, mp: p.mp, mpMax: p.maxMp, dead: units[p.name]?.dead ?? !p.alive, icon: avatar(p.char!, 22) })));
 }
@@ -2719,7 +2723,7 @@ function drawEnemies(list: UnitSnap[], append = false) {
   let mi = 0;
   for (const m of list) {
     const u = (units[m.name] = { id: `e${uidSeq++}`, hp: m.hp, max: m.maxHp, dead: false, side: 'e', boss: !!m.boss });
-    const icon = m.job ? charSprite(JOBS[m.job as JobId].base, m.name.replace('(상대)', ''), JOBS[m.job as JobId].tier, { size: 72 }) : monsterSprite(m.id ?? '', { size: m.boss ? 128 : m.elite ? 80 : 64, boss: m.boss, elite: m.elite, tags: m.tags });
+    const icon = m.job ? jobSprite(m.job as JobId, () => charSprite(JOBS[m.job as JobId].base, m.name.replace('(상대)', ''), JOBS[m.job as JobId].tier, { size: 72 })) : spriteImg(`mon/${m.id}`, monSpriteH(m.id ?? '', m.boss, m.elite)) ?? monsterSprite(m.id ?? '', { size: m.boss ? 128 : m.elite ? 80 : 64, boss: m.boss, elite: m.elite, tags: m.tags });
     el.insertAdjacentHTML('beforeend', unitBox({ id: u.id, name: esc(m.name), icon, hp: m.hp, max: m.maxHp, dead: false, side: 'e', boss: !!m.boss, pos: m.boss ? { x: 0, y: 0 } : pos[mi++] }));
     if (m.boss) fxBossBar(m.name, m.hp, m.maxHp);
   }

@@ -29,6 +29,8 @@
 
 ## 4. 파일 이름과 위치
 
+- 게임은 원본 PNG를 직접 쓰지 않는다. `python3 scripts/sprites.py`가 원본 옆에 `<ID>.webp`(높이 256px로 자름)와 `src/data/spriteManifest.ts`를 만들고, 게임은 이 둘을 쓴다. 원본 PNG는 그대로 둔다.
+
 - 위치: `public/sprites/<종류>/<ID>.png`, 공격 자세는 `<ID>_atk.png`.
   - 예: `public/sprites/job/warrior.png`, `public/sprites/job/warrior_atk.png`, `public/sprites/mon/skeleton.png`
 - `<종류>/<ID>`는 아래 요청 목록의 ID를 그대로 쓴다(영문, 대소문자 구분). 한글 파일 이름은 쓰지 않는다.
@@ -62,10 +64,10 @@ transparent background, no shadow, no ground, centered, same style as the refere
 
 | ID | 이름 | 종류 | 단계 | 포즈 | 메모 | 상태 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `job/warrior` | 전사 | 직업 · 전사 1차 | 1 | idle, atk | 기본형 — 같은 계열 상위 직업의 바탕 | 요청 |
-| `job/mage` | 마법사 | 직업 · 마법사 1차 | 1 | idle, atk | 기본형 — 같은 계열 상위 직업의 바탕 | 요청 |
-| `job/archer` | 궁수 | 직업 · 궁수 1차 | 1 | idle, atk | 기본형 — 같은 계열 상위 직업의 바탕 | 요청 |
-| `job/priest` | 성직자 | 직업 · 성직자 1차 | 1 | idle, atk | 기본형 — 같은 계열 상위 직업의 바탕 | 요청 |
+| `job/warrior` | 전사 | 직업 · 전사 1차 | 1 | idle, atk | 기본형 — 같은 계열 상위 직업의 바탕 | 적용됨 |
+| `job/mage` | 마법사 | 직업 · 마법사 1차 | 1 | idle, atk | 기본형 — 같은 계열 상위 직업의 바탕 | 적용됨 |
+| `job/archer` | 궁수 | 직업 · 궁수 1차 | 1 | idle, atk | 기본형 — 같은 계열 상위 직업의 바탕 | 적용됨 |
+| `job/priest` | 성직자 | 직업 · 성직자 1차 | 1 | idle, atk | 기본형 — 같은 계열 상위 직업의 바탕 | 적용됨 |
 | `job/knight` | 나이트 | 직업 · 전사 2차 | 2 | idle, atk | 전사 계열, 차수가 높을수록 장비 화려하게 | 요청 |
 | `job/berserker` | 버서커 | 직업 · 전사 2차 | 2 | idle, atk | 전사 계열, 차수가 높을수록 장비 화려하게 | 요청 |
 | `job/elementalist` | 원소술사 | 직업 · 마법사 2차 | 2 | idle, atk | 마법사 계열, 차수가 높을수록 장비 화려하게 | 요청 |
@@ -98,12 +100,12 @@ transparent background, no shadow, no ground, centered, same style as the refere
 | `job/dragonRider` | 용기사 | 직업 · 궁수 5차 | 2 | idle, atk | 궁수 계열, 차수가 높을수록 장비 화려하게 | 요청 |
 | `job/avatar` | 신의 화신 | 직업 · 성직자 5차 | 2 | idle, atk | 성직자 계열, 차수가 높을수록 장비 화려하게 | 요청 |
 | `job/seraph` | 대천사 | 직업 · 성직자 5차 | 2 | idle, atk | 성직자 계열, 차수가 높을수록 장비 화려하게 | 요청 |
-| `mon/rat` | 굶주린 쥐 | 몬스터 · 버려진 지하묘지 | 1 | idle |  | 요청 |
-| `mon/skeleton` | 해골 병사 | 몬스터 · 버려진 지하묘지 | 1 | idle |  | 요청 |
-| `mon/bat` | 묘지 박쥐 | 몬스터 · 버려진 지하묘지 | 1 | idle |  | 요청 |
-| `mon/ghoul` | 구울 | 몬스터 · 버려진 지하묘지 | 1 | idle |  | 요청 |
-| `mon/skeletonKnight` | 해골 기사 | 정예 · 버려진 지하묘지 | 1 | idle |  | 요청 |
-| `mon/morten` | 묘지기 모르텐 | 보스 · 버려진 지하묘지 | 1 | idle, atk | 크게 그림 (화면에 2배로 표시) | 요청 |
+| `mon/rat` | 굶주린 쥐 | 몬스터 · 버려진 지하묘지 | 1 | idle |  | 적용됨 |
+| `mon/skeleton` | 해골 병사 | 몬스터 · 버려진 지하묘지 | 1 | idle |  | 적용됨 |
+| `mon/bat` | 묘지 박쥐 | 몬스터 · 버려진 지하묘지 | 1 | idle |  | 적용됨 |
+| `mon/ghoul` | 구울 | 몬스터 · 버려진 지하묘지 | 1 | idle |  | 적용됨 |
+| `mon/skeletonKnight` | 해골 기사 | 정예 · 버려진 지하묘지 | 1 | idle |  | 적용됨 |
+| `mon/morten` | 묘지기 모르텐 | 보스 · 버려진 지하묘지 | 1 | idle, atk | 크게 그림 (화면에 2배로 표시) | 적용됨 |
 | `mon/monk` | 타락한 수도승 | 몬스터 · 봉인의 신전 | 3 | idle |  | 요청 |
 | `mon/statue` | 석상 수호자 | 몬스터 · 봉인의 신전 | 3 | idle |  | 요청 |
 | `mon/assassin` | 그림자 암살자 | 몬스터 · 봉인의 신전 | 3 | idle |  | 요청 |

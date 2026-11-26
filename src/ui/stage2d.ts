@@ -1,3 +1,4 @@
+import { SPRITES } from '../data/spriteManifest';
 /**
  * 모든 전투 공용 2D 무대 (횡스크롤): 왼쪽 적 · 오른쪽 파티, 위 보스 HP, 아래 파티 상태창, 기술 이름 배너, 피해 숫자·돌진·피격 연출.
  * 유닛 DOM 구조(.bar i · small · id)는 기존 setHp/setDead가 그대로 쓰도록 맞춤.
@@ -71,6 +72,21 @@ export const BOSS_POS: Pos = { x: 18, y: 88 };
 /** 싸움 중에 불려 나온 졸개 (빈자리 쪽) */
 export const SUMMON_POS: Pos[] = [{ x: 30, y: 74 }, { x: 30, y: 93 }, { x: 8, y: 76 }, { x: 8, y: 93 }, { x: 46, y: 84 }];
 
+/** 그림 스프라이트 (public/sprites/<key>.webp). 없으면 null → 기존 도트 그림 사용.
+ *  h = PC 기준 표시 높이(px). 모바일은 .s2 의 --k 로 줄어듦. 공격 자세가 있으면 겹쳐 두고 공격 순간에만 보임 */
+export function spriteImg(key: string, h: number): string | null {
+  const sp = SPRITES[key]; if (!sp) return null;
+  const idle = `<img class="s2i" src="./sprites/${key}.webp" alt="" style="height:calc(var(--k) * ${h}px)" draggable="false">`;
+  const atk = sp.ah ? `<img class="s2i s2atk" src="./sprites/${key}_atk.webp" alt="" style="height:calc(var(--k) * ${Math.round((h * sp.ah) / sp.h)}px)" draggable="false" loading="eager">` : '';
+  return idle + atk;
+}
+/** 몬스터별 크기 (기본 1). 작은 짐승은 작게 */
+const MON_SIZE: Record<string, number> = { rat: 0.55, bat: 0.62, skeletonKnight: 1.08 };
+export const JOB_SPRITE_H = 116;
+export function monSpriteH(id: string, boss?: boolean, elite?: boolean) {
+  return Math.round((boss ? 210 : 108 * (elite ? 1.12 : 1)) * (MON_SIZE[id] ?? 1));
+}
+
 export function stageShell(theme: StageTheme) {
   return `<div class="s2" id="s2">${stageBg(theme)}
     <div class="s2boss" id="s2boss" hidden><b id="s2bossName"></b><div class="s2bossbar"><i></i></div><small></small></div>
@@ -103,7 +119,12 @@ export function fxCaption(text: string, side: 'p' | 'e') {
 export function fxLunge(actor: string, fast: boolean) {
   const a = el(actor); if (!a) return;
   const dir = a.classList.contains('p') ? -1 : 1;
-  a.querySelector('.s2spr')?.animate([{ transform: 'translateX(0)' }, { transform: `translateX(${dir * 28}px)` }, { transform: 'translateX(0)' }], { duration: fast ? 180 : 320, easing: 'ease-out' });
+  const spr = a.querySelector<HTMLElement>('.s2spr'); if (!spr) return;
+  const ms = fast ? 180 : 320;
+  const flip = a.classList.contains('e') ? ' scaleX(-1)' : ''; // 적은 좌우 뒤집힌 채로 움직여야 함
+  spr.animate([{ transform: `translateX(0)${flip}` }, { transform: `translateX(${dir * 28}px)${flip}` }, { transform: `translateX(0)${flip}` }], { duration: ms, easing: 'ease-out' });
+  // 공격 자세 그림이 있으면 그 순간만 바꿔 보임
+  if (spr.querySelector('.s2atk')) { spr.classList.add('atking'); setTimeout(() => spr.classList.remove('atking'), ms + 60); }
 }
 export function fxNumber(target: string, text: string, kind: 'dmg' | 'crit' | 'heal' | 'miss') {
   const t = el(target), L = fxLayer(); if (!t || !L) return;
@@ -113,8 +134,8 @@ export function fxNumber(target: string, text: string, kind: 'dmg' | 'crit' | 'h
   n.style.left = `${p.x + (Math.random() * 4 - 2)}%`; n.style.top = `${p.y - (t.classList.contains('boss') ? 34 : 20)}%`;
   L.appendChild(n); setTimeout(() => n.remove(), 900);
   if (kind === 'dmg' || kind === 'crit') {
-    const s = t.querySelector('.s2spr');
-    s?.animate([{ transform: 'translateX(0)', filter: 'brightness(3)' }, { transform: 'translateX(-4px)' }, { transform: 'translateX(4px)' }, { transform: 'translateX(0)', filter: 'none' }], { duration: 260 });
+    const s = t.querySelector('.s2spr'), f = t.classList.contains('e') ? ' scaleX(-1)' : '';
+    s?.animate([{ transform: `translateX(0)${f}`, filter: 'brightness(3)' }, { transform: `translateX(-4px)${f}` }, { transform: `translateX(4px)${f}` }, { transform: `translateX(0)${f}`, filter: 'none' }], { duration: 260 });
   }
 }
 export function fxBossBar(name: string | null, hp = 0, max = 1) {

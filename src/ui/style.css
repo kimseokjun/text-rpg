@@ -913,7 +913,9 @@ kbd{font-family:inherit;font-size:.85em;padding:0 4px;border:1px solid #ffffff40
 .s2i{display:block;image-rendering:auto;pointer-events:none;user-select:none}
 .s2i.s2atk{position:absolute;right:0;bottom:0;visibility:hidden}
 .atking .s2i:not(.s2atk){visibility:hidden}.atking .s2atk{visibility:visible}
-.r4stage2{--k:1}@media(max-width:600px){.r4stage2{--k:.55}}
+.r4stage2{--k:1}
+@media(max-width:600px){.r4stage2{--k:.55}.r4stage2 .r4unit.boss{--k:.52}}
+@media(max-width:360px){.r4stage2 .r4unit.boss{--k:.43}}
 .r4face{position:relative;display:inline-block;line-height:0;vertical-align:bottom}.r4face.flip{transform:scaleX(-1)}
 .s2u.dead{opacity:.25;filter:grayscale(1)}
 .s2u.hit .s2spr{animation:s2hit .25s}

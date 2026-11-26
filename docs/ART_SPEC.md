@@ -107,98 +107,98 @@ transparent background, no shadow, no ground, centered, same style as the refere
 | `mon/ghoul` | 구울 | 몬스터 · 버려진 지하묘지 | 1 | idle |  | 적용됨 |
 | `mon/skeletonKnight` | 해골 기사 | 정예 · 버려진 지하묘지 | 1 | idle |  | 적용됨 |
 | `mon/morten` | 묘지기 모르텐 | 보스 · 버려진 지하묘지 | 1 | idle, atk | 크게 그림 (화면에 2배로 표시) | 적용됨 |
-| `mon/monk` | 타락한 수도승 | 몬스터 · 봉인의 신전 | 3 | idle |  | 요청 |
-| `mon/statue` | 석상 수호자 | 몬스터 · 봉인의 신전 | 3 | idle |  | 요청 |
-| `mon/assassin` | 그림자 암살자 | 몬스터 · 봉인의 신전 | 3 | idle |  | 요청 |
-| `mon/spirit` | 마력 정령 | 몬스터 · 봉인의 신전 | 3 | idle |  | 요청 |
-| `mon/templeGuard` | 신전 수호병 | 정예 · 봉인의 신전 | 3 | idle |  | 요청 |
-| `mon/velas` | 타락한 대신관 벨라스 | 보스 · 봉인의 신전 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 요청 |
-| `mon/kobold` | 코볼트 광부 | 몬스터 · 잊힌 광산 | 3 | idle |  | 요청 |
-| `mon/caveGolem` | 동굴 골렘 | 몬스터 · 잊힌 광산 | 3 | idle |  | 요청 |
-| `mon/bomberKobold` | 폭약 코볼트 | 몬스터 · 잊힌 광산 | 3 | idle |  | 요청 |
-| `mon/crystalBat` | 수정 박쥐 | 몬스터 · 잊힌 광산 | 3 | idle |  | 요청 |
-| `mon/ironGolem` | 철갑 골렘 | 정예 · 잊힌 광산 | 3 | idle |  | 요청 |
-| `mon/mineKing` | 광산왕의 망령 | 보스 · 잊힌 광산 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 요청 |
-| `mon/swampToad` | 늪 두꺼비 | 몬스터 · 독안개 늪 | 3 | idle |  | 요청 |
-| `mon/rotVine` | 썩은 덩굴 | 몬스터 · 독안개 늪 | 3 | idle |  | 요청 |
-| `mon/mosquito` | 독침 모기떼 | 몬스터 · 독안개 늪 | 3 | idle |  | 요청 |
-| `mon/lizardman` | 늪지 리자드맨 | 몬스터 · 독안개 늪 | 3 | idle |  | 요청 |
-| `mon/lizardShaman` | 리자드맨 주술사 | 정예 · 독안개 늪 | 3 | idle |  | 요청 |
-| `mon/swampWitch` | 늪의 마녀 | 보스 · 독안개 늪 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 요청 |
-| `mon/frostWolf` | 서리 늑대 | 몬스터 · 얼음 심연 | 3 | idle |  | 요청 |
-| `mon/iceSpirit` | 얼음 정령 | 몬스터 · 얼음 심연 | 3 | idle |  | 요청 |
-| `mon/yeti` | 설인 | 몬스터 · 얼음 심연 | 3 | idle |  | 요청 |
-| `mon/iceArcher` | 빙결 궁수 | 몬스터 · 얼음 심연 | 3 | idle |  | 요청 |
-| `mon/frostKnight` | 서리 기사 | 정예 · 얼음 심연 | 3 | idle |  | 요청 |
-| `mon/frostGiant` | 서리 거인 | 보스 · 얼음 심연 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 요청 |
-| `mon/salamander` | 화염 도롱뇽 | 몬스터 · 용암 대공동 | 3 | idle |  | 요청 |
-| `mon/lavaGolem` | 용암 골렘 | 몬스터 · 용암 대공동 | 3 | idle |  | 요청 |
-| `mon/imp` | 불꽃 임프 | 몬스터 · 용암 대공동 | 3 | idle |  | 요청 |
-| `mon/volcBat` | 화산 박쥐 | 몬스터 · 용암 대공동 | 3 | idle |  | 요청 |
-| `mon/ifrit` | 이프리트 | 정예 · 용암 대공동 | 3 | idle |  | 요청 |
-| `mon/flameLord` | 화염 군주 | 보스 · 용암 대공동 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 요청 |
-| `mon/venomSpider` | 독거미 | 몬스터 · 거미 여왕의 둥지 | 3 | idle |  | 요청 |
-| `mon/webSpider` | 그물 거미 | 몬스터 · 거미 여왕의 둥지 | 3 | idle |  | 요청 |
-| `mon/eggCluster` | 거미 알 무리 | 몬스터 · 거미 여왕의 둥지 | 3 | idle |  | 요청 |
-| `mon/spiderRider` | 암흑 거미 기수 | 몬스터 · 거미 여왕의 둥지 | 3 | idle |  | 요청 |
-| `mon/spiderPriest` | 거미 사제 | 정예 · 거미 여왕의 둥지 | 3 | idle |  | 요청 |
-| `mon/spiderQueen` | 거미 여왕 | 보스 · 거미 여왕의 둥지 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 요청 |
-| `mon/drownedSoldier` | 익사한 병사 | 몬스터 · 수몰된 고대 도시 | 3 | idle |  | 요청 |
-| `mon/abyssShaman` | 심해 주술사 | 몬스터 · 수몰된 고대 도시 | 3 | idle |  | 요청 |
-| `mon/coralGolem` | 산호 골렘 | 몬스터 · 수몰된 고대 도시 | 3 | idle |  | 요청 |
-| `mon/siren` | 세이렌 | 몬스터 · 수몰된 고대 도시 | 3 | idle |  | 요청 |
-| `mon/seaKnight` | 해저 기사단장 | 정예 · 수몰된 고대 도시 | 3 | idle |  | 요청 |
-| `mon/abyssWarden` | 심해의 수호자 | 보스 · 수몰된 고대 도시 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 요청 |
-| `mon/lesserDemon` | 하급 악마 | 몬스터 · 혼돈의 균열 | 3 | idle |  | 요청 |
-| `mon/hellhound` | 지옥견 | 몬스터 · 혼돈의 균열 | 3 | idle |  | 요청 |
-| `mon/voidMage` | 공허 마법사 | 몬스터 · 혼돈의 균열 | 3 | idle |  | 요청 |
-| `mon/fallenKnight` | 타락 기사 | 몬스터 · 혼돈의 균열 | 3 | idle |  | 요청 |
-| `mon/demonOfficer` | 마족 장교 | 정예 · 혼돈의 균열 | 3 | idle |  | 요청 |
-| `mon/demonGeneral` | 마장군 | 보스 · 혼돈의 균열 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 요청 |
-| `mon/sealWarden` | 봉인 파수꾼 | 몬스터 · 봉인의 핵 | 3 | idle |  | 요청 |
-| `mon/chaosEcho` | 혼돈의 메아리 | 몬스터 · 봉인의 핵 | 3 | idle |  | 요청 |
-| `mon/coreSpirit` | 핵 정령 | 몬스터 · 봉인의 핵 | 3 | idle |  | 요청 |
-| `mon/shadowClone` | 그림자 분신 | 몬스터 · 봉인의 핵 | 3 | idle |  | 요청 |
-| `mon/sealProxy` | 봉인의 대리인 | 정예 · 봉인의 핵 | 3 | idle |  | 요청 |
-| `mon/sealedOne` | 봉인된 자 | 보스 · 봉인의 핵 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 요청 |
-| `mon/gargoyle` | 가고일 | 몬스터 · 마왕성 · 잿빛 성벽 | 3 | idle |  | 요청 |
-| `mon/castleArcher` | 성벽 궁수 | 몬스터 · 마왕성 · 잿빛 성벽 | 3 | idle |  | 요청 |
-| `mon/hellKnight` | 지옥 기사 | 몬스터 · 마왕성 · 잿빛 성벽 | 3 | idle |  | 요청 |
-| `mon/castleWarlock` | 마성 술사 | 몬스터 · 마왕성 · 잿빛 성벽 | 3 | idle |  | 요청 |
-| `mon/siegeGolem` | 공성 골렘 | 정예 · 마왕성 · 잿빛 성벽 | 3 | idle |  | 요청 |
-| `mon/granit` | 성문지기 그라니트 | 보스 · 마왕성 · 잿빛 성벽 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 요청 |
-| `mon/wardStone` | 결계석 | 몬스터 · 마왕성 · 잿빛 성벽 | 3 | idle |  | 요청 |
-| `mon/vampireBat` | 흡혈 박쥐 | 몬스터 · 마왕성 · 피의 회랑 | 3 | idle |  | 요청 |
-| `mon/bloodKnight` | 혈기사 | 몬스터 · 마왕성 · 피의 회랑 | 3 | idle |  | 요청 |
-| `mon/thrallGhoul` | 노예 구울 | 몬스터 · 마왕성 · 피의 회랑 | 3 | idle |  | 요청 |
-| `mon/bloodMage` | 혈마법사 | 몬스터 · 마왕성 · 피의 회랑 | 3 | idle |  | 요청 |
-| `mon/crimsonGuard` | 진홍 근위대 | 정예 · 마왕성 · 피의 회랑 | 3 | idle |  | 요청 |
-| `mon/carmilla` | 피의 백작 카르밀라 | 보스 · 마왕성 · 피의 회랑 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 요청 |
-| `mon/grimoire` | 살아있는 마도서 | 몬스터 · 마왕성 · 금서의 서고 | 3 | idle |  | 요청 |
-| `mon/inkGolem` | 잉크 골렘 | 몬스터 · 마왕성 · 금서의 서고 | 3 | idle |  | 요청 |
-| `mon/librarianGhost` | 사서의 망령 | 몬스터 · 마왕성 · 금서의 서고 | 3 | idle |  | 요청 |
-| `mon/runeSentinel` | 룬 파수병 | 몬스터 · 마왕성 · 금서의 서고 | 3 | idle |  | 요청 |
-| `mon/archLibrarian` | 대사서 | 정예 · 마왕성 · 금서의 서고 | 3 | idle |  | 요청 |
-| `mon/morgath` | 금서의 주인 모르가스 | 보스 · 마왕성 · 금서의 서고 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 요청 |
-| `mon/cultist` | 광신도 | 몬스터 · 마왕성 · 금서의 서고 | 3 | idle |  | 요청 |
-| `mon/archDemon` | 상급 악마 | 몬스터 · 마왕성 · 마왕의 옥좌 | 3 | idle |  | 요청 |
-| `mon/nightmare` | 악몽 | 몬스터 · 마왕성 · 마왕의 옥좌 | 3 | idle |  | 요청 |
-| `mon/doomGuard` | 파멸 근위병 | 몬스터 · 마왕성 · 마왕의 옥좌 | 3 | idle |  | 요청 |
-| `mon/succubus` | 서큐버스 | 몬스터 · 마왕성 · 마왕의 옥좌 | 3 | idle |  | 요청 |
-| `mon/demonDuke` | 마계 공작 | 정예 · 마왕성 · 마왕의 옥좌 | 3 | idle |  | 요청 |
-| `mon/azazel` | 마왕 아자젤 | 보스 · 마왕성 · 마왕의 옥좌 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 요청 |
-| `mon/voidWraith` | 공허의 망령 | 몬스터 · 마왕방 · 심연의 문 | 3 | idle |  | 요청 |
-| `mon/abyssKnight` | 심연 기사 | 몬스터 · 마왕방 · 심연의 문 | 3 | idle |  | 요청 |
-| `mon/soulReaper` | 영혼 수확자 | 몬스터 · 마왕방 · 심연의 문 | 3 | idle |  | 요청 |
-| `mon/chaosHound` | 혼돈의 사냥개 | 몬스터 · 마왕방 · 심연의 문 | 3 | idle |  | 요청 |
-| `mon/voidArchon` | 공허의 집정관 | 정예 · 마왕방 · 심연의 문 | 3 | idle |  | 요청 |
-| `mon/shadowKing` | 그림자 군주 네르갈 | 보스 · 마왕방 · 심연의 문 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 요청 |
-| `mon/fallenSeraph` | 타락 치천사 | 몬스터 · 마왕방 · 마왕의 심장 | 3 | idle |  | 요청 |
-| `mon/hellTitan` | 지옥 거인 | 몬스터 · 마왕방 · 마왕의 심장 | 3 | idle |  | 요청 |
-| `mon/mindFlayer` | 정신 포식자 | 몬스터 · 마왕방 · 마왕의 심장 | 3 | idle |  | 요청 |
-| `mon/doomBringer` | 파멸의 전령 | 몬스터 · 마왕방 · 마왕의 심장 | 3 | idle |  | 요청 |
-| `mon/kingGuard` | 마왕 친위대장 | 정예 · 마왕방 · 마왕의 심장 | 3 | idle |  | 요청 |
-| `mon/lucifel` | 마왕 루시펠 | 보스 · 마왕방 · 마왕의 심장 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 요청 |
+| `mon/monk` | 타락한 수도승 | 몬스터 · 봉인의 신전 | 3 | idle |  | 적용됨 |
+| `mon/statue` | 석상 수호자 | 몬스터 · 봉인의 신전 | 3 | idle |  | 적용됨 |
+| `mon/assassin` | 그림자 암살자 | 몬스터 · 봉인의 신전 | 3 | idle |  | 적용됨 |
+| `mon/spirit` | 마력 정령 | 몬스터 · 봉인의 신전 | 3 | idle |  | 적용됨 |
+| `mon/templeGuard` | 신전 수호병 | 정예 · 봉인의 신전 | 3 | idle |  | 적용됨 |
+| `mon/velas` | 타락한 대신관 벨라스 | 보스 · 봉인의 신전 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 적용됨 |
+| `mon/kobold` | 코볼트 광부 | 몬스터 · 잊힌 광산 | 3 | idle |  | 적용됨 |
+| `mon/caveGolem` | 동굴 골렘 | 몬스터 · 잊힌 광산 | 3 | idle |  | 적용됨 |
+| `mon/bomberKobold` | 폭약 코볼트 | 몬스터 · 잊힌 광산 | 3 | idle |  | 적용됨 |
+| `mon/crystalBat` | 수정 박쥐 | 몬스터 · 잊힌 광산 | 3 | idle |  | 적용됨 |
+| `mon/ironGolem` | 철갑 골렘 | 정예 · 잊힌 광산 | 3 | idle |  | 적용됨 |
+| `mon/mineKing` | 광산왕의 망령 | 보스 · 잊힌 광산 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 적용됨 |
+| `mon/swampToad` | 늪 두꺼비 | 몬스터 · 독안개 늪 | 3 | idle |  | 적용됨 |
+| `mon/rotVine` | 썩은 덩굴 | 몬스터 · 독안개 늪 | 3 | idle |  | 적용됨 |
+| `mon/mosquito` | 독침 모기떼 | 몬스터 · 독안개 늪 | 3 | idle |  | 적용됨 |
+| `mon/lizardman` | 늪지 리자드맨 | 몬스터 · 독안개 늪 | 3 | idle |  | 적용됨 |
+| `mon/lizardShaman` | 리자드맨 주술사 | 정예 · 독안개 늪 | 3 | idle |  | 적용됨 |
+| `mon/swampWitch` | 늪의 마녀 | 보스 · 독안개 늪 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 적용됨 |
+| `mon/frostWolf` | 서리 늑대 | 몬스터 · 얼음 심연 | 3 | idle |  | 적용됨 |
+| `mon/iceSpirit` | 얼음 정령 | 몬스터 · 얼음 심연 | 3 | idle |  | 적용됨 |
+| `mon/yeti` | 설인 | 몬스터 · 얼음 심연 | 3 | idle |  | 적용됨 |
+| `mon/iceArcher` | 빙결 궁수 | 몬스터 · 얼음 심연 | 3 | idle |  | 적용됨 |
+| `mon/frostKnight` | 서리 기사 | 정예 · 얼음 심연 | 3 | idle |  | 적용됨 |
+| `mon/frostGiant` | 서리 거인 | 보스 · 얼음 심연 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 적용됨 |
+| `mon/salamander` | 화염 도롱뇽 | 몬스터 · 용암 대공동 | 3 | idle |  | 적용됨 |
+| `mon/lavaGolem` | 용암 골렘 | 몬스터 · 용암 대공동 | 3 | idle |  | 적용됨 |
+| `mon/imp` | 불꽃 임프 | 몬스터 · 용암 대공동 | 3 | idle |  | 적용됨 |
+| `mon/volcBat` | 화산 박쥐 | 몬스터 · 용암 대공동 | 3 | idle |  | 적용됨 |
+| `mon/ifrit` | 이프리트 | 정예 · 용암 대공동 | 3 | idle |  | 적용됨 |
+| `mon/flameLord` | 화염 군주 | 보스 · 용암 대공동 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 적용됨 |
+| `mon/venomSpider` | 독거미 | 몬스터 · 거미 여왕의 둥지 | 3 | idle |  | 적용됨 |
+| `mon/webSpider` | 그물 거미 | 몬스터 · 거미 여왕의 둥지 | 3 | idle |  | 적용됨 |
+| `mon/eggCluster` | 거미 알 무리 | 몬스터 · 거미 여왕의 둥지 | 3 | idle |  | 적용됨 |
+| `mon/spiderRider` | 암흑 거미 기수 | 몬스터 · 거미 여왕의 둥지 | 3 | idle |  | 적용됨 |
+| `mon/spiderPriest` | 거미 사제 | 정예 · 거미 여왕의 둥지 | 3 | idle |  | 적용됨 |
+| `mon/spiderQueen` | 거미 여왕 | 보스 · 거미 여왕의 둥지 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 적용됨 |
+| `mon/drownedSoldier` | 익사한 병사 | 몬스터 · 수몰된 고대 도시 | 3 | idle |  | 적용됨 |
+| `mon/abyssShaman` | 심해 주술사 | 몬스터 · 수몰된 고대 도시 | 3 | idle |  | 적용됨 |
+| `mon/coralGolem` | 산호 골렘 | 몬스터 · 수몰된 고대 도시 | 3 | idle |  | 적용됨 |
+| `mon/siren` | 세이렌 | 몬스터 · 수몰된 고대 도시 | 3 | idle |  | 적용됨 |
+| `mon/seaKnight` | 해저 기사단장 | 정예 · 수몰된 고대 도시 | 3 | idle |  | 적용됨 |
+| `mon/abyssWarden` | 심해의 수호자 | 보스 · 수몰된 고대 도시 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 적용됨 |
+| `mon/lesserDemon` | 하급 악마 | 몬스터 · 혼돈의 균열 | 3 | idle |  | 적용됨 |
+| `mon/hellhound` | 지옥견 | 몬스터 · 혼돈의 균열 | 3 | idle |  | 적용됨 |
+| `mon/voidMage` | 공허 마법사 | 몬스터 · 혼돈의 균열 | 3 | idle |  | 적용됨 |
+| `mon/fallenKnight` | 타락 기사 | 몬스터 · 혼돈의 균열 | 3 | idle |  | 적용됨 |
+| `mon/demonOfficer` | 마족 장교 | 정예 · 혼돈의 균열 | 3 | idle |  | 적용됨 |
+| `mon/demonGeneral` | 마장군 | 보스 · 혼돈의 균열 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 적용됨 |
+| `mon/sealWarden` | 봉인 파수꾼 | 몬스터 · 봉인의 핵 | 3 | idle |  | 적용됨 |
+| `mon/chaosEcho` | 혼돈의 메아리 | 몬스터 · 봉인의 핵 | 3 | idle |  | 적용됨 |
+| `mon/coreSpirit` | 핵 정령 | 몬스터 · 봉인의 핵 | 3 | idle |  | 적용됨 |
+| `mon/shadowClone` | 그림자 분신 | 몬스터 · 봉인의 핵 | 3 | idle |  | 적용됨 |
+| `mon/sealProxy` | 봉인의 대리인 | 정예 · 봉인의 핵 | 3 | idle |  | 적용됨 |
+| `mon/sealedOne` | 봉인된 자 | 보스 · 봉인의 핵 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 적용됨 |
+| `mon/gargoyle` | 가고일 | 몬스터 · 마왕성 · 잿빛 성벽 | 3 | idle |  | 적용됨 |
+| `mon/castleArcher` | 성벽 궁수 | 몬스터 · 마왕성 · 잿빛 성벽 | 3 | idle |  | 적용됨 |
+| `mon/hellKnight` | 지옥 기사 | 몬스터 · 마왕성 · 잿빛 성벽 | 3 | idle |  | 적용됨 |
+| `mon/castleWarlock` | 마성 술사 | 몬스터 · 마왕성 · 잿빛 성벽 | 3 | idle |  | 적용됨 |
+| `mon/siegeGolem` | 공성 골렘 | 정예 · 마왕성 · 잿빛 성벽 | 3 | idle |  | 적용됨 |
+| `mon/granit` | 성문지기 그라니트 | 보스 · 마왕성 · 잿빛 성벽 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 적용됨 |
+| `mon/wardStone` | 결계석 | 몬스터 · 마왕성 · 잿빛 성벽 | 3 | idle |  | 적용됨 |
+| `mon/vampireBat` | 흡혈 박쥐 | 몬스터 · 마왕성 · 피의 회랑 | 3 | idle |  | 적용됨 |
+| `mon/bloodKnight` | 혈기사 | 몬스터 · 마왕성 · 피의 회랑 | 3 | idle |  | 적용됨 |
+| `mon/thrallGhoul` | 노예 구울 | 몬스터 · 마왕성 · 피의 회랑 | 3 | idle |  | 적용됨 |
+| `mon/bloodMage` | 혈마법사 | 몬스터 · 마왕성 · 피의 회랑 | 3 | idle |  | 적용됨 |
+| `mon/crimsonGuard` | 진홍 근위대 | 정예 · 마왕성 · 피의 회랑 | 3 | idle |  | 적용됨 |
+| `mon/carmilla` | 피의 백작 카르밀라 | 보스 · 마왕성 · 피의 회랑 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 적용됨 |
+| `mon/grimoire` | 살아있는 마도서 | 몬스터 · 마왕성 · 금서의 서고 | 3 | idle |  | 적용됨 |
+| `mon/inkGolem` | 잉크 골렘 | 몬스터 · 마왕성 · 금서의 서고 | 3 | idle |  | 적용됨 |
+| `mon/librarianGhost` | 사서의 망령 | 몬스터 · 마왕성 · 금서의 서고 | 3 | idle |  | 적용됨 |
+| `mon/runeSentinel` | 룬 파수병 | 몬스터 · 마왕성 · 금서의 서고 | 3 | idle |  | 적용됨 |
+| `mon/archLibrarian` | 대사서 | 정예 · 마왕성 · 금서의 서고 | 3 | idle |  | 적용됨 |
+| `mon/morgath` | 금서의 주인 모르가스 | 보스 · 마왕성 · 금서의 서고 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 적용됨 |
+| `mon/cultist` | 광신도 | 몬스터 · 마왕성 · 금서의 서고 | 3 | idle |  | 적용됨 |
+| `mon/archDemon` | 상급 악마 | 몬스터 · 마왕성 · 마왕의 옥좌 | 3 | idle |  | 적용됨 |
+| `mon/nightmare` | 악몽 | 몬스터 · 마왕성 · 마왕의 옥좌 | 3 | idle |  | 적용됨 |
+| `mon/doomGuard` | 파멸 근위병 | 몬스터 · 마왕성 · 마왕의 옥좌 | 3 | idle |  | 적용됨 |
+| `mon/succubus` | 서큐버스 | 몬스터 · 마왕성 · 마왕의 옥좌 | 3 | idle |  | 적용됨 |
+| `mon/demonDuke` | 마계 공작 | 정예 · 마왕성 · 마왕의 옥좌 | 3 | idle |  | 적용됨 |
+| `mon/azazel` | 마왕 아자젤 | 보스 · 마왕성 · 마왕의 옥좌 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 적용됨 |
+| `mon/voidWraith` | 공허의 망령 | 몬스터 · 마왕방 · 심연의 문 | 3 | idle |  | 적용됨 |
+| `mon/abyssKnight` | 심연 기사 | 몬스터 · 마왕방 · 심연의 문 | 3 | idle |  | 적용됨 |
+| `mon/soulReaper` | 영혼 수확자 | 몬스터 · 마왕방 · 심연의 문 | 3 | idle |  | 적용됨 |
+| `mon/chaosHound` | 혼돈의 사냥개 | 몬스터 · 마왕방 · 심연의 문 | 3 | idle |  | 적용됨 |
+| `mon/voidArchon` | 공허의 집정관 | 정예 · 마왕방 · 심연의 문 | 3 | idle |  | 적용됨 |
+| `mon/shadowKing` | 그림자 군주 네르갈 | 보스 · 마왕방 · 심연의 문 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 적용됨 |
+| `mon/fallenSeraph` | 타락 치천사 | 몬스터 · 마왕방 · 마왕의 심장 | 3 | idle |  | 적용됨 |
+| `mon/hellTitan` | 지옥 거인 | 몬스터 · 마왕방 · 마왕의 심장 | 3 | idle |  | 적용됨 |
+| `mon/mindFlayer` | 정신 포식자 | 몬스터 · 마왕방 · 마왕의 심장 | 3 | idle |  | 적용됨 |
+| `mon/doomBringer` | 파멸의 전령 | 몬스터 · 마왕방 · 마왕의 심장 | 3 | idle |  | 적용됨 |
+| `mon/kingGuard` | 마왕 친위대장 | 정예 · 마왕방 · 마왕의 심장 | 3 | idle |  | 적용됨 |
+| `mon/lucifel` | 마왕 루시펠 | 보스 · 마왕방 · 마왕의 심장 | 3 | idle, atk | 크게 그림 (화면에 2배로 표시) | 적용됨 |
 | `mon/treasureGoblin` | 보물 고블린 | 특수 (레이드·일일 던전·이벤트) | 4 | idle |  | 요청 |
 | `mon/abyssKing` | 심연의 왕 아바돈 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 4인 레이드 보스 | 요청 |
 | `mon/belialFire` | 군단장 벨리알 · 화염 | 특수 (레이드·일일 던전·이벤트) | 4 | idle, atk | 보스급 | 요청 |

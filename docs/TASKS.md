@@ -20,5 +20,6 @@
 | 전투 그림 제작·업로드 3A단계 (봉인의 신전~용암 대공동, 35장) | Codex | `public/sprites/mon/` | 검토 대기 | `codex/art-3a` ([#13](https://github.com/kimseokjun/text-rpg/pull/13)) |
 | 전투 그림 제작·업로드 3B단계 (거미 여왕의 둥지~봉인의 핵, 28장) | Codex | `public/sprites/mon/` | 검토 대기 | `codex/art-3b` ([#14](https://github.com/kimseokjun/text-rpg/pull/14)) |
 | 전투 그림 제작·업로드 3C단계 (마왕성·마왕방, 44장) | Codex | `public/sprites/mon/` | 검토 대기 | `codex/art-3c` ([#17](https://github.com/kimseokjun/text-rpg/pull/17)) |
+| 전투 그림 게임 적용 3단계 (몬스터 92종) | Claude Code | `scripts/sprites.py`, `src/data/spriteManifest.ts`, `src/ui/stage2d.ts`(`MON_SIZE`), `docs/ART_SPEC.md` | 검토 대기 | `claude/art-apply-3` (#13·#14·#15·#17 포함) |
 
 Claude Code의 작업은 배정 시 행을 추가하고 `claude/<작업명>` 브랜치를 기록한다. 두 AI가 동시에 작업할 때는 각자의 행을 갱신한다.

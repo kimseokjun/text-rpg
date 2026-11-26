@@ -7,7 +7,7 @@ import { enhance as doEnhance, enhanceCost, hire as doHire, refreshSlotCost, rol
 import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Character, type Equip, type Modifier, type EquipSlot, EQUIP_SLOTS, wornSlots, type JobId, type Rarity, type Row, type TargetPref } from '../core/types';
 import { EQUIP_BASES, EQUIP_BY_ID, OPTION_POOL, OPTION_SLOTS, POTIONS, MAX_POTIONS, RARITY_MULT, TIER_INFO, refineGoldCost, refineStoneCost, rollOption, rollLine, rollLines, convertCritLines, POT_NAME, POT_UP, POT_PITY, addRuneCost } from '../data/items';
 import { MAX_FLOOR, MONSTERS, floorName, regionOf } from '../data/monsters';
-import { R4, r4Reward, r4Today, type R4BossId, type R4Diff } from '../data/raid4';
+import { R4, abyssLevel, r4Reward, r4Slot, r4Today, type R4BossId, type R4Diff } from '../data/raid4';
 import { CHESTS, MISSIONS, dRewardText, type DReward } from '../data/missions';
 import { CRAFT_COST, MYTH_CRAFT_COST, MYTH_SET, RAID_CRAFT_COST, RAID_SET } from '../data/sets';
 import { DAILY_BY_ID, DAILY_LIMIT, dailyReward, kstDate, type DailyDef } from '../data/daily';
@@ -55,6 +55,8 @@ export interface GameState {
   mythEss?: number;
   /** 4인 레이드: 날짜(KST)별 난이도 보상 수령 */
   r4?: { date: string; done: string[]; bonus?: number };
+  /** 4인 레이드 심연: 깬 가장 높은 단계 */
+  r4Abyss?: number;
   /** 이용권 (전직 초기화·횟수 +1) 보유 수, 오늘 산 수 */
   tickets?: Partial<Record<TicketId, number>>;
   ticketBuy?: { date: string; n: Partial<Record<TicketId, number>> };
@@ -1273,19 +1275,28 @@ export function awakenCard(s: GameState, id: string): Result {
 }
 
 // ───────── 4인 레이드 보상 (난이도마다 하루 1번) ─────────
-export const r4Claimed = (s: GameState, diff: R4Diff) => s.r4?.date === r4Today() && s.r4.done.includes(diff) && !(s.r4.bonus ?? 0);
+export const r4Claimed = (s: GameState, diff: R4Diff) => s.r4?.date === r4Today() && s.r4.done.includes(r4Slot(diff)) && !(s.r4.bonus ?? 0);
+/** 심연 열린 단계 (헬을 한 번 잡으면 1단계, 깬 단계 +1까지) */
+export const r4SlotOf = r4Slot;
+export const abyssOpen = (s: GameState) => ((s.cnt?.r4win_hell ?? 0) > 0 || (s.r4Abyss ?? 0) > 0 ? Math.min(10, (s.r4Abyss ?? 0) + 1) : 0);
 export function claimR4(s: GameState, diff: R4Diff, frac: number, win: boolean, boss?: R4BossId): string[] {
-  // 처치 꾸미기는 보상 횟수와 상관없이 처음 잡았을 때 지급
+  // 처치 꾸미기는 보상 횟수와 상관없이 처음 잡았을 때 지급 (심연은 헬 꾸미기까지)
   const cos = win && boss ? raidCosmetics(boss, diff).filter((c) => !cosOwned(s, c.id)) : [];
   for (const c of cos) (s.cos ??= []).push(c.id);
   const cosLine = cos.length ? [`🎨 꾸미기 획득: ${cos.map((c) => c.name).join(', ')}`] : [];
-  if (r4Claimed(s, diff)) return [`오늘 ${R4[diff].name} 보상은 이미 받았어요 (오전 4시에 초기화)`, ...cosLine];
+  // 심연 돌파 기록도 보상 횟수와 상관없이
+  const lv = abyssLevel(diff);
+  const first = win && lv > (s.r4Abyss ?? 0);
+  if (first) { s.r4Abyss = lv; news(s, `4인 레이드 심연 ${lv}단계 첫 돌파!`); }
+  const firstLine = first ? [`🌑 심연 ${lv}단계 첫 돌파!${lv < 10 ? ` ${lv + 1}단계가 열렸어요` : ' 심연을 정복했어요!'}`] : [];
+  if (r4Claimed(s, diff)) return [`오늘 ${R4[diff].name} 보상은 이미 받았어요 (오전 4시에 초기화)`, ...firstLine, ...cosLine];
   // 이미 받은 난이도면 도전권(+1) 사용
-  if (s.r4?.date === r4Today() && s.r4.done.includes(diff) && (s.r4.bonus ?? 0) > 0) s.r4.bonus = (s.r4.bonus ?? 0) - 1;
+  if (s.r4 && s.r4.date === r4Today() && s.r4.done.includes(r4Slot(diff)) && (s.r4.bonus ?? 0) > 0) s.r4.bonus = (s.r4.bonus ?? 0) - 1;
   bump(s, 'raid4');
   if (win) bump(s, `r4win_${diff}`);
   if (s.r4?.date !== r4Today()) s.r4 = { date: r4Today(), done: [] };
-  if (!s.r4!.done.includes(diff)) s.r4!.done.push(diff);
+  if (!s.r4!.done.includes(r4Slot(diff))) s.r4!.done.push(r4Slot(diff));
+
   const r = r4Reward(diff, frac, win);
   s.mythEss = (s.mythEss ?? 0) + r.ess; s.cores += r.cores; s.runes = (s.runes ?? 0) + r.runes; s.gold += r.gold;
   const lines = [`${win ? '처치 보상' : `도전 보상 (${Math.round(frac * 100)}%)`}: 신화의 정수 ${r.ess} · 군단장의 핵 ${r.cores} · 고대 룬석 ${r.runes} · ${r.gold.toLocaleString('ko-KR')}G`];
@@ -1295,7 +1306,7 @@ export function claimR4(s: GameState, diff: R4Diff, frac: number, win: boolean, 
     lines.push(`✨ 신화 장비 「${EQUIP_BY_ID[e.baseId].name}」 획득!`);
   }
   news(s, `4인 레이드 ${R4[diff].name} ${win ? '처치!' : '도전'} — ${lines[0]}`);
-  return [...lines, ...cosLine];
+  return [...firstLine, ...lines, ...cosLine];
 }
 
 // ───────── 친구 우편 ─────────
@@ -1481,15 +1492,19 @@ export function achReadyCount(s: GameState) {
 }
 
 // ───────── 편성 프리셋 (파티·열·대상·펫·덱·칭호, 장비 제외) ─────────
-export interface Preset { name: string; party: string[]; tac: Record<string, { row?: Row; target?: TargetPref }>; pet: string | null; deck: string[]; title?: string }
+export interface Preset { name: string; party: string[]; tac: Record<string, { row?: Row; target?: TargetPref }>; pet: string | null; deck: string[]; title?: string; /** 단원 uid → 칸 → 장비 uid */ gear?: Record<string, Partial<Record<EquipSlot, string>>> }
 export const PRESET_N = 5;
 export const presetList = (s: GameState) => Array.from({ length: PRESET_N }, (_, i) => s.presets?.[i] ?? null);
 export function savePreset(s: GameState, i: number): Result {
   if (i < 0 || i >= PRESET_N) return fail('없는 칸이에요');
   const list = presetList(s);
   const tac: Preset['tac'] = {};
-  for (const c of partyChars(s)) tac[c.uid] = { row: c.row, target: c.target };
-  list[i] = { name: list[i]?.name ?? `프리셋 ${i + 1}`, party: [...s.party], tac, pet: s.activePet, deck: [...(s.deck ?? [])], title: s.title };
+  const gear: NonNullable<Preset['gear']> = {};
+  for (const c of partyChars(s)) {
+    tac[c.uid] = { row: c.row, target: c.target };
+    gear[c.uid] = Object.fromEntries(Object.entries(c.equipment).filter(([, e]) => e).map(([k, e]) => [k, e!.uid]));
+  }
+  list[i] = { name: list[i]?.name ?? `프리셋 ${i + 1}`, party: [...s.party], tac, pet: s.activePet, deck: [...(s.deck ?? [])], title: s.title, gear };
   s.presets = list;
   return { ok: true, msg: `「${list[i]!.name}」에 지금 편성을 저장했어요` };
 }
@@ -1502,12 +1517,25 @@ export function loadPreset(s: GameState, i: number): Result {
   if (party.length < p.party.length) miss.push(`단원 ${p.party.length - party.length}명`);
   s.party = party.slice(0, PARTY_MAX);
   for (const c of partyChars(s)) { const tc = p.tac[c.uid]; if (tc) { c.row = tc.row; c.target = tc.target; } }
+  // 장비: 가방에 있으면 끼우고, 다른 단원이 끼고 있으면 벗겨서 옮김 (저장 때 빈 칸은 그대로)
+  let moved = 0, gone = 0, cant = 0;
+  for (const c of partyChars(s)) {
+    for (const [slot, eu] of Object.entries(p.gear?.[c.uid] ?? {}) as [EquipSlot, string][]) {
+      const f = findEquip(s, eu);
+      if (!f) { gone++; continue; }
+      if (f.owner === c && c.equipment[slot] === f.e) continue;
+      if (f.owner && f.owner !== c) moved++;
+      if (!equipTo(s, eu, c.uid, slot).ok) cant++;
+    }
+  }
+  if (gone) miss.push(`장비 ${gone}개`);
+  if (cant) miss.push(`못 끼는 장비 ${cant}개`);
   if (p.pet) { if (s.pets.some((x) => x.uid === p.pet)) s.activePet = p.pet; else miss.push('펫'); }
   const deck = p.deck.filter((id) => s.cards?.[id]);
   if (deck.length < p.deck.length) miss.push(`카드 ${p.deck.length - deck.length}장`);
   s.deck = deck;
   if (p.title && unlockedTitles(s).includes(p.title)) s.title = p.title; else if (!p.title) s.title = undefined;
-  return { ok: true, msg: `「${p.name}」 불러옴${miss.length ? ` (없어서 건너뜀: ${miss.join(', ')})` : ''}` };
+  return { ok: true, msg: `「${p.name}」 불러옴${moved ? ` · 다른 단원에게서 가져온 장비 ${moved}개` : ''}${miss.length ? ` (건너뜀: ${miss.join(', ')})` : ''}` };
 }
 export function renamePreset(s: GameState, i: number, name: string): Result {
   const list = presetList(s);

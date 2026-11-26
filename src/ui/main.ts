@@ -27,11 +27,12 @@ import { Raid4Battle, type R4Member, type R4State } from '../core/raid4battle';
 import { mountStage, playEvents, setBanner, setPanel, speech, stageMounted, updateStage } from './r4stage';
 import * as Bgm from './bgm';
 import { mountPlaza, EMOTES, type PlazaRun } from './plaza';
+import { stageShell, unitBox, fxCaption, fxLunge, fxNumber, fxBossBar, statusPanel, statusHp, type StageTheme } from './stage2d';
 import { FISH, FISH_GRADE_NAME, MASTERY_MAX, fishCosChance, fishWeights, masteryNeed } from '../data/fish';
 import { COSMETICS, COS_BY_ID, COS_KIND_KO, FREE_HEADS, MERC_KINDS, OUTFIT_COLORS, TRIM_COLORS, type AvatarState, type CosKind } from '../data/cosmetics';
 import { CHESTS, dRewardText } from '../data/missions';
 import { ACHS, ACH_CAT, ACH_MAX_PTS, ACH_MS, ACH_REWARD, TITLES, TITLE_BY_ID, achPoints, achReady, unlockedTitles, type AchCat } from '../data/achievements';
-import { R4, R4_BOSSES, R4_DIFFS, R4_MAX, R4_ROUNDS, R4_TURN_SEC, r4BossOfWeek, r4NextBoss, r4Reward, type R4BossId, type R4Diff } from '../data/raid4';
+import { R4, R4_BOSSES, R4_DIFFS, ABYSS_DIFFS, R4_MAX, R4_ROUNDS, R4_TURN_SEC, r4BossOfWeek, r4NextBoss, r4Reward, type R4BossId, type R4Diff } from '../data/raid4';
 import { startDodge, DODGE_SEC, type DodgeRun } from './dodge';
 import { Rng } from '../core/rng';
 import { CARDS, CARD_BY_ID, CARD_SETS, DECK_SIZE, MAX_AWAKEN, PACK_ODDS, SET_BY_ID as CARD_SET_BY_ID, cardEffectText, cardMods } from '../data/cards';
@@ -555,13 +556,14 @@ let presetOver: number | null = null;
 function presetBar(full: boolean) {
   const s = S!;
   const list = G.presetList(s);
-  const same = (p: G.Preset) => p.party.join() === s.party.join() && p.pet === s.activePet && p.deck.join() === (s.deck ?? []).join() && (p.title ?? '') === (s.title ?? '');
+  const gearSame = (p: G.Preset) => !p.gear || G.partyChars(s).every((c) => Object.entries(p.gear![c.uid] ?? {}).every(([k, u]) => c.equipment[k as EquipSlot]?.uid === u));
+  const same = (p: G.Preset) => p.party.join() === s.party.join() && gearSame(p) && p.pet === s.activePet && p.deck.join() === (s.deck ?? []).join() && (p.title ?? '') === (s.title ?? '');
   if (!full) {
     const filled = list.map((p, i) => [p, i] as const).filter(([p]) => p);
     if (!filled.length) return '';
     return `<div class="presets mini"><span class="small mute">프리셋</span>${filled.map(([p, i]) => `<button class="btn ghost sm ${same(p!) ? 'on' : ''}" data-a="presetLoad" data-i="${i}" title="${esc(presetSum(p!))}">${esc(p!.name)}</button>`).join('')}</div>`;
   }
-  return `<div class="presets"><div class="row" style="justify-content:space-between"><b>편성 프리셋</b><span class="small mute">파티·전열/후열·공격 대상·펫·카드 덱·칭호 (장비는 그대로)</span></div>
+  return `<div class="presets"><div class="row" style="justify-content:space-between"><b>편성 프리셋</b><span class="small mute">파티·장비·전열/후열·공격 대상·펫·카드 덱·칭호</span></div>
     <div class="pslots">${list.map((p, i) => p ? `<div class="pslot ${same(p) ? 'on' : ''}">
         <button class="pname" data-a="presetLoad" data-i="${i}"><b>${esc(p.name)}</b>${same(p) ? ' <span class="tag">사용 중</span>' : ''}<span class="small mute">${esc(presetSum(p))}</span></button>
         <div class="row pact2">${presetOver === i ? `<button class="btn sm" data-a="presetSave" data-i="${i}">덮어쓰기 확인</button><button class="btn ghost sm" data-a="presetCancel">취소</button>`
@@ -572,7 +574,8 @@ function presetSum(p: G.Preset) {
   const s = S!;
   const names = p.party.map((u) => s.roster.find((c) => c.uid === u)?.name).filter(Boolean) as string[];
   const pet = p.pet ? s.pets.find((x) => x.uid === p.pet) : null;
-  return [names.join(', ') || '단원 없음', pet ? PET_BY_ID[pet.kind].name : '', p.deck.length ? `카드 ${p.deck.length}장` : '', p.title && TITLE_BY_ID[p.title] ? `「${TITLE_BY_ID[p.title].name}」` : ''].filter(Boolean).join(' · ');
+  const gearN = p.gear ? Object.values(p.gear).reduce((a, g) => a + Object.keys(g).length, 0) : -1;
+  return [names.join(', ') || '단원 없음', gearN < 0 ? '장비 미저장(다시 저장하면 포함)' : `장비 ${gearN}개`, pet ? PET_BY_ID[pet.kind].name : '', p.deck.length ? `카드 ${p.deck.length}장` : '', p.title && TITLE_BY_ID[p.title] ? `「${TITLE_BY_ID[p.title].name}」` : ''].filter(Boolean).join(' · ');
 }
 
 function viewParty() {
@@ -1131,6 +1134,19 @@ function ticketBtn(id: G.TicketId, label = '') {
   const tk = G.TICKETS[id];
   return `<button class="btn ghost sm tkuse" data-a="ticketUse" data-v="${id}" title="${esc(tk.desc)}">${tk.icon} ${label || tk.name} 사용 (${n})</button>`;
 }
+let abyssPick = 0;
+/** 4인 레이드 로비: 헬 위의 심연 1~10단계 */
+function abyssCard(s: G.GameState) {
+  const open = G.abyssOpen(s);
+  if (!open) return `<div class="panel r4d abyss locked"><h3 style="margin:0">🌑 심연</h3><div class="small mute">헬을 한 번 잡으면 열려요. 1~10단계, 단계마다 권장 전투력 +30% · 보상·신화 확률 증가 · 5단계·10단계 칭호</div></div>`;
+  const lv = Math.min(open, abyssPick || open), d = ABYSS_DIFFS[lv - 1], r = r4Reward(d, 1, true);
+  return `<div class="panel r4d abyss"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><h3 style="margin:0">🌑 심연 <span class="small mute">최고 ${s.r4Abyss ?? 0}단계 돌파</span></h3>
+      <div class="abysslv" role="group" aria-label="심연 단계">${ABYSS_DIFFS.map((_, i) => `<button class="${i + 1 === lv ? 'on' : ''}" data-a="abyssPick" data-v="${i + 1}" ${i + 1 > open ? 'disabled' : ''} aria-label="${i + 1}단계">${i + 1 > open ? '🔒' : i + 1}</button>`).join('')}</div></div>
+    <div class="small">${R4[d].name} · 권장 전투력 <b class="cp">1인 ${fmt(R4[d].power)}</b></div>
+    <div class="small mute">처치: 정수 ${r.ess} · 핵 ${r.cores} · 룬석 ${r.runes} · ${fmt(r.gold)}G · 신화 장비 ${R4[d].mythChance}% · 심연 보상은 단계 상관없이 하루 1번</div>
+    <div class="small ${G.r4Claimed(s, d) ? 'mute' : ''}">${G.r4Claimed(s, d) ? '오늘 심연 보상 받음' : '오늘 보상 가능'}</div>
+    <button class="btn sm" data-a="r4Create" data-v="${d}">${R4[d].name} 방 만들기</button></div>`;
+}
 function viewShop() {
   const s = S!;
   const pots = G.potionsAvailable(s).map((p) => `<div class="item"><div><span class="eico">${potionIcon(p.id)}</span><span class="iname">${esc(p.name)}</span> <span class="small mute">보유 ${s.potions[p.id] ?? 0}</span><div class="istat">${MOD_LABEL[p.mod.key] ?? (p.mod.key === 'goldGain' ? '골드 획득' : p.mod.key)} +${p.mod.value}${p.mod.kind === 'pct' ? '%' : '%p'} · 이번 탐험 동안 파티 전체</div></div><div class="row buyn">${[1, 10, 100].map((n) => `<button class="btn sm ${n > 1 ? 'ghost' : ''}" data-a="buyPotion" data-id="${p.id}" data-n="${n}" ${s.gold < p.price * n ? 'disabled' : ''}>${n > 1 ? `+${n} · ` : ''}${fmt(p.price * n)}G</button>`).join('')}</div></div>`).join('');
@@ -1509,7 +1525,7 @@ function r4Msg(ev: string, p: any) {
   if (!r4) return;
   if (ev === 'qc') { if (typeof p?.text === 'string' && R4_QC.includes(p.text)) r4ShowQc({ from: String(p.from ?? ''), name: String(p.name ?? '').slice(0, 20), text: p.text }); return; }
   if (ev === 'char' && r4.host) { r4.chars[p.owner] = p as R4Member; if (screen === 'raid4') render(); }
-  else if (ev === 'diff' && !r4.host) { r4.diff = p.diff; if (screen === 'raid4') render(); }
+  else if (ev === 'diff' && !r4.host && R4[p.diff]) { r4.diff = p.diff; if (screen === 'raid4') render(); }
   else if (ev === 'begin') { r4.phase = 'battle'; r4.log = []; r4.result = undefined; r4.inBattle = p.members; r4.diff = p.diff; if (R4_BOSSES[p.boss as R4BossId]) r4.boss = p.boss; screen = 'raid4'; render(); }
   else if (ev === 'dodge') r4RunDodge(p);
   else if (ev === 'dpos') r4.dodge?.run?.ghost(String(p.from), p);
@@ -1656,8 +1672,9 @@ function viewRaid4() {
       ${s.r4?.date === G.r4TodayKey() && s.r4.done.length ? `<div class="row" style="justify-content:flex-end;margin-bottom:6px">${ticketBtn('r4', '도전권 +1')}</div>` : ''}
       <div class="r4diffs">${R4_DIFFS.map((d) => { const r = r4Reward(d, 1, true); return `<div class="panel r4d ${d}"><h3 style="margin:0">${R4[d].name}</h3><div class="small">권장 전투력 <b class="cp">1인 ${fmt(R4[d].power)}</b></div>
         <div class="small mute">처치: 정수 ${r.ess} · 핵 ${r.cores} · 룬석 ${r.runes} · ${fmt(r.gold)}G${R4[d].mythChance ? ` · 신화 장비 ${R4[d].mythChance}%` : ''}</div>
-        <div class="small ${G.r4Claimed(s, d) ? 'mute' : ''}">${G.r4Claimed(s, d) ? '오늘 보상 받음' : s.r4?.date === G.r4TodayKey() && s.r4.done.includes(d) ? `도전권으로 한 번 더 가능 (${s.r4.bonus})` : '오늘 보상 가능'}</div>
+        <div class="small ${G.r4Claimed(s, d) ? 'mute' : ''}">${G.r4Claimed(s, d) ? '오늘 보상 받음' : s.r4?.date === G.r4TodayKey() && s.r4.done.includes(G.r4SlotOf(d)) ? `도전권으로 한 번 더 가능 (${s.r4.bonus})` : '오늘 보상 가능'}</div>
         <button class="btn sm" data-a="r4Create" data-v="${d}">${R4[d].name} 방 만들기</button></div>`; }).join('')}</div>
+      ${abyssCard(s)}
       <form class="panel row" data-form="r4join" style="gap:8px;flex-wrap:wrap"><b>코드로 참가</b><input id="r4code" maxlength="6" placeholder="방 코드 6자리" value="${esc(r4CodeDraft)}" autocomplete="off" style="width:140px;text-transform:uppercase"><button class="btn sm" type="submit">참가</button></form>
     </div>`;
   }
@@ -1674,7 +1691,7 @@ function viewRaid4() {
       ${room.result ? `<div class="panel dres ${room.result.win ? 'w' : 'l'}"><b>${room.result.win ? `🏆 ${esc(R4_BOSSES[room.boss].short)} 처치!` : `💀 실패 · ${Math.round(room.result.frac * 100)}% 피해`}</b>${room.result.lines.map((l) => `<div class="small">${esc(l)}</div>`).join('')}${room.result.pending ? (() => { const rw = r4Reward(room.diff, room.result!.frac, false); return `<div class="r4ask" role="alertdialog" aria-label="보상 받기 확인"><div class="small">이번 결과로 받을 수 있는 보상: <b>정수 ${rw.ess} · 핵 ${rw.cores} · 룬석 ${rw.runes} · ${fmt(rw.gold)}G</b> <span class="mute">(실패라 처치 보상의 ${Math.round(Math.min(1, room.result!.frac) * 40)}%)</span></div>
         <div class="small mute">받으면 오늘 ${esc(R4[room.diff].name)} 기회를 써요. 안 받으면 기회가 남아서 다시 도전할 수 있어요.</div>
         <div class="row" style="gap:8px;margin-top:6px;flex-wrap:wrap"><button class="btn sm" data-a="r4ClaimNow">보상 받기 (오늘 기회 사용)</button><button class="btn ghost sm" data-a="r4ClaimSkip">안 받고 다시 도전</button></div></div>`; })() : ''}</div>` : ''}
-      ${room.host ? `<div class="tabs" role="group" aria-label="난이도" style="margin:10px 0">${R4_DIFFS.map((d) => `<button class="${room.diff === d ? 'on' : ''}" data-a="r4Diff" data-v="${d}">${R4[d].name} · 1인 ${fmt(R4[d].power)}</button>`).join('')}</div>` : `<p class="small mute">난이도는 방장이 정해요 · 권장 1인 전투력 ${fmt(R4[room.diff].power)}</p>`}
+      ${room.host ? `<div class="tabs" role="group" aria-label="난이도" style="margin:10px 0">${R4_DIFFS.map((d) => `<button class="${room.diff === d ? 'on' : ''}" data-a="r4Diff" data-v="${d}">${R4[d].name} · 1인 ${fmt(R4[d].power)}</button>`).join('')}${G.abyssOpen(s) ? `<label class="small" style="margin-left:6px">🌑 심연 <select data-change="r4Abyss"><option value="">-</option>${ABYSS_DIFFS.slice(0, G.abyssOpen(s)).map((d) => `<option value="${d}" ${room.diff === d ? 'selected' : ''}>${R4[d].name} · 1인 ${fmt(R4[d].power)}</option>`).join('')}</select></label>` : ''}</div>` : `<p class="small mute">난이도는 방장이 정해요 · 권장 1인 전투력 ${fmt(R4[room.diff].power)}</p>`}
       <div class="r4slots">${slots}</div>
       <div class="panel"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><h3 style="margin:0">데려갈 단원 1명</h3>${sortBar()}</div><div class="dpicks" style="margin-top:8px">${picks}</div>
         <div class="row" style="gap:8px;margin-top:10px"><button class="btn ${room.ready ? 'ghost' : ''}" data-a="r4Ready" ${room.pick ? '' : 'disabled'}>${room.ready ? '준비 취소' : '준비'}</button>${room.host ? `<button class="btn" data-a="r4Start" ${allReady ? '' : 'disabled'}>${room.members.length < 2 ? '혼자 시작' : `전투 시작 (${room.members.length}명)`}</button>` : ''}</div></div>
@@ -2638,7 +2655,18 @@ function viewStorage() {
 let EX: Expedition | null = null;
 let speed: 1 | 2 | 0 = 1;
 let playToken = 0;
-let units: Record<string, { id: string; hp: number; max: number; dead: boolean; side: 'p' | 'e' }> = {};
+let units: Record<string, { id: string; hp: number; max: number; dead: boolean; side: 'p' | 'e'; boss?: boolean }> = {};
+let logOpen = false;
+function stageTheme(ex: Expedition): StageTheme {
+  if (ex.settings.duel) return 'arena';
+  if (ex.settings.raid) return 'raid';
+  if (ex.settings.tower) return 'tower';
+  const d = ex.settings.daily?.id;
+  if (d) return d === 'vault' ? 'gold' : d === 'vein' ? 'crystal' : d === 'legion' ? 'castle' : 'arena';
+  const f = ex.settings.rift ? ex.settings.rift.level : ex.floor;
+  const r = regionOf(f).id;
+  return r === 'chamber' ? 'chamber' : r === 'castle' ? 'castle' : f > 40 ? 'chamber' : f > 20 ? 'crystal' : 'forest';
+}
 let uidSeq = 0;
 let phase: 'playing' | 'between' | 'bossAsk' | 'done' = 'playing';
 let lastFloor: FloorResult | null = null;
@@ -2649,8 +2677,8 @@ function viewDungeon() {
   return `<div class="wrap">
     <div class="dhead"><div><div class="small mute">${ex.settings.duel ? `친구 결투 · vs ${esc(ex.settings.duel.foeName)}` : ex.settings.rift ? `카드 던전 · ${esc(zoneOf(ex.settings.rift.level).name)}` : ex.settings.tower ? `무한 탑 · ${esc(towerGimmick(ex.floor).icon)} ${esc(towerGimmick(ex.floor).name)}` : ex.settings.raid ? `개인 레이드 · ${esc(raidForm(ex.settings.raid.week).name)}` : ex.daily ? '일일 던전' : `${esc(regionOf(ex.floor).name)} · ${esc(zone.name)}`}</div><h2 id="floorTitle">${floorTitle(ex)}</h2></div>
       <div class="speed" role="group" aria-label="전투 속도">${([1, 2, 0] as const).map((v) => `<button data-a="speed" data-v="${v}" class="${speed === v ? 'on' : ''}" ${EX?.settings.multi ? 'disabled title="멀티에서는 방장이 정한 배속으로 고정돼요"' : ''}>${v === 0 ? '스킵' : `${v}x`}</button>`).join('')}</div></div>
-    <div class="stage"><div class="side" id="pside"></div><div class="vs">VS</div><div class="side" id="eside"></div></div>
-    <div class="log" id="log" aria-live="polite"></div>
+    ${stageShell(stageTheme(ex))}
+    <details class="s2log" ${logOpen ? 'open' : ''}><summary>전투 기록</summary><div class="log" id="log" aria-live="polite"></div></details>
     <div class="dctl" id="dctl"></div>
     ${ex.settings.multi && myRoom ? `<div class="panel dchat"><div class="small mute" style="margin-bottom:4px">💬 파티 채팅</div><div id="roomlog" class="roomlog">${roomLogHtml()}</div>
       <form class="cin" data-form="room" style="display:flex;gap:6px;margin-top:6px"><input id="roomIn" maxlength="200" placeholder="파티원에게 한마디" value="${esc(roomDraft)}" autocomplete="off" enterkeyhint="send" style="flex:1;min-width:0"><button class="btn sm" type="submit">보내기</button></form></div>` : ''}
@@ -2666,10 +2694,11 @@ const unitHtml = (name: string, u: { id: string; hp: number; max: number; dead: 
 function drawParty() {
   const el = document.getElementById('pside');
   if (!el || !EX) return;
-  el.innerHTML = EX.party.map((p) => {
+  el.innerHTML = EX.party.map((p, i) => {
     const u = (units[p.name] ??= { id: `u${uidSeq++}`, hp: p.hp, max: p.maxHp, dead: !p.alive, side: 'p' });
-    return unitHtml(p.name, u, avatar(p.char!, 52), '', mOwners[p.id] ?? '');
+    return unitBox({ id: u.id, name: esc(p.name), icon: avatar(p.char!, 72), hp: u.hp, max: u.max, dead: u.dead, side: 'p', slot: i, owner: mOwners[p.id] ? esc(mOwners[p.id]) : undefined });
   }).join('');
+  statusPanel(EX.party.map((p) => ({ name: esc(p.name), hp: units[p.name]?.hp ?? p.hp, max: p.maxHp, mp: p.mp, mpMax: p.maxMp, dead: units[p.name]?.dead ?? !p.alive, icon: avatar(p.char!, 22) })));
 }
 function syncPartyFromEx() {
   if (!EX) return;
@@ -2679,10 +2708,14 @@ function syncPartyFromEx() {
 function drawEnemies(list: UnitSnap[], append = false) {
   const el = document.getElementById('eside');
   if (!el) return;
-  if (!append) { el.innerHTML = ''; for (const k of Object.keys(units)) if (units[k].side === 'e') delete units[k]; }
+  if (!append) { el.innerHTML = ''; for (const k of Object.keys(units)) if (units[k].side === 'e') delete units[k]; fxBossBar(null); }
+  let slot = Object.values(units).filter((u) => u.side === 'e' && !u.boss).length;
+  const withBoss = list.some((m) => m.boss) || Object.values(units).some((u) => u.side === 'e' && u.boss);
   for (const m of list) {
-    const u = (units[m.name] = { id: `e${uidSeq++}`, hp: m.hp, max: m.maxHp, dead: false, side: 'e' });
-    el.insertAdjacentHTML('beforeend', unitHtml(m.name, u, m.job ? charSprite(JOBS[m.job as JobId].base, m.name.replace('(상대)', ''), JOBS[m.job as JobId].tier, { size: 52 }) : monsterSprite(m.id ?? '', { size: m.boss ? 72 : 52, boss: m.boss, elite: m.elite, tags: m.tags }), m.boss ? 'boss' : m.elite ? 'elite' : ''));
+    const u = (units[m.name] = { id: `e${uidSeq++}`, hp: m.hp, max: m.maxHp, dead: false, side: 'e', boss: !!m.boss });
+    const icon = m.job ? charSprite(JOBS[m.job as JobId].base, m.name.replace('(상대)', ''), JOBS[m.job as JobId].tier, { size: 72 }) : monsterSprite(m.id ?? '', { size: m.boss ? 128 : m.elite ? 80 : 64, boss: m.boss, elite: m.elite, tags: m.tags });
+    el.insertAdjacentHTML('beforeend', unitBox({ id: u.id, name: esc(m.name), icon, hp: m.hp, max: m.maxHp, dead: false, side: 'e', boss: !!m.boss, slot: m.boss ? 0 : slot++, withBoss }));
+    if (m.boss) fxBossBar(m.name, m.hp, m.maxHp);
   }
 }
 function setHp(name: string, hp: number, max: number, hit: boolean) {
@@ -2694,12 +2727,15 @@ function setHp(name: string, hp: number, max: number, hit: boolean) {
   (el.querySelector('.bar i') as HTMLElement).style.width = pctW(hp, max);
   el.querySelector('small')!.textContent = `${Math.round(hp)}/${max}`;
   if (hit && speed !== 0) { el.classList.remove('hit'); void el.offsetWidth; el.classList.add('hit'); }
+  if (u.side === 'p') statusHp(name, hp, max);
+  if (u.boss) fxBossBar(name, hp, max);
 }
 function setDead(name: string, dead: boolean) {
   const u = units[name];
   if (!u) return;
   u.dead = dead;
   document.getElementById(u.id)?.classList.toggle('dead', dead);
+  if (u.side === 'p') statusHp(name, u.hp, u.max, dead);
 }
 
 function logLine(cls: string, text: string) {
@@ -2719,11 +2755,12 @@ function applyEvent(e: BattleEvent): boolean {
       drawEnemies(e.enemies);
       logLine('w', e.boss ? `${runLabel(e.floor)} 보스전 · ${e.enemies.map((x) => x.name).join(', ')}` : `${runLabel(e.floor)} ${e.wave}웨이브${e.elite ? ' · 엘리트 출현' : ''} · ${e.enemies.map((x) => x.name).join(', ')}`);
       return true;
-    case 'round': case 'attack': return false;
-    case 'skill': logLine('sk', `${e.actor}의 [${e.skill}]`); return true;
-    case 'damage': setHp(e.to, e.hpLeft, e.maxHp, true); logLine(e.crit ? 'cr' : 'dm', `  ${e.from} → ${e.to} ${e.amount}${e.crit ? ' 치명타!' : ''}`); return true;
-    case 'evade': logLine('st', `  ${e.to}이(가) 공격을 피했다`); return true;
-    case 'heal': setHp(e.to, e.hpLeft, e.maxHp, false); logLine('hl', `  ${e.to} +${e.amount} 회복`); return true;
+    case 'round': return false;
+    case 'attack': if (speed !== 0) fxLunge(e.actor, speed === 2); return false;
+    case 'skill': if (speed !== 0) { fxCaption(`${e.actor} · ${e.skill}`, units[e.actor]?.side === 'e' ? 'e' : 'p'); fxLunge(e.actor, speed === 2); } logLine('sk', `${e.actor}의 [${e.skill}]`); return true;
+    case 'damage': if (speed !== 0) fxNumber(e.to, e.crit ? `${fmt(e.amount)}!` : fmt(e.amount), e.crit ? 'crit' : 'dmg'); setHp(e.to, e.hpLeft, e.maxHp, true); logLine(e.crit ? 'cr' : 'dm', `  ${e.from} → ${e.to} ${e.amount}${e.crit ? ' 치명타!' : ''}`); return true;
+    case 'evade': if (speed !== 0) fxNumber(e.to, 'MISS', 'miss'); logLine('st', `  ${e.to}이(가) 공격을 피했다`); return true;
+    case 'heal': if (speed !== 0) fxNumber(e.to, `+${fmt(e.amount)}`, 'heal'); setHp(e.to, e.hpLeft, e.maxHp, false); logLine('hl', `  ${e.to} +${e.amount} 회복`); return true;
     case 'status': logLine('st', `  ${e.to}: ${e.label}`); return true;
     case 'dot': setHp(e.to, e.hpLeft, e.maxHp, false); logLine('st', `  ${e.to} ${e.status === 'poison' ? '독' : '화상'} 피해 ${e.amount}`); return true;
     case 'stunned': logLine('st', `  ${e.who}은(는) 기절해 움직이지 못한다`); return true;
@@ -3094,6 +3131,7 @@ function renderBgmBtn() {
   el.innerHTML = `<button type="button" aria-pressed="${Bgm.bgmOn()}" title="${Bgm.bgmOn() ? '배경음악 끄기' : '배경음악 켜기'}" aria-label="${Bgm.bgmOn() ? '배경음악 끄기' : '배경음악 켜기'}">${Bgm.bgmOn() ? '🔊' : '🔇'}</button>${Bgm.bgmOn() ? `<input type="range" min="0" max="100" value="${Math.round(Bgm.bgmVol() * 100)}" aria-label="배경음악 음량">` : ''}`;
 }
 document.addEventListener('pointerdown', () => Bgm.unlock(), { capture: true });
+document.addEventListener('toggle', (e) => { const t = e.target as HTMLElement; if (t?.classList?.contains('s2log')) logOpen = (t as HTMLDetailsElement).open; }, true);
 function renderNow() {
   if (pz && screen !== 'plaza') plazaLeave();
   if (screen === 'plaza' && pz && document.getElementById('pzbox')?.isConnected) {
@@ -3372,6 +3410,7 @@ app.addEventListener('click', (ev) => {
     case 'r4qc': r4Qc(Number(d.v)); break;
     case 'r4Pick': if (r4 && !r4.ready) { r4.pick = d.uid!; r4Track(); render(); } break;
     case 'r4Ready': if (r4) { r4.ready = !r4.ready; if (r4.ready) r4SendChar(); r4Track(); render(); } break;
+    case 'abyssPick': abyssPick = Number(d.v); render(); break;
     case 'r4Diff': if (r4?.host) { r4.diff = d.v as R4Diff; r4.ch.send('diff', { diff: r4.diff }); r4Track(); render(); } break;
     case 'r4Start': r4Start(); break;
     case 'r4Skill': r4Choose(d.v ?? ''); break;
@@ -3501,6 +3540,7 @@ app.addEventListener('change', (ev) => {
   const sel = ev.target as HTMLSelectElement;
   if (sel.dataset?.m === 'floor') { mFloor = Number(sel.value); return; }
   if (sel.dataset?.av === 'beard' && S) { commit(G.setAvatarLook(S, 'beard', (sel as unknown as HTMLInputElement).checked)); return; }
+  if (sel.dataset?.change === 'r4Abyss' && r4?.host && sel.value && R4[sel.value]) { r4.diff = sel.value as R4Diff; r4.ch.send('diff', { diff: r4.diff }); r4Track(); render(); return; }
   if (sel.dataset?.change === 'potTier') { potTab.tier = Number(sel.value); potTab.uid = ''; render(); return; }
   if (sel.dataset?.ad === 'kind') { adKind = sel.value; adLoad('log', true); return; }
   const el = ev.target as HTMLElement;

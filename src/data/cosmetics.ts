@@ -73,6 +73,7 @@ export const OUTFIT_COLORS = ['#5b6fa0', '#7d8794', '#8a3a3a', '#4a5a4a', '#6a5a
 export const TRIM_COLORS = ['#c89b3c', '#ffd95e', '#b4bcc8', '#e85a3a', '#4ac0d8', '#9a5ad8'];
 /** 레이드 처치로 얻는 꾸미기 (그 보스 · 그 난이도 이상) */
 export function raidCosmetics(boss: R4BossId, diff: R4Diff): CosItem[] {
-  const rank = { normal: 0, hard: 1, hell: 2 }[diff];
-  return COSMETICS.filter((c) => { const m = c.src?.match(/^raid:(\w+):(\w+)$/); return !!m && m[1] === boss && { normal: 0, hard: 1, hell: 2 }[m[2] as R4Diff] <= rank; });
+  const RANK: Record<string, number> = { normal: 0, hard: 1, hell: 2 };
+  const rank = RANK[diff] ?? 2; // 심연은 헬 꾸미기까지
+  return COSMETICS.filter((c) => { const m = c.src?.match(/^raid:(\w+):(\w+)$/); return !!m && m[1] === boss && (RANK[m[2]] ?? 9) <= rank; });
 }

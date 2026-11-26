@@ -19,7 +19,6 @@
 ## 배포 규칙
 
 - `main`에 병합하면 GitHub Actions가 바로 배포한다. 게임은 `pages.yml`(GitHub Pages)이, 서버는 `supabase.yml`(`supabase db push --include-all`)이 맡는다. 그래서 **병합 = 배포**다. 사용자가 배포를 요청했을 때만 PR을 병합한다.
-- 한국 시간 00~04시에는 배포하지 않는다(일일 초기화가 04시).
 - 게임에 보이는 변경을 배포할 때마다 공지 migration을 하나 추가한다. 파일은 `supabase/migrations/<YYYYMMDD><6자리 순번>_notice_<이름>.sql`이고, 마지막 파일의 다음 순번을 쓴다. 내용은 `insert into public.notices (kind, title, body, pinned) values ('patch', '패치: …', '· …', false);` 형식이다. 문서만 바뀐 PR에는 넣지 않는다.
 - 이미 적용된 migration 파일은 절대 지우거나 고치지 않는다. 되돌릴 때는 새 migration을 추가한다(예: 공지 삭제 `delete from public.notices where title = '…';`).
 - 서버 배포가 `Failed to resolve latest Supabase CLI release: rate limit exceeded`로 실패하면 코드 문제가 아니다. `gh run rerun <run id>`로 다시 돌린다.

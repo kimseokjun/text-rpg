@@ -14,5 +14,6 @@
 | 전투 그림 게임 적용 1단계 (일반 전투·결투 무대) | Claude Code | `scripts/sprites.py`, `src/data/spriteManifest.ts`, `src/ui/stage2d.ts`, `src/ui/main.ts`, `src/ui/style.css`, `docs/ART_SPEC.md` 상태 칸 | 완료 | `claude/art-apply-1` (#7) |
 | 전투 그림 제작·업로드 2단계 (나머지 직업 32종, idle+atk) | Codex | `public/sprites/job/` (그림 파일만) | 완료 | `codex/art-2` ([#8](https://github.com/kimseokjun/text-rpg/pull/8), `claude/art-apply-2`에 포함해 병합) |
 | 전투 그림 게임 적용 2단계 (직업 32종) | Claude Code | `scripts/sprites.py`, `src/data/spriteManifest.ts`, `src/ui/stage2d.ts`, `docs/ART_SPEC.md` | 완료 | `claude/art-apply-2` (#10, #8·#9 포함) |
+| 전투 그림 제작·업로드 3A단계 (봉인의 신전~용암 대공동, 35장) | Codex | `public/sprites/mon/` | 검토 대기 | `codex/art-3a` ([#13](https://github.com/kimseokjun/text-rpg/pull/13)) |
 
 Claude Code의 작업은 배정 시 행을 추가하고 `claude/<작업명>` 브랜치를 기록한다. 두 AI가 동시에 작업할 때는 각자의 행을 갱신한다.

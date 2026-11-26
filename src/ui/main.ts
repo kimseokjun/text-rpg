@@ -32,7 +32,7 @@ import { FISH, FISH_GRADE_NAME, MASTERY_MAX, fishCosChance, fishWeights, mastery
 import { COSMETICS, COS_BY_ID, COS_KIND_KO, FREE_HEADS, MERC_KINDS, OUTFIT_COLORS, TRIM_COLORS, type AvatarState, type CosKind } from '../data/cosmetics';
 import { CHESTS, dRewardText } from '../data/missions';
 import { ACHS, ACH_CAT, ACH_MAX_PTS, ACH_MS, ACH_REWARD, TITLES, TITLE_BY_ID, achPoints, achReady, unlockedTitles, type AchCat } from '../data/achievements';
-import { R4, R4_BOSSES, R4_DIFFS, R4_MAX, R4_ROUNDS, R4_TURN_SEC, r4BossOfWeek, r4NextBoss, r4Reward, type R4BossId, type R4Diff } from '../data/raid4';
+import { R4, R4_BOSSES, R4_DIFFS, ABYSS_DIFFS, R4_MAX, R4_ROUNDS, R4_TURN_SEC, r4BossOfWeek, r4NextBoss, r4Reward, type R4BossId, type R4Diff } from '../data/raid4';
 import { startDodge, DODGE_SEC, type DodgeRun } from './dodge';
 import { Rng } from '../core/rng';
 import { CARDS, CARD_BY_ID, CARD_SETS, DECK_SIZE, MAX_AWAKEN, PACK_ODDS, SET_BY_ID as CARD_SET_BY_ID, cardEffectText, cardMods } from '../data/cards';
@@ -1132,6 +1132,19 @@ function ticketBtn(id: G.TicketId, label = '') {
   const tk = G.TICKETS[id];
   return `<button class="btn ghost sm tkuse" data-a="ticketUse" data-v="${id}" title="${esc(tk.desc)}">${tk.icon} ${label || tk.name} 사용 (${n})</button>`;
 }
+let abyssPick = 0;
+/** 4인 레이드 로비: 헬 위의 심연 1~10단계 */
+function abyssCard(s: G.GameState) {
+  const open = G.abyssOpen(s);
+  if (!open) return `<div class="panel r4d abyss locked"><h3 style="margin:0">🌑 심연</h3><div class="small mute">헬을 한 번 잡으면 열려요. 1~10단계, 단계마다 권장 전투력 +30% · 보상·신화 확률 증가 · 5단계·10단계 칭호</div></div>`;
+  const lv = Math.min(open, abyssPick || open), d = ABYSS_DIFFS[lv - 1], r = r4Reward(d, 1, true);
+  return `<div class="panel r4d abyss"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><h3 style="margin:0">🌑 심연 <span class="small mute">최고 ${s.r4Abyss ?? 0}단계 돌파</span></h3>
+      <div class="abysslv" role="group" aria-label="심연 단계">${ABYSS_DIFFS.map((_, i) => `<button class="${i + 1 === lv ? 'on' : ''}" data-a="abyssPick" data-v="${i + 1}" ${i + 1 > open ? 'disabled' : ''} aria-label="${i + 1}단계">${i + 1 > open ? '🔒' : i + 1}</button>`).join('')}</div></div>
+    <div class="small">${R4[d].name} · 권장 전투력 <b class="cp">1인 ${fmt(R4[d].power)}</b></div>
+    <div class="small mute">처치: 정수 ${r.ess} · 핵 ${r.cores} · 룬석 ${r.runes} · ${fmt(r.gold)}G · 신화 장비 ${R4[d].mythChance}% · 심연 보상은 단계 상관없이 하루 1번</div>
+    <div class="small ${G.r4Claimed(s, d) ? 'mute' : ''}">${G.r4Claimed(s, d) ? '오늘 심연 보상 받음' : '오늘 보상 가능'}</div>
+    <button class="btn sm" data-a="r4Create" data-v="${d}">${R4[d].name} 방 만들기</button></div>`;
+}
 function viewShop() {
   const s = S!;
   const pots = G.potionsAvailable(s).map((p) => `<div class="item"><div><span class="eico">${potionIcon(p.id)}</span><span class="iname">${esc(p.name)}</span> <span class="small mute">보유 ${s.potions[p.id] ?? 0}</span><div class="istat">${MOD_LABEL[p.mod.key] ?? (p.mod.key === 'goldGain' ? '골드 획득' : p.mod.key)} +${p.mod.value}${p.mod.kind === 'pct' ? '%' : '%p'} · 이번 탐험 동안 파티 전체</div></div><div class="row buyn">${[1, 10, 100].map((n) => `<button class="btn sm ${n > 1 ? 'ghost' : ''}" data-a="buyPotion" data-id="${p.id}" data-n="${n}" ${s.gold < p.price * n ? 'disabled' : ''}>${n > 1 ? `+${n} · ` : ''}${fmt(p.price * n)}G</button>`).join('')}</div></div>`).join('');
@@ -1510,7 +1523,7 @@ function r4Msg(ev: string, p: any) {
   if (!r4) return;
   if (ev === 'qc') { if (typeof p?.text === 'string' && R4_QC.includes(p.text)) r4ShowQc({ from: String(p.from ?? ''), name: String(p.name ?? '').slice(0, 20), text: p.text }); return; }
   if (ev === 'char' && r4.host) { r4.chars[p.owner] = p as R4Member; if (screen === 'raid4') render(); }
-  else if (ev === 'diff' && !r4.host) { r4.diff = p.diff; if (screen === 'raid4') render(); }
+  else if (ev === 'diff' && !r4.host && R4[p.diff]) { r4.diff = p.diff; if (screen === 'raid4') render(); }
   else if (ev === 'begin') { r4.phase = 'battle'; r4.log = []; r4.result = undefined; r4.inBattle = p.members; r4.diff = p.diff; if (R4_BOSSES[p.boss as R4BossId]) r4.boss = p.boss; screen = 'raid4'; render(); }
   else if (ev === 'dodge') r4RunDodge(p);
   else if (ev === 'dpos') r4.dodge?.run?.ghost(String(p.from), p);
@@ -1657,8 +1670,9 @@ function viewRaid4() {
       ${s.r4?.date === G.r4TodayKey() && s.r4.done.length ? `<div class="row" style="justify-content:flex-end;margin-bottom:6px">${ticketBtn('r4', '도전권 +1')}</div>` : ''}
       <div class="r4diffs">${R4_DIFFS.map((d) => { const r = r4Reward(d, 1, true); return `<div class="panel r4d ${d}"><h3 style="margin:0">${R4[d].name}</h3><div class="small">권장 전투력 <b class="cp">1인 ${fmt(R4[d].power)}</b></div>
         <div class="small mute">처치: 정수 ${r.ess} · 핵 ${r.cores} · 룬석 ${r.runes} · ${fmt(r.gold)}G${R4[d].mythChance ? ` · 신화 장비 ${R4[d].mythChance}%` : ''}</div>
-        <div class="small ${G.r4Claimed(s, d) ? 'mute' : ''}">${G.r4Claimed(s, d) ? '오늘 보상 받음' : s.r4?.date === G.r4TodayKey() && s.r4.done.includes(d) ? `도전권으로 한 번 더 가능 (${s.r4.bonus})` : '오늘 보상 가능'}</div>
+        <div class="small ${G.r4Claimed(s, d) ? 'mute' : ''}">${G.r4Claimed(s, d) ? '오늘 보상 받음' : s.r4?.date === G.r4TodayKey() && s.r4.done.includes(G.r4SlotOf(d)) ? `도전권으로 한 번 더 가능 (${s.r4.bonus})` : '오늘 보상 가능'}</div>
         <button class="btn sm" data-a="r4Create" data-v="${d}">${R4[d].name} 방 만들기</button></div>`; }).join('')}</div>
+      ${abyssCard(s)}
       <form class="panel row" data-form="r4join" style="gap:8px;flex-wrap:wrap"><b>코드로 참가</b><input id="r4code" maxlength="6" placeholder="방 코드 6자리" value="${esc(r4CodeDraft)}" autocomplete="off" style="width:140px;text-transform:uppercase"><button class="btn sm" type="submit">참가</button></form>
     </div>`;
   }
@@ -1675,7 +1689,7 @@ function viewRaid4() {
       ${room.result ? `<div class="panel dres ${room.result.win ? 'w' : 'l'}"><b>${room.result.win ? `🏆 ${esc(R4_BOSSES[room.boss].short)} 처치!` : `💀 실패 · ${Math.round(room.result.frac * 100)}% 피해`}</b>${room.result.lines.map((l) => `<div class="small">${esc(l)}</div>`).join('')}${room.result.pending ? (() => { const rw = r4Reward(room.diff, room.result!.frac, false); return `<div class="r4ask" role="alertdialog" aria-label="보상 받기 확인"><div class="small">이번 결과로 받을 수 있는 보상: <b>정수 ${rw.ess} · 핵 ${rw.cores} · 룬석 ${rw.runes} · ${fmt(rw.gold)}G</b> <span class="mute">(실패라 처치 보상의 ${Math.round(Math.min(1, room.result!.frac) * 40)}%)</span></div>
         <div class="small mute">받으면 오늘 ${esc(R4[room.diff].name)} 기회를 써요. 안 받으면 기회가 남아서 다시 도전할 수 있어요.</div>
         <div class="row" style="gap:8px;margin-top:6px;flex-wrap:wrap"><button class="btn sm" data-a="r4ClaimNow">보상 받기 (오늘 기회 사용)</button><button class="btn ghost sm" data-a="r4ClaimSkip">안 받고 다시 도전</button></div></div>`; })() : ''}</div>` : ''}
-      ${room.host ? `<div class="tabs" role="group" aria-label="난이도" style="margin:10px 0">${R4_DIFFS.map((d) => `<button class="${room.diff === d ? 'on' : ''}" data-a="r4Diff" data-v="${d}">${R4[d].name} · 1인 ${fmt(R4[d].power)}</button>`).join('')}</div>` : `<p class="small mute">난이도는 방장이 정해요 · 권장 1인 전투력 ${fmt(R4[room.diff].power)}</p>`}
+      ${room.host ? `<div class="tabs" role="group" aria-label="난이도" style="margin:10px 0">${R4_DIFFS.map((d) => `<button class="${room.diff === d ? 'on' : ''}" data-a="r4Diff" data-v="${d}">${R4[d].name} · 1인 ${fmt(R4[d].power)}</button>`).join('')}${G.abyssOpen(s) ? `<label class="small" style="margin-left:6px">🌑 심연 <select data-change="r4Abyss"><option value="">-</option>${ABYSS_DIFFS.slice(0, G.abyssOpen(s)).map((d) => `<option value="${d}" ${room.diff === d ? 'selected' : ''}>${R4[d].name} · 1인 ${fmt(R4[d].power)}</option>`).join('')}</select></label>` : ''}</div>` : `<p class="small mute">난이도는 방장이 정해요 · 권장 1인 전투력 ${fmt(R4[room.diff].power)}</p>`}
       <div class="r4slots">${slots}</div>
       <div class="panel"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><h3 style="margin:0">데려갈 단원 1명</h3>${sortBar()}</div><div class="dpicks" style="margin-top:8px">${picks}</div>
         <div class="row" style="gap:8px;margin-top:10px"><button class="btn ${room.ready ? 'ghost' : ''}" data-a="r4Ready" ${room.pick ? '' : 'disabled'}>${room.ready ? '준비 취소' : '준비'}</button>${room.host ? `<button class="btn" data-a="r4Start" ${allReady ? '' : 'disabled'}>${room.members.length < 2 ? '혼자 시작' : `전투 시작 (${room.members.length}명)`}</button>` : ''}</div></div>
@@ -3394,6 +3408,7 @@ app.addEventListener('click', (ev) => {
     case 'r4qc': r4Qc(Number(d.v)); break;
     case 'r4Pick': if (r4 && !r4.ready) { r4.pick = d.uid!; r4Track(); render(); } break;
     case 'r4Ready': if (r4) { r4.ready = !r4.ready; if (r4.ready) r4SendChar(); r4Track(); render(); } break;
+    case 'abyssPick': abyssPick = Number(d.v); render(); break;
     case 'r4Diff': if (r4?.host) { r4.diff = d.v as R4Diff; r4.ch.send('diff', { diff: r4.diff }); r4Track(); render(); } break;
     case 'r4Start': r4Start(); break;
     case 'r4Skill': r4Choose(d.v ?? ''); break;
@@ -3523,6 +3538,7 @@ app.addEventListener('change', (ev) => {
   const sel = ev.target as HTMLSelectElement;
   if (sel.dataset?.m === 'floor') { mFloor = Number(sel.value); return; }
   if (sel.dataset?.av === 'beard' && S) { commit(G.setAvatarLook(S, 'beard', (sel as unknown as HTMLInputElement).checked)); return; }
+  if (sel.dataset?.change === 'r4Abyss' && r4?.host && sel.value && R4[sel.value]) { r4.diff = sel.value as R4Diff; r4.ch.send('diff', { diff: r4.diff }); r4Track(); render(); return; }
   if (sel.dataset?.change === 'potTier') { potTab.tier = Number(sel.value); potTab.uid = ''; render(); return; }
   if (sel.dataset?.ad === 'kind') { adKind = sel.value; adLoad('log', true); return; }
   const el = ev.target as HTMLElement;

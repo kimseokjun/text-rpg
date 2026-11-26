@@ -931,3 +931,10 @@ kbd{font-family:inherit;font-size:.85em;padding:0 4px;border:1px solid #ffffff40
 .s2row small{font-variant-numeric:tabular-nums;text-align:right}
 .s2log{margin-top:6px}.s2log summary{cursor:pointer;font-size:13px;color:var(--mute)}.s2log .log{max-height:200px}
 @media(max-width:600px){.s2{aspect-ratio:4/3}.s2n{font-size:9px}.s2tag .bar{width:40px}.s2tag small{display:none}.s2u .s2spr svg{width:44px;height:44px}.s2u.boss .s2spr svg{width:88px;height:88px}.s2cap{font-size:12px}}
+/* 4인 레이드 심연 */
+.r4d.abyss{grid-column:1/-1;background:linear-gradient(135deg,#1a0a2a,#0a0612);border-color:#5a2aa0;box-shadow:inset 0 0 30px #3a1a6a66}
+.r4d.abyss.locked{opacity:.7}
+.abysslv{display:flex;gap:3px;flex-wrap:wrap}
+.abysslv button{min-width:30px;height:28px;border-radius:6px;border:1px solid #5a2aa0;background:#12081f;color:#d8b0ff;font-weight:700;cursor:pointer}
+.abysslv button.on{background:#5a2aa0;color:#fff}
+.abysslv button:disabled{opacity:.4;cursor:default}

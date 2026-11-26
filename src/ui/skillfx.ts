@@ -28,7 +28,7 @@ const BY_NAME: Record<string, FxSpec> = {
   '천공의 화살': F('skyArrow', '#e8f8ff', '#6ac8ff', { big: true }), '폭풍 화살': F('volley', NATURE[0], '#30c080', { big: true }), '신살의 화살': F('arrow', HOLY[0], HOLY[1], { big: true }),
   // 성직자
   '홀리 라이트': F('orb', HOLY[0], HOLY[1]), 치유: F('heal', '#d0ffd0', '#4ae07a'), 축복: F('aura', HOLY[0], HOLY[1], { icon: '✦' }), 보호막: F('barrier', '#d0f0ff', '#6ab8ff'),
-  '봉인의 기도': F('seal', HOLY[0], '#c8a0ff'), '심판의 망치': F('hammer', HOLY[0], HOLY[1], { big: true }), 대치유: F('heal', '#e0ffe0', '#30d070', { big: true }),
+  '봉인의 기도': F('seal', HOLY[0], '#c8a0ff'), 정화: F('heal', '#ffffff', '#9ad8ff', { icon: '✨' }), '심판의 망치': F('hammer', HOLY[0], HOLY[1], { big: true }), 대치유: F('heal', '#e0ffe0', '#30d070', { big: true }),
   '신성한 방벽': F('barrier', HOLY[0], HOLY[1], { big: true }), '신성 심판': F('nova', HOLY[0], HOLY[1], { big: true }), 성역: F('heal', HOLY[0], HOLY[1], { big: true, icon: '✚' }),
   '심판의 날': F('meteor', '#fffbe0', '#ffd24a', { big: true }), '천상의 은총': F('heal', '#ffffff', '#ffe28a', { big: true, icon: '🕊' }),
   // 레이드 보스

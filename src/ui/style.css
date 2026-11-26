@@ -912,6 +912,7 @@ kbd{font-family:inherit;font-size:.85em;padding:0 4px;border:1px solid #ffffff40
 .s2tag small{display:none}
 .s2u.boss .s2tag{display:none}
 .s2boss{position:absolute;left:3%;right:3%;top:3%;display:flex;align-items:center;gap:8px;z-index:300;background:#0008;border-radius:8px;padding:4px 10px}
+.s2boss[hidden]{display:none}
 .s2boss b{color:#ffe9a8;font-size:13px;white-space:nowrap}.s2boss small{font-size:11px;color:#fff;white-space:nowrap}
 .s2bossbar{flex:1;height:10px;border-radius:5px;background:#000a;overflow:hidden;border:1px solid #ffffff30}.s2bossbar i{display:block;height:100%;background:linear-gradient(90deg,#a01a2a,#ff4a4a);transition:width .3s}
 .s2cap{position:absolute;left:50%;top:16%;transform:translate(-50%,-6px);z-index:301;opacity:0;pointer-events:none;background:#140e1ce6;border:2px solid #ffd95e;color:#ffe9a8;font-weight:700;font-size:14px;padding:5px 14px;border-radius:10px;white-space:nowrap;transition:opacity .15s,transform .15s}

@@ -2,7 +2,6 @@ import { advanceJob, canAdvance, createHero, gainExp, levelCap, newUid, syncSkil
 import { expToNext, finalStats, partyMods } from '../core/stats';
 import { COMMON_TRAITS } from '../data/traits';
 import { DEFAULT_SETTINGS, Expedition, type ExpeditionSettings, rollEquip, rollSetEquip } from '../core/dungeon';
-import { toDef } from '../core/defense';
 import { Rng } from '../core/rng';
 import { enhance as doEnhance, enhanceCost, hire as doHire, refreshSlotCost, rollBoard, rollCandidate, rosterLimit, type Candidate } from '../core/town';
 import { GRADE_NAME, RARITY_NAME, TARGET_NAME, type Grade, type Character, type Equip, type Modifier, type EquipSlot, EQUIP_SLOTS, wornSlots, type JobId, type Rarity, type Row, type TargetPref } from '../core/types';
@@ -14,7 +13,7 @@ import { CRAFT_COST, MYTH_CRAFT_COST, MYTH_SET, RAID_CRAFT_COST, RAID_SET } from
 import { DAILY_BY_ID, DAILY_LIMIT, dailyReward, kstDate, type DailyDef } from '../data/daily';
 import { rewardScale } from '../data/monsters';
 import { MILESTONES, MILESTONE_SCALES, RAID_DIFF, RAID_DIFF_NAME, RAID_LIMIT, attemptReward, raidMaxHp, raidWeek, type RaidDiff } from '../data/raid';
-import { COS_BY_ID, FREE_HEADS, MERC_KINDS, raidCosmetics, defCosmetics, type AvatarLook, type AvatarState, type CosKind } from '../data/cosmetics';
+import { COS_BY_ID, FREE_HEADS, MERC_KINDS, raidCosmetics, type AvatarLook, type AvatarState, type CosKind } from '../data/cosmetics';
 import { ACHS, ACH_BY_ID, ACH_MS, ACH_REWARD, achPoints, achReady, titleMods, unlockedTitles, TITLE_BY_ID } from '../data/achievements';
 import { EGG_PRICE, PET_BY_ID, PET_EVO_GOLD, PET_GRADE_NAME, PET_MAX_STARS, hatch, petMods, petSellPrice, type Pet } from '../data/pets';
 import { charPower, partyPower } from '../core/power';
@@ -30,8 +29,6 @@ export const SAVE_VERSION = 1;
 
 export interface GameState {
   v: number;
-  /** 랜덤 디펜스: 오늘 보상 횟수 · 난이도별 최고 웨이브 */
-  defense?: { date: string; used: number; best: Partial<Record<'easy' | 'normal' | 'hard', number>> };
   heroName: string;
   gold: number;
   stones: number;
@@ -1603,34 +1600,4 @@ export function wearCos(s: GameState, target: 'avatar' | string, kind: CosKind, 
   c.cos ??= {};
   if (id) c.cos[kind as 'cape'] = id; else delete c.cos[kind as 'cape'];
   return { ok: true, msg: it ? `${c.name}에게 「${it.name}」` : '해제했어요' };
-}
-
-// ───────── 랜덤 디펜스 ─────────
-export const DEF_LIMIT = 3;
-export const defUsed = (s: GameState) => (s.defense?.date === kstDate() ? s.defense.used : 0);
-export const defLeft = (s: GameState) => Math.max(0, DEF_LIMIT - defUsed(s));
-/** 소환 풀: 고용한 단원 전부 */
-export function defensePool(s: GameState, owner: string) { return s.roster.map((c) => toDef(owner, c, petPartyMods(s))); }
-const DEF_GOLD = { easy: 2000, normal: 4000, hard: 7000 };
-/** 판 결과 보상 (하루 3회). wave = 도달 웨이브(클리어면 30) */
-export function claimDefense(s: GameState, diff: 'easy' | 'normal' | 'hard', wave: number, win: boolean): string[] {
-  const best = s.defense?.best ?? {};
-  const prevBest = best[diff] ?? 0;
-  const reached = win ? 30 : Math.max(0, wave - 1);
-  const lines: string[] = [];
-  const cos = win ? defCosmetics(diff).filter((c) => !cosOwned(s, c.id)) : [];
-  for (const c of cos) (s.cos ??= []).push(c.id);
-  if (cos.length) lines.push(`🎨 꾸미기 획득: ${cos.map((c) => c.name).join(', ')}`);
-  bump(s, 'defense'); if (win) bump(s, `defWin_${diff}`);
-  if (defLeft(s) <= 0) {
-    s.defense = { date: kstDate(), used: defUsed(s), best: { ...best, [diff]: Math.max(prevBest, reached) } };
-    return [`오늘 보상 ${DEF_LIMIT}회를 다 받았어요 (오전 4시 초기화)`, ...lines];
-  }
-  s.defense = { date: kstDate(), used: defUsed(s) + 1, best: { ...best, [diff]: Math.max(prevBest, reached) } };
-  const gold = DEF_GOLD[diff] * reached;
-  const packs = win ? 3 : reached >= 20 ? 2 : reached >= 10 ? 1 : 0;
-  s.gold += gold; s.cardPacks = (s.cardPacks ?? 0) + packs;
-  lines.unshift(`${win ? '30웨이브 클리어!' : `${reached}웨이브까지 버팀`} 보상: ${gold.toLocaleString('ko-KR')}G${packs ? ` · 카드 팩 ${packs}` : ''} (오늘 남은 보상 ${defLeft(s)}회)`);
-  news(s, `랜덤 디펜스 ${win ? '클리어!' : `${reached}웨이브`}`);
-  return lines;
 }

@@ -881,11 +881,3 @@ svg.px{image-rendering:pixelated;flex:none}
 .pzlog{margin-top:8px;font-size:13px;line-height:1.6;max-height:140px;overflow:auto;padding:6px 10px;border-radius:8px;background:#0003}
 kbd{font-family:inherit;font-size:.85em;padding:0 4px;border:1px solid #ffffff40;border-radius:3px}
 @media (max-width:700px){.pzbox{aspect-ratio:3/4;max-height:none}}
-
-.cosplate.pl-fort{background:linear-gradient(180deg,#d8c090,#7a5a30);color:#1a1004;border-color:#ffe9b0}
-/* ── 랜덤 디펜스 ── */
-.dfcv{display:block;margin:0 auto;border-radius:10px;border:2px solid #3a2a40;cursor:pointer;touch-action:manipulation}
-.dfhud{display:flex;gap:10px;flex-wrap:wrap;margin:8px 0}.dfhud>div{background:#0003;border-radius:8px;padding:4px 10px;font-size:13px}.dfhud b{font-size:16px}
-.dfbar{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-.dfjobs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
-.dfwarn{color:#ff8a7a}

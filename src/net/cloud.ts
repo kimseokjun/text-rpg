@@ -422,25 +422,6 @@ export function joinR4(code: string, onSync: (m: R4Presence[]) => void, onMsg: (
   };
 }
 
-// ───────── 랜덤 디펜스 방 (방장 화면이 계산, 상태를 나눠줌) ─────────
-export interface DefPresence { id: string; name: string; host: boolean; ready: boolean; diff?: string; n?: number }
-export interface DefChannel { send: (event: string, payload: unknown) => void; track: (p: DefPresence) => void; leave: () => void; members: () => DefPresence[] }
-export function joinDef(code: string, onSync: (m: DefPresence[]) => void, onMsg: (event: string, payload: any) => void): DefChannel | null {
-  if (!sb || !session) return null;
-  const ch = sb.channel(`def-${code}`, { config: { presence: { key: session.user.id }, broadcast: { self: false } } });
-  let me: DefPresence | null = null;
-  const members = () => Object.values(ch.presenceState() as Record<string, DefPresence[]>).map((v) => v[0]).filter(Boolean);
-  ch.on('presence', { event: 'sync' }, () => onSync(members()));
-  for (const ev of ['pool', 'begin', 'snap', 'act', 'err', 'end', 'abort']) ch.on('broadcast', { event: ev }, (m) => onMsg(ev, m.payload));
-  ch.subscribe(async (status) => { if (status === 'SUBSCRIBED' && me) await ch.track(me); });
-  return {
-    send: (event, payload) => { ch.send({ type: 'broadcast', event, payload }); },
-    track: (p) => { me = p; ch.track(p); },
-    leave: () => { ch.untrack(); sb!.removeChannel(ch); },
-    members,
-  };
-}
-
 // ───────── 마을 광장 (실시간: 위치·말풍선·감정 표현) ─────────
 export interface PlazaPresence { id: string; name: string; av: unknown; title?: string | null; x: number; y: number }
 export interface PlazaChannel { send: (event: string, payload: unknown) => void; track: (p: PlazaPresence) => void; leave: () => void; members: () => PlazaPresence[] }

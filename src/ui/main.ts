@@ -27,8 +27,6 @@ import { Raid4Battle, type R4Member, type R4State } from '../core/raid4battle';
 import { mountStage, playEvents, setBanner, setPanel, speech, stageMounted, updateStage } from './r4stage';
 import * as Bgm from './bgm';
 import { mountPlaza, EMOTES, type PlazaRun } from './plaza';
-import { mountDefense, type DefView } from './defense';
-import { act, bossLeft, dLimit, D_BOSS_SEC, D_DIFF, D_TICK, D_WAVE_SEC, D_WAVES, isBossWave, jobUpCost, newDefense, step, summonCost, type DAction, type DDef, type DDiff, type DState } from '../core/defense';
 import { COSMETICS, COS_BY_ID, COS_KIND_KO, FREE_HEADS, MERC_KINDS, OUTFIT_COLORS, TRIM_COLORS, type AvatarState, type CosKind } from '../data/cosmetics';
 import { CHESTS, dRewardText } from '../data/missions';
 import { ACHS, ACH_CAT, ACH_MAX_PTS, ACH_MS, ACH_REWARD, TITLES, TITLE_BY_ID, achPoints, achReady, unlockedTitles, type AchCat } from '../data/achievements';
@@ -46,7 +44,7 @@ import { townScene } from './art';
 import { charSprite, avatarSprite, AVATAR_HAIRS, AVATAR_PARTS, AVATAR_SKINS, PART_KO } from './pixel';
 import { equipKind, equipSprite, itemSprite, monsterSprite, petSprite } from './sprites';
 
-type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex' | 'admin' | 'notice' | 'cards' | 'duel' | 'profile' | 'raid4' | 'ach' | 'avatar' | 'plaza' | 'defense';
+type Screen = 'title' | 'town' | 'party' | 'guild' | 'smith' | 'refinery' | 'pets' | 'forge' | 'daily' | 'raid' | 'shop' | 'storage' | 'training' | 'temple' | 'gate' | 'dungeon' | 'result' | 'tower' | 'rank' | 'world' | 'multi' | 'codex' | 'admin' | 'notice' | 'cards' | 'duel' | 'profile' | 'raid4' | 'ach' | 'avatar' | 'plaza';
 
 let S: G.GameState | null = null;
 let screen: Screen = 'title';
@@ -284,7 +282,7 @@ const traitTag = (id: string, focusable = true) => {
 const HUBS: { id: string; name: string; tabs: [string, string][] }[] = [
   { id: 'guild', name: '모험가 길드', tabs: [['guild', '용병 모집'], ['codex', '용병 도감'], ['training', '훈련소'], ['temple', '신전']] },
   { id: 'smith', name: '대장간', tabs: [['smith', '강화'], ['refinery', '제련'], ['forge', '제작']] },
-  { id: 'adv', name: '모험', tabs: [['gate', '던전'], ['tower', '무한 탑'], ['daily', '일일'], ['defense', '랜덤 디펜스'], ['raid', '레이드']] },
+  { id: 'adv', name: '모험', tabs: [['gate', '던전'], ['tower', '무한 탑'], ['daily', '일일'], ['raid', '레이드']] },
 ];
 if (CLOUD) HUBS[2].tabs.push(['multi', '멀티'], ['raid4', '4인 레이드'], ['world', '월드보스'], ['duel', '결투']);
 const hubOf = (sc: string) => HUBS.find((h) => h.tabs.some(([t]) => t === sc));
@@ -1632,188 +1630,6 @@ function r4Finish(win: boolean, frac: number) {
   commit();
 }
 const unitIcon = (u: { jobId?: string; name: string; boss?: boolean; mid?: string; cos?: Character['cos'] }, size: number) => u.boss ? monsterSprite(u.mid ?? 'abyssKing', { size, boss: true, tags: ['demon'] }) : u.jobId ? charSprite(JOBS[u.jobId as JobId].base, u.name.replace(/\(.+\)$/, ''), JOBS[u.jobId as JobId].tier, { size, cape: u.cos?.cape ? COS_BY_ID[u.cos.cape]?.value : undefined }) : monsterSprite(u.mid ?? 'voidWraith', { size, tags: ['demon'] });
-// ───────── 랜덤 디펜스 ─────────
-interface DefSess {
-  mode: 'solo' | 'multi'; code?: string; host: boolean; ch?: Cloud.DefChannel; members: Cloud.DefPresence[];
-  diff: DDiff; pools: Record<string, { name: string; pool: DDef[] }>; st: DState | null; phase: 'lobby' | 'run' | 'done';
-  sel: number[]; promote: boolean; loop?: number; view?: DefView; result?: string[]; sawHost?: boolean; tick: number; sentPool?: boolean; claimed?: boolean;
-}
-let df: DefSess | null = null;
-let dfDiff: DDiff = 'easy';
-let dfCodeDraft = '';
-const JOB_KO: Record<BaseJob, string> = { warrior: '전사', mage: '마법사', archer: '궁수', priest: '성직자' };
-const dfMeName = () => (Cloud.session ? Cloud.username : S?.heroName ?? '나');
-function dfMyPool() { return G.defensePool(S!, myId() || 'me'); }
-function dfStartSolo() {
-  const pool = dfMyPool();
-  if (!pool.length) { toast('소환할 단원이 없어요', true); return; }
-  if (df) dfLeave();
-  const me = myId() || 'me';
-  df = { mode: 'solo', host: true, members: [], diff: dfDiff, pools: { [me]: { name: dfMeName(), pool } }, st: null, phase: 'lobby', sel: [], promote: false, tick: 0 };
-  dfBegin();
-}
-function dfOpen(code: string, host: boolean) {
-  if (df) dfLeave();
-  const ch = Cloud.joinDef(code, dfSync, dfMsg);
-  if (!ch) { toast('로그인이 필요해요', true); return; }
-  df = { mode: 'multi', code, host, ch, members: [], diff: dfDiff, pools: {}, st: null, phase: 'lobby', sel: [], promote: false, tick: 0 };
-  const pool = dfMyPool();
-  df.pools[myId()] = { name: Cloud.username, pool };
-  ch.track({ id: myId(), name: Cloud.username, host, ready: true, diff: host ? dfDiff : undefined, n: pool.length });
-  render();
-}
-function dfSync(m: Cloud.DefPresence[]) {
-  if (!df) return;
-  df.members = m;
-  const host = m.find((x) => x.host);
-  if (host) df.sawHost = true;
-  if (!df.host && host?.diff) df.diff = host.diff as DDiff;
-  if (!df.host && !host && df.sawHost) { toast('방장이 나가서 방이 닫혔어요', true); dfLeave(); render(); return; }
-  if (!df.host && host && df.phase === 'lobby') df.ch!.send('pool', { id: myId(), name: Cloud.username, pool: df.pools[myId()].pool });
-  if (df.host) for (const id of Object.keys(df.pools)) if (id !== myId() && !m.some((x) => x.id === id)) delete df.pools[id];
-  if (screen === 'defense' && df.phase !== 'run') render();
-}
-function dfMsg(ev: string, p: any) {
-  if (!df) return;
-  if (ev === 'pool' && df.host && df.phase === 'lobby') { df.pools[p.id] = { name: p.name, pool: p.pool }; if (screen === 'defense') render(); }
-  else if (ev === 'begin' && !df.host) { df.st = p.st; df.diff = p.st.diff; df.phase = 'run'; df.sel = []; df.claimed = false; render(); }
-  else if (ev === 'snap' && !df.host && df.st) { dfApplySnap(df.st, p); dfHud(); if (df.st.phase !== 'run') dfEnd(); }
-  else if (ev === 'act' && df.host && df.st) { const e = act(df.st, p.who, p.x); if (e) df.ch!.send('err', { to: p.who, msg: e }); }
-  else if (ev === 'err' && p.to === myId()) toast(p.msg, true);
-  else if (ev === 'abort' && !df.host) { toast(p.reason ?? '게임이 중단됐어요', true); dfLeave(); render(); }
-}
-function dfBegin() {
-  if (!df || !df.host) return;
-  const ids = df.mode === 'solo' ? Object.keys(df.pools) : df.members.map((m) => m.id).filter((id) => df!.pools[id]?.pool.length);
-  if (!ids.length) { toast('참가자 단원 정보를 기다리는 중이에요', true); return; }
-  df.st = newDefense(ids.map((id) => ({ id, name: df!.pools[id].name, pool: df!.pools[id].pool })), df.diff);
-  df.phase = 'run'; df.sel = []; df.claimed = false;
-  if (df.mode === 'multi') df.ch!.send('begin', { st: df.st });
-  render();
-  clearInterval(df.loop);
-  df.loop = window.setInterval(() => {
-    if (!df?.st) return;
-    step(df.st); df.tick++;
-    if (df.mode === 'multi' && df.tick % 3 === 0) df.ch!.send('snap', dfSnap(df.st));
-    if (df.tick % 2 === 0) dfHud();
-    if (df.st.phase !== 'run') { if (df.mode === 'multi') df.ch!.send('snap', dfSnap(df.st)); dfEnd(); }
-  }, D_TICK * 1000);
-}
-function dfSnap(st: DState) {
-  return {
-    t: st.t, wave: st.wave, waveT: st.waveT, phase: st.phase, why: st.why, bossAt: st.bossAt, spawned: st.spawned,
-    e: st.enemies.map((e) => [e.id, Math.round(e.hp), Math.round(e.max), Math.round(e.d * 100) / 100, e.boss ? 1 : 0, Math.round(e.slow * 10) / 10, Math.round(e.stun * 10) / 10]),
-    u: st.units.map((u) => [u.id, u.owner, u.key, u.star, u.slot]),
-    p: st.players.map((p) => [p.id, p.coins, p.summons, p.jobLv, p.kills]),
-    f: st.fx.filter((f) => st.t - f.t < 0.3).slice(-60),
-  };
-}
-function dfApplySnap(st: DState, s: any) {
-  Object.assign(st, { t: s.t, wave: s.wave, waveT: s.waveT, phase: s.phase, why: s.why, bossAt: s.bossAt, spawned: s.spawned, fx: s.f });
-  st.enemies = s.e.map((a: number[]) => ({ id: a[0], hp: a[1], max: a[2], d: a[3], boss: !!a[4], slow: a[5], stun: a[6], spd: 0 }));
-  st.units = s.u.map((a: any[]) => ({ id: a[0], owner: a[1], key: a[2], star: a[3], slot: a[4], cd: 0, sk: 0 }));
-  for (const a of s.p) { const p = st.players.find((q) => q.id === a[0]); if (p) Object.assign(p, { coins: a[1], summons: a[2], jobLv: a[3], kills: a[4] }); }
-}
-function dfAct(x: DAction) {
-  if (!df?.st || df.phase !== 'run') return;
-  const me = df.mode === 'solo' ? Object.keys(df.pools)[0] : myId();
-  if (df.host) { const e = act(df.st, me, x); if (e) toast(e, true); dfHud(); }
-  else df.ch!.send('act', { who: me, x });
-}
-const dfMe = () => (df?.mode === 'solo' ? Object.keys(df.pools)[0] : myId());
-function dfCell(slot: number) {
-  if (!df?.st) return;
-  const me = dfMe();
-  const u = df.st.units.find((v) => v.owner === me && v.slot === slot);
-  if (df.promote) {
-    if (!u) return;
-    df.sel = df.sel.includes(u.id) ? df.sel.filter((x) => x !== u.id) : [...df.sel, u.id].slice(-3);
-    if (df.sel.length === 3) { dfAct({ a: 'promote', us: df.sel }); df.sel = []; df.promote = false; dfHud(); }
-    return;
-  }
-  const cur = df.sel[0];
-  if (cur === undefined) { if (u) df.sel = [u.id]; return; }
-  if (u?.id === cur) { df.sel = []; return; }
-  const a = df.st.units.find((v) => v.id === cur);
-  if (u && a && u.key === a.key && u.star === a.star) { dfAct({ a: 'merge', u: cur, v: u.id }); df.sel = []; return; }
-  if (u) { df.sel = [u.id]; return; }
-  dfAct({ a: 'move', u: cur, slot }); df.sel = [];
-}
-function dfEnd() {
-  if (!df?.st || df.claimed) return;
-  df.claimed = true;
-  clearInterval(df.loop);
-  const st = df.st, win = st.phase === 'win';
-  df.result = [win ? `🏆 ${D_WAVES}웨이브 클리어!` : `패배 — ${st.why ?? ''} (${st.wave}웨이브)`, ...G.claimDefense(S!, df.diff, st.wave, win)];
-  df.phase = 'done';
-  df.view?.stop(); df.view = undefined;
-  saveGame(S!);
-  if (CLOUD) Cloud.logEvent('defense', `${D_DIFF[df.diff].name} ${win ? '클리어' : `${st.wave}웨이브`}`);
-  if (screen === 'defense') render();
-}
-function dfLeave() {
-  if (!df) return;
-  clearInterval(df.loop); df.view?.stop();
-  if (df.mode === 'multi') { if (df.host && df.phase === 'run') df.ch!.send('abort', { reason: '방장이 나갔어요' }); df.ch!.leave(); }
-  df = null;
-}
-function dfMount() {
-  if (!df || df.phase !== 'run') return;
-  const cv = document.getElementById('dfcv') as HTMLCanvasElement | null;
-  if (!cv) return;
-  df.view?.stop();
-  df.view = mountDefense(cv, () => ({ st: df?.st ?? null, me: dfMe(), sel: df?.sel ?? [] }), dfCell);
-  dfHud();
-}
-function dfHud() {
-  const el = document.getElementById('dfhud'); if (!el || !df?.st) return;
-  const st = df.st, me = st.players.find((p) => p.id === dfMe());
-  const lim = dLimit(st.players.length), n = st.enemies.length;
-  const boss = isBossWave(st.wave);
-  el.innerHTML = `<div>웨이브 <b>${st.wave}</b>/${D_WAVES}${boss ? ' · <span class="r5">보스</span>' : ''}</div>
-    <div>${boss ? `보스 남은 시간 <b class="${bossLeft(st) < 15 ? 'dfwarn' : ''}">${Math.ceil(bossLeft(st))}초</b>` : `다음 웨이브 <b>${Math.ceil(D_WAVE_SEC - st.waveT)}초</b>`}</div>
-    <div>적 <b class="${n > lim * 0.75 ? 'dfwarn' : ''}">${n}</b>/${lim}</div>
-    <div>🪙 <b>${me?.coins ?? 0}</b></div><div>소환 ${summonCost(me?.summons ?? 0)}🪙</div>${df.promote ? '<div class="r5">승급할 ★3 3기를 골라주세요</div>' : ''}`;
-  const jb = document.getElementById('dfjobs');
-  if (jb && me) jb.innerHTML = (['warrior', 'mage', 'archer', 'priest'] as BaseJob[]).map((j) => `<button class="btn ghost sm" data-a="dfUp" data-v="${j}">${JOB_KO[j]} Lv.${me.jobLv[j]} → +10% (${jobUpCost(me.jobLv[j])}🪙)</button>`).join('');
-}
-function viewDefense() {
-  const s = S!;
-  const pool = G.defensePool(s, 'me');
-  const cnt = [0, 0, 0, 0, 0, 0]; for (const d of pool) cnt[d.grade]++;
-  const best = s.defense?.best ?? {};
-  const head = `<div class="wrap">${backBtn()}<h2>랜덤 디펜스</h2>`;
-  if (df?.phase === 'run' && df.st) {
-    const others = df.st.players.filter((p) => p.id !== dfMe());
-    return `${head}<div class="dfhud" id="dfhud"></div>
-      <canvas id="dfcv" class="dfcv" aria-label="디펜스 판. 내 칸을 눌러 단원을 고르고, 같은 단원·같은 별을 누르면 합성, 빈 칸을 누르면 이동"></canvas>
-      <div class="dfbar"><button class="btn" data-a="dfSummon">소환</button><button class="btn ghost" data-a="dfAuto">자동 합성</button><button class="btn ghost" data-a="dfPromote">★3 승급 합성</button><button class="btn ghost" data-a="dfSell">선택 판매</button>${others.map((p) => `<button class="btn ghost sm" data-a="dfGift" data-v="${esc(p.id)}">${esc(p.name)}에게 20🪙</button>`).join('')}<button class="btn ghost sm" data-a="dfQuit">포기</button></div>
-      <div class="dfjobs" id="dfjobs"></div>
-      <p class="small mute">내 칸을 눌러 단원을 고르고 → 같은 단원·같은 별을 누르면 합성(★), 빈 칸을 누르면 이동. ★3 같은 등급 3기를 합치면 한 단계 위 등급 단원이 나와요. 성직자는 주변 8칸 단원을 강하게 해요.</p></div>`;
-  }
-  if (df?.phase === 'done') {
-    return `${head}<div class="panel"><h3 style="margin-top:0">결과</h3>${(df.result ?? []).map((l) => `<p>${esc(l)}</p>`).join('')}
-      <div class="row" style="gap:8px"><button class="btn" data-a="dfAgain">${df.mode === 'multi' && !df.host ? '방으로' : '다시 하기'}</button><button class="btn ghost" data-a="dfQuit">나가기</button></div></div></div>`;
-  }
-  if (df?.mode === 'multi' && df.phase === 'lobby') {
-    const ready = df.members.filter((m) => df!.host ? df!.pools[m.id] : true);
-    return `${head}<div class="panel"><h3 style="margin-top:0">방 코드 <b>${esc(df.code!)}</b> · ${D_DIFF[df.diff].name}</h3>
-      <p class="small mute">친구에게 코드를 알려주세요 (최대 4명). 각자 자기 단원 전체가 소환 풀이에요.</p>
-      <div class="tlist">${df.members.map((m) => `<div class="trow"><b class="tf">${m.host ? '방장' : '참가'}</b><div class="tg"><span><b>${esc(m.name)}</b></span><span class="small mute">단원 ${m.n ?? 0}명${df!.host && !df!.pools[m.id] ? ' · 정보 받는 중…' : ''}</span></div></div>`).join('')}</div>
-      ${df.host ? `<div class="row" style="gap:6px;margin:8px 0">${(Object.keys(D_DIFF) as DDiff[]).map((d) => `<button class="btn sm ${df!.diff === d ? '' : 'ghost'}" data-a="dfDiff" data-v="${d}">${D_DIFF[d].name}</button>`).join('')}</div>
-        <button class="btn" data-a="dfStart" ${ready.length && ready.length <= 4 ? '' : 'disabled'}>시작 (${ready.length}명)</button>` : '<p class="mute">방장이 시작하기를 기다리는 중…</p>'}
-      <button class="btn ghost sm" data-a="dfQuit" style="margin-left:8px">나가기</button></div></div>`;
-  }
-  return `${head}<p class="mute">내가 고용한 <b>모든 단원</b>이 소환 풀이에요. 판 안에서 코인으로 무작위 소환하고, 같은 단원 2기를 합치면 ★이 올라요. 적이 판 바깥을 빙빙 도는데, 필드에 <b>${dLimit(1)}마리</b>(2인부터 +50씩)를 넘기거나 10·20·30웨이브 보스를 ${D_BOSS_SEC}초 안에 못 잡으면 패배. ${D_WAVES}웨이브를 버티면 클리어!<br>단원 성능은 <b>등급</b>이 기본이고, 레벨·장비·전직이 좋을수록 더 세져요.</p>
-    <div class="sum" style="margin:12px 0"><div><span class="small mute">오늘 남은 보상</span><b>${G.defLeft(s)} / ${G.DEF_LIMIT}</b></div><div><span class="small mute">소환 풀</span><b>${pool.length}명</b></div><div><span class="small mute">등급</span><b class="small">일반 ${cnt[1]} · 숙련 ${cnt[2]} · 정예 ${cnt[3]} · 영웅 ${cnt[4]} · 전설 ${cnt[5]}</b></div></div>
-    <div class="panel"><h3 style="margin-top:0">난이도</h3><div class="row" style="gap:6px;flex-wrap:wrap">${(Object.keys(D_DIFF) as DDiff[]).map((d) => `<button class="btn sm ${dfDiff === d ? '' : 'ghost'}" data-a="dfDiff" data-v="${d}">${D_DIFF[d].name}${best[d] ? ` · 최고 ${best[d]}` : ''}</button>`).join('')}</div>
-      <p class="small mute">보상(하루 ${G.DEF_LIMIT}회): 버틴 웨이브 × 골드, 10웨이브 카드 팩 1 · 20웨이브 2 · 클리어 3. 보통 첫 클리어 「요새 이름표」, 어려움 첫 클리어 「수호 성벽 오라」.</p>
-      <div class="row" style="gap:8px;margin-top:8px"><button class="btn" data-a="dfSolo">혼자 시작</button></div></div>
-    ${CLOUD && Cloud.session ? `<div class="panel"><h3 style="margin-top:0">친구와 함께 (2~4인)</h3><div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn" data-a="dfCreate">방 만들기</button>
-      <input id="dfCode" placeholder="방 코드" value="${esc(dfCodeDraft)}" style="width:110px" maxlength="6" autocomplete="off"><button class="btn ghost" data-a="dfJoin">참가</button></div></div>` : ''}
-  </div>`;
-}
-
 function viewRaid4() {
   const s = S!;
   if (!CLOUD || !Cloud.session) return `<div class="wrap">${backBtn()}<h2>4인 레이드</h2><p class="mute">로그인해야 할 수 있어요.</p></div>`;
@@ -3249,12 +3065,6 @@ function renderBgmBtn() {
 document.addEventListener('pointerdown', () => Bgm.unlock(), { capture: true });
 function renderNow() {
   if (pz && screen !== 'plaza') plazaLeave();
-  if (df && screen !== 'defense') dfLeave();
-  if (screen === 'defense' && df?.phase === 'run' && document.getElementById('dfcv')?.isConnected) {
-    const t = document.querySelector('.top'); if (t) t.outerHTML = topbar();
-    renderModal(); renderToast(); dfHud();
-    return;
-  }
   if (screen === 'plaza' && pz && document.getElementById('pzbox')?.isConnected) {
     const t = document.querySelector('.top'); if (t) t.outerHTML = topbar();
     const side = document.getElementById('pzside'); if (side) side.innerHTML = plazaSide();
@@ -3273,12 +3083,11 @@ function renderNow() {
     return;
   }
   const body = !S || screen === 'title' ? viewTitle()
-    : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'ach' ? viewAch() : screen === 'avatar' ? viewAvatar() : screen === 'plaza' ? viewPlaza() : screen === 'defense' ? viewDefense() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
+    : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'ach' ? viewAch() : screen === 'avatar' ? viewAvatar() : screen === 'plaza' ? viewPlaza() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
     : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'admin' ? viewAdmin() : screen === 'notice' ? viewNotice() : screen === 'cards' ? viewCards() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : screen === 'duel' ? viewDuel() : screen === 'profile' ? viewProfile() : screen === 'raid4' ? viewRaid4() : viewResult();
   app.innerHTML = (screen === 'title' ? '' : topbar()) + body;
   if (screen === 'raid4' && r4?.phase === 'battle' && r4.st) r4Mount();
   if (screen === 'plaza') plazaMount();
-  if (screen === 'defense') dfMount();
   document.querySelector('.hubtabs .on')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
   renderModal();
   renderToast();
@@ -3451,19 +3260,6 @@ app.addEventListener('click', (ev) => {
       commit(d.a === 'bulkSell' ? G.bulkSell(s!, f) : G.bulkDismantle(s!, f)); break;
     }
     case 'towerGo': startTowerRun(); break;
-    case 'dfDiff': if (df?.mode === 'multi' && df.host) { df.diff = d.v as DDiff; df.ch!.track({ id: myId(), name: Cloud.username, host: true, ready: true, diff: df.diff, n: df.pools[myId()]?.pool.length ?? 0 }); } else dfDiff = d.v as DDiff; render(); break;
-    case 'dfSolo': dfStartSolo(); break;
-    case 'dfCreate': { const code = Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join(''); dfOpen(code, true); break; }
-    case 'dfJoin': { const v = ((document.getElementById('dfCode') as HTMLInputElement | null)?.value || '').trim().toUpperCase(); if (v.length === 6) { dfCodeDraft = ''; dfOpen(v, false); } else toast('방 코드 6자리를 넣어주세요', true); break; }
-    case 'dfStart': dfBegin(); break;
-    case 'dfSummon': dfAct({ a: 'summon' }); break;
-    case 'dfAuto': dfAct({ a: 'automerge' }); break;
-    case 'dfPromote': if (df) { df.promote = !df.promote; df.sel = []; dfHud(); } break;
-    case 'dfSell': if (df?.sel[0] !== undefined) { dfAct({ a: 'sell', u: df.sel[0] }); df.sel = []; } else toast('팔 단원을 먼저 골라주세요', true); break;
-    case 'dfUp': dfAct({ a: 'up', job: d.v as BaseJob }); break;
-    case 'dfGift': dfAct({ a: 'gift', to: d.v!, n: 20 }); break;
-    case 'dfQuit': dfLeave(); render(); break;
-    case 'dfAgain': if (df?.mode === 'multi') { df.phase = 'lobby'; df.st = null; df.result = undefined; render(); } else dfStartSolo(); break;
     case 'authMode': authMode = d.v as 'login' | 'signup'; authErr = ''; render(); break;
     case 'logout': stopSocial(); Cloud.signOut().then(() => { S = null; lastSave = null; screen = 'title'; render(); }); break;
     case 'rankKind': rankKind = d.v as Cloud.RankKind; render(); break;

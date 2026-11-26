@@ -51,8 +51,6 @@ export const COSMETICS: CosItem[] = [
   C('plate', 'silver', '은빛 이름표', 'silver', { price: 300000 }), C('plate', 'royal', '왕실 이름표', 'royal', { price: 1500000 }),
   C('plate', 'gold', '황금 이름표', 'gold', { src: 'ach:3', desc: '업적 점수 450점' }),
   C('plate', 'abyss', '심연 이름표', 'abyss', { src: 'raid:abaddon:normal', desc: '아바돈 처치' }),
-  C('plate', 'fort', '요새 이름표', 'fort', { src: 'def:normal', desc: '랜덤 디펜스 보통 30웨이브' }),
-  C('aura', 'bastion', '수호 성벽 오라', '#e8c070', { src: 'def:hard', desc: '랜덤 디펜스 어려움 30웨이브' }),
   C('plate', 'frost', '서리 이름표', 'frost', { src: 'raid:frost:normal', desc: '니플헤임 처치' }),
   C('plate', 'blood', '핏빛 이름표', 'blood', { src: 'raid:blood:normal', desc: '세레네 처치' }),
   // 등장 효과 (레이드·결투 시작할 때)
@@ -69,10 +67,4 @@ export const TRIM_COLORS = ['#c89b3c', '#ffd95e', '#b4bcc8', '#e85a3a', '#4ac0d8
 export function raidCosmetics(boss: R4BossId, diff: R4Diff): CosItem[] {
   const rank = { normal: 0, hard: 1, hell: 2 }[diff];
   return COSMETICS.filter((c) => { const m = c.src?.match(/^raid:(\w+):(\w+)$/); return !!m && m[1] === boss && { normal: 0, hard: 1, hell: 2 }[m[2] as R4Diff] <= rank; });
-}
-
-/** 랜덤 디펜스 첫 클리어 꾸미기 (난이도 이하 전부) */
-export function defCosmetics(diff: 'easy' | 'normal' | 'hard'): CosItem[] {
-  const rank = { easy: 0, normal: 1, hard: 2 }[diff];
-  return COSMETICS.filter((c) => { const m = c.src?.match(/^def:(\w+)$/); return !!m && ({ easy: 0, normal: 1, hard: 2 } as Record<string, number>)[m[1]] <= rank; });
 }

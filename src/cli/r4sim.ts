@@ -2,7 +2,9 @@
  * 4인 레이드 밸런스: 표준 4인(전사·마법사·궁수·성직자)을 1인 목표 전투력에 맞춰 자동 전투
  *   npx tsx src/cli/r4sim.ts [N] [전투력 비율=1]
  */
-import { Raid4Battle, type R4Member } from '../core/raid4battle';
+import { Raid4Battle, R4_PRESSURE, R4_TUNE, type R4Member } from '../core/raid4battle';
+if (process.env.TUNE) Object.assign(R4_TUNE, JSON.parse(process.env.TUNE));
+if (process.env.PRESS) Object.assign(R4_PRESSURE, JSON.parse(process.env.PRESS));
 import { R4, R4_DIFFS, type R4BossId } from '../data/raid4';
 import { charPower } from '../core/power';
 import { standardParty } from './floorsim';

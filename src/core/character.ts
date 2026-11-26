@@ -15,7 +15,7 @@ export function unlockedSkills(c: Character): string[] {
 
 /** 기본 우선순위: 회복/보호 → 버프 → 광역 → 단일 강공 */
 const PRIORITY = [
-  'heavensGrace', 'grandHeal', 'titanWall', 'aegis', 'sanctuary', 'greatHeal', 'heal', 'manaShield', 'vowOfImmortality', 'taunt', 'beastRoar', 'bless', 'curse', 'ironWall',
+  'heavensGrace', 'grandHeal', 'cleanse', 'titanWall', 'aegis', 'sanctuary', 'greatHeal', 'heal', 'manaShield', 'vowOfImmortality', 'taunt', 'beastRoar', 'bless', 'curse', 'ironWall',
   'deathCurse', 'armyOfDead', 'skeletonLegion', 'summonWolf', 'starfall', 'judgmentDay', 'dragonBreath', 'carnage', 'chainLightning', 'warCry', 'stampede',
   'divineArrow', 'galeShot', 'holyBlade', 'arcaneNova', 'holyJudgment', 'bloodStorm',
   'meteor', 'thunder', 'sweep', 'trap', 'skyArrow', 'vitalShot', 'bloodStrike', 'judgment', 'drainLife',

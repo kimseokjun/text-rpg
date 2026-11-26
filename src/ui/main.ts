@@ -1486,10 +1486,10 @@ function r4UpdateUI() {
       <button class="r4skb atk" data-a="r4Skill" data-v="attack"><b>일반 공격</b><span>MP 0</span></button><button class="r4skb auto" data-a="r4Skill" data-v=""><b>자동</b><span>알아서</span></button></div>` : '');
 }
 /** 4인 레이드 빠른 채팅 */
-const R4_QC_ALL = ['쉴드 걸어주세요', '힐 부탁해요', '그로기! 몰아쳐요', '나이스 커버입니다', '고마워요 🙏', '죄송해요 😅'];
-const R4_QC_BOSS: Record<R4BossId, string[]> = { abaddon: ['제가 기절 걸겠습니다', '제가 침묵 걸겠습니다', '끊기 부탁해요!', '표식 대상 회복해 주세요'], frost: ['회피 준비!', '감옥 부숴주세요!', '감옥 깨러 갑니다', '점프! 점프!'], blood: ['보호막 집중 공격!', '딜 몰아주세요!', '박쥐부터 잡아요', '흡혈 조심!'] };
+const R4_QC_ALL = ['쉴드 걸어주세요', '힐 부탁해요', '정화 부탁해요!', '그로기! 몰아쳐요', '나이스 커버입니다', '고마워요 🙏', '죄송해요 😅'];
+const R4_QC_BOSS: Record<R4BossId, string[]> = { abaddon: ['제가 기절 걸겠습니다', '제가 침묵 걸겠습니다', '끊기 부탁해요!', '표식 대상 회복해 주세요'], frost: ['회피 준비!', '감옥 부숴주세요!', '정화 부탁해요!', '점프! 점프!'], blood: ['보호막 집중 공격!', '딜 몰아주세요!', '박쥐부터 잡아요', '흡혈 조심!'] };
 const R4_QC = [...new Set([...Object.values(R4_QC_BOSS).flat(), ...R4_QC_ALL])];
-const r4QcList = (b: R4BossId) => [...R4_QC_BOSS[b], ...R4_QC_ALL];
+const r4QcList = (b: R4BossId) => [...new Set([...R4_QC_BOSS[b], ...R4_QC_ALL])];
 let r4QcAt = 0;
 function r4Qc(i: number) {
   const text = R4_QC[i];
@@ -1649,6 +1649,7 @@ function viewRaid4() {
         <ul style="margin:6px 0 0;padding-left:18px;line-height:1.7">
           ${R4_BOSSES[r4BossOfWeek()].tips.map((x) => `<li>${x}</li>`).join('')}
           <li>HP 70%·40%·15%에서 페이즈가 바뀌며 바로 전멸기, 15% 아래에선 <b>광폭화</b>(공격 +30%)</li>
+          <li><b>보스의 압박</b>: 파티가 받는 치유 -40% · <b>12라운드부터 분노</b>(매 라운드 공격 +10%) — 오래 끌수록 위험해요</li>
           <li>전투 중 <b>빠른 채팅</b>으로 "제가 기절 걸겠습니다" 같은 신호를 주고받을 수 있어요</li>
         </ul></div>
       <div class="panel row" style="gap:16px;flex-wrap:wrap">${essLine}<span class="small mute">신화의 정수로 제작소에서 <b>신화 세트</b>를 만들어요</span></div>

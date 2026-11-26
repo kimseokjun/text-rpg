@@ -975,6 +975,13 @@ function viewRefinery() {
   </div>`;
 }
 
+/** 이용권 사용 버튼 (가지고 있을 때만) */
+function ticketBtn(id: G.TicketId, label = '') {
+  const n = G.ticketCount(S!, id);
+  if (!n) return '';
+  const tk = G.TICKETS[id];
+  return `<button class="btn ghost sm tkuse" data-a="ticketUse" data-v="${id}" title="${esc(tk.desc)}">${tk.icon} ${label || tk.name} 사용 (${n})</button>`;
+}
 function viewShop() {
   const s = S!;
   const pots = G.potionsAvailable(s).map((p) => `<div class="item"><div><span class="eico">${potionIcon(p.id)}</span><span class="iname">${esc(p.name)}</span> <span class="small mute">보유 ${s.potions[p.id] ?? 0}</span><div class="istat">${MOD_LABEL[p.mod.key] ?? (p.mod.key === 'goldGain' ? '골드 획득' : p.mod.key)} +${p.mod.value}${p.mod.kind === 'pct' ? '%' : '%p'} · 이번 탐험 동안 파티 전체</div></div><div class="row buyn">${[1, 10, 100].map((n) => `<button class="btn sm ${n > 1 ? 'ghost' : ''}" data-a="buyPotion" data-id="${p.id}" data-n="${n}" ${s.gold < p.price * n ? 'disabled' : ''}>${n > 1 ? `+${n} · ` : ''}${fmt(p.price * n)}G</button>`).join('')}</div></div>`).join('');
@@ -992,6 +999,10 @@ function viewShop() {
         <div class="row">${[1, 3].map((n) => `<button class="btn sm" data-a="buyPack" data-n="${n}" ${pk && s.gold >= pp * Math.min(n, pk) ? '' : 'disabled'}>${n}개 ${fmt(pp * Math.min(n, Math.max(1, pk)))}G</button>`).join('')}</div></div>
       <div class="item"><div><span class="iname">강화석</span> <span class="small mute">보유 ${s.stones} · 오늘 남은 재고 ${s.stoneStock}개</span><div class="istat">개당 ${fmt(sp)}G</div></div>
         <div class="row">${[1, 5, 10].map((n) => `<button class="btn sm" data-a="buyStones" data-n="${n}" ${s.stoneStock ? '' : 'disabled'}>${n}개 ${fmt(sp * Math.min(n, Math.max(1, s.stoneStock)))}G</button>`).join('')}</div></div>
+    </section>
+    <section class="grid" style="margin-top:16px"><h3>이용권 <span class="small mute">사두고 필요할 때 써요 · 하루 구매 수 제한 (오전 4시 초기화)</span></h3>
+      <div class="items">${(Object.keys(G.TICKETS) as G.TicketId[]).map((id) => { const tk = G.TICKETS[id]; const left = tk.perDay - G.ticketBoughtToday(s, id); return `<div class="item"><div><span class="iname">${tk.icon} ${esc(tk.name)}</span> <span class="small mute">보유 ${G.ticketCount(s, id)}${tk.perDay < 99 ? ` · 오늘 ${left}/${tk.perDay}장 남음` : ''}</span><div class="istat">${esc(tk.desc)}</div></div>
+        <div class="row"><button class="btn sm" data-a="ticketBuy" data-v="${id}" ${left > 0 && s.gold >= tk.price ? '' : 'disabled'}>${fmt(tk.price)}G</button></div></div>`; }).join('')}</div>
     </section>
     <div class="cols" style="margin-top:16px">
       <section class="grid"><h3>버프 물약</h3><div class="items">${pots}
@@ -1143,7 +1154,7 @@ function viewRaid() {
         <p class="small mute" style="margin:6px 0 0">도전할 때마다 가한 피해만큼 골드·제련석·벨리알의 파편도 받아요. 한 번에 ${RAID_ROUNDS}라운드, 파티가 쓰러져도 넣은 피해는 남아요.</p>
       </div>
       <div class="panel">
-        <h3>도전 <span class="small mute">오늘 ${G.raidLeft(s)}/${RAID_LIMIT} · 오전 4시 초기화</span></h3>
+        <h3>도전 <span class="small mute">오늘 ${G.raidLeft(s)}/${RAID_LIMIT} · 오전 4시 초기화</span> ${G.raidLeft(s) < RAID_LIMIT ? ticketBtn('raid', '+1') : ''}</h3>
         <p class="small">파티 전투력 ${fmt(G.statePower(s))} · 펫 ${G.activePet(s) ? esc(PET_BY_ID[G.activePet(s)!.kind].name) : '없음'}</p>
         <h3 style="margin-top:10px">버프 물약 <span class="small mute">최대 ${MAX_POTIONS}종</span></h3>
         <div class="pots">${owned.map((p) => `<button class="pot ${gatePotions.includes(p.id) ? 'on' : ''}" data-a="pickPotion" data-id="${p.id}"><span class="row" style="gap:4px">${potionIcon(p.id, 24)}${esc(p.name)}</span><span class="small mute">×${s.potions[p.id]}</span></button>`).join('') || '<p class="small mute">물약이 없어요.</p>'}</div>
@@ -1490,9 +1501,10 @@ function viewRaid4() {
           <li>전투 중 <b>빠른 채팅</b>으로 "제가 기절 걸겠습니다" 같은 신호를 주고받을 수 있어요</li>
         </ul></div>
       <div class="panel row" style="gap:16px;flex-wrap:wrap">${essLine}<span class="small mute">신화의 정수로 제작소에서 <b>신화 세트</b>를 만들어요</span></div>
+      ${s.r4?.date === G.r4TodayKey() && s.r4.done.length ? `<div class="row" style="justify-content:flex-end;margin-bottom:6px">${ticketBtn('r4', '도전권 +1')}</div>` : ''}
       <div class="r4diffs">${R4_DIFFS.map((d) => { const r = r4Reward(d, 1, true); return `<div class="panel r4d ${d}"><h3 style="margin:0">${R4[d].name}</h3><div class="small">권장 전투력 <b class="cp">1인 ${fmt(R4[d].power)}</b></div>
         <div class="small mute">처치: 정수 ${r.ess} · 핵 ${r.cores} · 룬석 ${r.runes} · ${fmt(r.gold)}G${R4[d].mythChance ? ` · 신화 장비 ${R4[d].mythChance}%` : ''}</div>
-        <div class="small ${G.r4Claimed(s, d) ? 'mute' : ''}">${G.r4Claimed(s, d) ? '오늘 보상 받음' : '오늘 보상 가능'}</div>
+        <div class="small ${G.r4Claimed(s, d) ? 'mute' : ''}">${G.r4Claimed(s, d) ? '오늘 보상 받음' : s.r4?.date === G.r4TodayKey() && s.r4.done.includes(d) ? `도전권으로 한 번 더 가능 (${s.r4.bonus})` : '오늘 보상 가능'}</div>
         <button class="btn sm" data-a="r4Create" data-v="${d}">${R4[d].name} 방 만들기</button></div>`; }).join('')}</div>
       <form class="panel row" data-form="r4join" style="gap:8px;flex-wrap:wrap"><b>코드로 참가</b><input id="r4code" maxlength="6" placeholder="방 코드 6자리" value="${esc(r4CodeDraft)}" autocomplete="off" style="width:140px;text-transform:uppercase"><button class="btn sm" type="submit">참가</button></form>
     </div>`;
@@ -1678,13 +1690,21 @@ function viewWorld() {
     <div class="panel raidboss"><div class="raidpic">${monsterSprite(info.monster, { size: 128, boss: true, tags: ['demon'] })}</div>
       <div style="flex:1;min-width:0"><h3 style="margin:0">${esc(info.name)}</h3><p class="small mute" style="margin:2px 0 8px">${esc(info.form)} · ${esc(info.tip)}</p>
       ${wbHpBar(b)}
-      <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn" data-a="wbAttack" ${left && !wbBusy && !b?.killed_at ? '' : 'disabled'}>${wbBusy ? '전투 중…' : `도전 (오늘 ${left}/${WB_LIMIT})`}</button><button class="btn ghost sm" data-a="wbRefresh">새로고침</button></div>
+      <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn" data-a="wbAttack" ${left && !wbBusy && !b?.killed_at ? '' : 'disabled'}>${wbBusy ? '전투 중…' : `도전 (오늘 ${left}/${WB_LIMIT})`}</button><button class="btn ghost sm" data-a="wbRefresh">새로고침</button>${(wb?.used ?? 0) > 0 ? ticketBtn('wb', '+1') : ''}</div>
       <p class="small mute" style="margin:6px 0 0">지금 출전 파티·장비·펫으로 싸워요 (도전할 때 서버에 저장 후 계산).</p></div></div>
     ${last}
     <div class="panel"><h3 style="margin-top:0">기여 순위 <span class="small mute">내 기여 ${wb?.mine ? `${fmt(wb.mine.total)} · ${wb.myRank}위` : '없음'}</span></h3>
       <ol class="ranklist">${top || `<p class="mute">${wbLoading ? '불러오는 중…' : '아직 아무도 도전하지 않았어요.'}</p>`}</ol>
       <p class="small mute">보상: 1위 핵 300·전설 알 / 상위 10% 핵 200·영웅 알 / 30% 핵 140 / 60% 핵 90 / 참여 핵 50 (+제련석·골드)</p></div>
   </div>`;
+}
+async function wbTicket() {
+  if (!S || G.ticketCount(S, 'wb') <= 0) return;
+  const e = await Cloud.wbUseTicket();
+  if (e) { toast(e, true); return; }
+  G.spendWbTicket(S);
+  commit({ ok: true, msg: '🐉 월드보스 도전권 사용! 도전 +1' });
+  loadWB(true);
 }
 async function wbAttack() {
   if (wbBusy) return;
@@ -2164,7 +2184,7 @@ function viewDaily() {
     </div>`;
   }).join('');
   return `<div class="wrap">${backBtn()}
-    <h2>일일 던전</h2>
+    <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><h2>일일 던전</h2>${ticketBtn('daily')}</div>
     <p class="mute">던전마다 하루 ${DAILY_LIMIT}번 (한국 시간 오전 4시 초기화). 단계마다 개방 조건(🔒)이 표시돼 있고, 한 번 클리어한 단계는 <b>소탕</b>으로 바로 보상을 받을 수 있어요.</p>
     <div class="dailies">${cards}</div>
   </div>`;
@@ -2752,6 +2772,7 @@ function dailyResultPanel(ref: { id: string; stage: number; won: boolean }) {
 }
 
 // ───────── 모달 ─────────
+let confirmJobReset: string | null = null;
 let charTab: 'equip' | 'skill' | 'trait' = 'equip';
 let charSlot: EquipSlot | null = null;
 const JOB_EMBLEM = (c: Character) => ({ warrior: '⚔️', mage: '🔮', archer: '🏹', priest: '✨' } as Record<string, string>)[JOBS[c.jobId].base] ?? '';
@@ -2822,6 +2843,7 @@ function viewCharModal(uid: string) {
     <div class="sec"><h3>패시브</h3><div class="slist">${passives}</div></div>` : `
     <p class="small" style="margin:0 0 10px">${esc(JOBS[c.jobId].desc)}</p>
     ${adv}
+    ${JOBS[c.jobId].tier > 1 ? `<div class="sec"><div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap"><span class="small mute">🔄 전직 초기화권(보유 ${G.ticketCount(S!, 'jobReset')}): 1차 직업으로 돌아가 다른 갈래로 다시 전직 · 레벨·장비 유지</span>${G.ticketCount(S!, 'jobReset') ? (confirmJobReset === c.uid ? `<span class="row" style="gap:6px"><button class="btn danger sm" data-a="jobReset" data-uid="${esc(c.uid)}">정말 초기화</button><button class="btn ghost sm" data-a="jobResetNo">취소</button></span>` : `<button class="btn ghost sm" data-a="jobResetAsk" data-uid="${esc(c.uid)}">전직 초기화</button>`) : '<button class="btn ghost sm" data-a="go" data-to="shop">상점에서 구매</button>'}</div></div>` : ''}
     <div class="sec"><h3>특성</h3>${traits}</div>`}
     <div class="row" style="margin-top:16px">
       <button class="btn ${inParty ? 'ghost' : ''}" data-a="toggleParty" data-uid="${esc(uid)}">${inParty ? '파티에서 빼기' : '파티에 넣기'}</button>
@@ -3047,6 +3069,11 @@ app.addEventListener('click', (ev) => {
     case 'potTableClose': potTab.open = false; potTab.uid = ''; render(); break;
     case 'potSlot': potTab.slot = d.v as PotSlot; potTab.uid = ''; render(); break;
     case 'potAdd': potTab.add = d.v === '1'; render(); break;
+    case 'ticketBuy': commit(G.buyTicket(s!, d.v as G.TicketId)); break;
+    case 'ticketUse': if (d.v === 'wb') wbTicket(); else commit(G.useTicket(s!, d.v as 'daily')); break;
+    case 'jobResetAsk': confirmJobReset = d.uid ?? null; render(); break;
+    case 'jobResetNo': confirmJobReset = null; render(); break;
+    case 'jobReset': confirmJobReset = null; commit(G.resetJob(s!, d.uid!)); break;
     case 'achClaim': commit(G.claimAch(s!, d.v)); break;
     case 'achMs': commit(G.claimAchMs(s!)); break;
     case 'achCat': achCat = d.v as typeof achCat; render(); break;

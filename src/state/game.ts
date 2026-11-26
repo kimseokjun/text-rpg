@@ -46,7 +46,10 @@ export interface GameState {
   /** 신화의 정수: 4인 레이드 보상, 신화 장비 재료 */
   mythEss?: number;
   /** 4인 레이드: 날짜(KST)별 난이도 보상 수령 */
-  r4?: { date: string; done: string[] };
+  r4?: { date: string; done: string[]; bonus?: number };
+  /** 이용권 (전직 초기화·횟수 +1) 보유 수, 오늘 산 수 */
+  tickets?: Partial<Record<TicketId, number>>;
+  ticketBuy?: { date: string; n: Partial<Record<TicketId, number>> };
   /** 고대 룬석: 에디셔널 잠재 재료 */
   runes?: number;
   /** 업적: 받은 단계 수, 받은 점수 마일스톤 수, 장착 칭호 */
@@ -1239,13 +1242,15 @@ export function awakenCard(s: GameState, id: string): Result {
 }
 
 // ───────── 4인 레이드 보상 (난이도마다 하루 1번) ─────────
-export const r4Claimed = (s: GameState, diff: R4Diff) => s.r4?.date === r4Today() && s.r4.done.includes(diff);
+export const r4Claimed = (s: GameState, diff: R4Diff) => s.r4?.date === r4Today() && s.r4.done.includes(diff) && !(s.r4.bonus ?? 0);
 export function claimR4(s: GameState, diff: R4Diff, frac: number, win: boolean): string[] {
   if (r4Claimed(s, diff)) return [`오늘 ${R4[diff].name} 보상은 이미 받았어요 (오전 4시에 초기화)`];
+  // 이미 받은 난이도면 도전권(+1) 사용
+  if (s.r4?.date === r4Today() && s.r4.done.includes(diff) && (s.r4.bonus ?? 0) > 0) s.r4.bonus = (s.r4.bonus ?? 0) - 1;
   bump(s, 'raid4');
   if (win) bump(s, `r4win_${diff}`);
   if (s.r4?.date !== r4Today()) s.r4 = { date: r4Today(), done: [] };
-  s.r4!.done.push(diff);
+  if (!s.r4!.done.includes(diff)) s.r4!.done.push(diff);
   const r = r4Reward(diff, frac, win);
   s.mythEss = (s.mythEss ?? 0) + r.ess; s.cores += r.cores; s.runes = (s.runes ?? 0) + r.runes; s.gold += r.gold;
   const lines = [`${win ? '처치 보상' : `도전 보상 (${Math.round(frac * 100)}%)`}: 신화의 정수 ${r.ess} · 군단장의 핵 ${r.cores} · 고대 룬석 ${r.runes} · ${r.gold.toLocaleString('ko-KR')}G`];
@@ -1480,4 +1485,63 @@ export function renamePreset(s: GameState, i: number, name: string): Result {
 export function deletePreset(s: GameState, i: number): Result {
   const list = presetList(s); list[i] = null; s.presets = list;
   return { ok: true, msg: '프리셋을 지웠어요' };
+}
+
+// ───────── 이용권: 전직 초기화 · 횟수 +1 ─────────
+export type TicketId = 'jobReset' | 'daily' | 'raid' | 'r4' | 'wb';
+export const TICKETS: Record<TicketId, { name: string; icon: string; desc: string; price: number; perDay: number }> = {
+  jobReset: { name: '전직 초기화권', icon: '🔄', desc: '단원 하나를 1차 직업으로 되돌려요. 레벨·장비·각성·초월은 그대로라 바로 다른 갈래로 다시 전직할 수 있어요 (캐릭터 창 「특성·전직」에서 사용)', price: 3000000, perDay: 99 },
+  daily: { name: '일일 던전 초기화권', icon: '🗝️', desc: '일일 던전 전체 횟수를 다시 3회로', price: 500000, perDay: 2 },
+  raid: { name: '레이드 도전권', icon: '⚔️', desc: '개인 레이드 도전 +1회', price: 800000, perDay: 3 },
+  r4: { name: '4인 레이드 도전권', icon: '🛡️', desc: '4인 레이드 보상 +1회 (오늘 이미 받은 난이도도 한 번 더)', price: 1500000, perDay: 1 },
+  wb: { name: '월드보스 도전권', icon: '🐉', desc: '월드보스 도전 +1회 (오늘 도전을 한 번 이상 한 뒤 사용 · 하루 2회까지)', price: 1000000, perDay: 2 },
+};
+export const r4TodayKey = () => r4Today();
+export const ticketCount = (s: GameState, id: TicketId) => s.tickets?.[id] ?? 0;
+export function ticketBoughtToday(s: GameState, id: TicketId) { return s.ticketBuy?.date === kstDate() ? s.ticketBuy.n[id] ?? 0 : 0; }
+export function buyTicket(s: GameState, id: TicketId, n = 1): Result {
+  const t = TICKETS[id];
+  if (!t) return fail('없는 이용권이에요');
+  const left = t.perDay - ticketBoughtToday(s, id);
+  if (left <= 0) return fail(`오늘은 더 살 수 없어요 (하루 ${t.perDay}장)`);
+  n = Math.max(1, Math.min(n, left));
+  if (s.gold < t.price * n) return fail('골드가 부족해요');
+  s.gold -= t.price * n;
+  s.tickets = { ...s.tickets, [id]: ticketCount(s, id) + n };
+  if (s.ticketBuy?.date !== kstDate()) s.ticketBuy = { date: kstDate(), n: {} };
+  s.ticketBuy.n[id] = (s.ticketBuy.n[id] ?? 0) + n;
+  return { ok: true, msg: `${t.icon} ${t.name} ${n}장 구매 (보유 ${ticketCount(s, id)})` };
+}
+function spendTicket(s: GameState, id: TicketId) { s.tickets = { ...s.tickets, [id]: ticketCount(s, id) - 1 }; }
+/** 횟수 +1 이용권 사용 (월드보스는 서버 확인 뒤 spendWbTicket) */
+export function useTicket(s: GameState, id: Exclude<TicketId, 'jobReset' | 'wb'>): Result {
+  if (ticketCount(s, id) <= 0) return fail('이용권이 없어요');
+  if (id === 'daily') {
+    const d = dailyState(s);
+    if (!Object.values(d.used).some((v) => v > 0)) return fail('아직 오늘 일일 던전을 하지 않았어요');
+    d.used = {};
+  } else if (id === 'raid') {
+    const r = raidState(s);
+    if (r.used <= 0) return fail('아직 오늘 레이드를 하지 않았어요');
+    r.used--;
+  } else if (id === 'r4') {
+    if (s.r4?.date !== r4Today() || !s.r4.done.length) return fail('오늘 받은 4인 레이드 보상이 없어요');
+    s.r4.bonus = (s.r4.bonus ?? 0) + 1;
+  }
+  spendTicket(s, id);
+  return { ok: true, msg: `${TICKETS[id].icon} ${TICKETS[id].name} 사용! ${TICKETS[id].desc}` };
+}
+export function spendWbTicket(s: GameState) { spendTicket(s, 'wb'); }
+/** 전직 초기화: 1차 직업으로 (레벨·장비 유지) */
+export function resetJob(s: GameState, uid: string): Result {
+  const c = byUid(s, uid);
+  if (!c) return fail('없는 단원이에요');
+  if (ticketCount(s, 'jobReset') <= 0) return fail('전직 초기화권이 없어요');
+  const base = JOBS[c.jobId].base as JobId;
+  if (c.jobId === base) return fail('이미 1차 직업이에요');
+  const from = JOBS[c.jobId].name;
+  c.jobId = base;
+  syncSkillSlots(c);
+  spendTicket(s, 'jobReset');
+  return { ok: true, msg: `${c.name}: ${from} → ${JOBS[base].name}. 바로 다른 갈래로 다시 전직할 수 있어요` };
 }

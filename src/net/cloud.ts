@@ -180,6 +180,13 @@ export async function acceptFriend(id: number) { if (sb) await sb.from('friendsh
 export async function removeFriend(id: number) { if (sb) await sb.from('friendships').delete().eq('id', id); }
 
 // ───────── 월드보스 ─────────
+/** 도전권: 서버가 하루 2번까지 오늘 도전 1회를 되돌려줌 */
+export async function wbUseTicket(): Promise<string | null> {
+  if (!sb || !session) return '로그인이 필요해요';
+  const { data, error } = await sb.rpc('wb_use_ticket');
+  if (error) return /limit/.test(error.message) ? '오늘은 도전권을 더 쓸 수 없어요 (하루 2회)' : /no hit/.test(error.message) ? '오늘 도전을 한 번 이상 한 뒤 쓸 수 있어요' : error.message;
+  return data === false ? '사용하지 못했어요' : null;
+}
 export interface WBBoss { season: number; max_hp: number; hp: number; started_at: string; killed_at: string | null; killer: string | null }
 export interface WBRank { user_id: string; username: string; total: number; hits: number }
 export async function wbStatus(season: number, today: string) {

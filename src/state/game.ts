@@ -1492,15 +1492,19 @@ export function achReadyCount(s: GameState) {
 }
 
 // ───────── 편성 프리셋 (파티·열·대상·펫·덱·칭호, 장비 제외) ─────────
-export interface Preset { name: string; party: string[]; tac: Record<string, { row?: Row; target?: TargetPref }>; pet: string | null; deck: string[]; title?: string }
+export interface Preset { name: string; party: string[]; tac: Record<string, { row?: Row; target?: TargetPref }>; pet: string | null; deck: string[]; title?: string; /** 단원 uid → 칸 → 장비 uid */ gear?: Record<string, Partial<Record<EquipSlot, string>>> }
 export const PRESET_N = 5;
 export const presetList = (s: GameState) => Array.from({ length: PRESET_N }, (_, i) => s.presets?.[i] ?? null);
 export function savePreset(s: GameState, i: number): Result {
   if (i < 0 || i >= PRESET_N) return fail('없는 칸이에요');
   const list = presetList(s);
   const tac: Preset['tac'] = {};
-  for (const c of partyChars(s)) tac[c.uid] = { row: c.row, target: c.target };
-  list[i] = { name: list[i]?.name ?? `프리셋 ${i + 1}`, party: [...s.party], tac, pet: s.activePet, deck: [...(s.deck ?? [])], title: s.title };
+  const gear: NonNullable<Preset['gear']> = {};
+  for (const c of partyChars(s)) {
+    tac[c.uid] = { row: c.row, target: c.target };
+    gear[c.uid] = Object.fromEntries(Object.entries(c.equipment).filter(([, e]) => e).map(([k, e]) => [k, e!.uid]));
+  }
+  list[i] = { name: list[i]?.name ?? `프리셋 ${i + 1}`, party: [...s.party], tac, pet: s.activePet, deck: [...(s.deck ?? [])], title: s.title, gear };
   s.presets = list;
   return { ok: true, msg: `「${list[i]!.name}」에 지금 편성을 저장했어요` };
 }
@@ -1513,12 +1517,25 @@ export function loadPreset(s: GameState, i: number): Result {
   if (party.length < p.party.length) miss.push(`단원 ${p.party.length - party.length}명`);
   s.party = party.slice(0, PARTY_MAX);
   for (const c of partyChars(s)) { const tc = p.tac[c.uid]; if (tc) { c.row = tc.row; c.target = tc.target; } }
+  // 장비: 가방에 있으면 끼우고, 다른 단원이 끼고 있으면 벗겨서 옮김 (저장 때 빈 칸은 그대로)
+  let moved = 0, gone = 0, cant = 0;
+  for (const c of partyChars(s)) {
+    for (const [slot, eu] of Object.entries(p.gear?.[c.uid] ?? {}) as [EquipSlot, string][]) {
+      const f = findEquip(s, eu);
+      if (!f) { gone++; continue; }
+      if (f.owner === c && c.equipment[slot] === f.e) continue;
+      if (f.owner && f.owner !== c) moved++;
+      if (!equipTo(s, eu, c.uid, slot).ok) cant++;
+    }
+  }
+  if (gone) miss.push(`장비 ${gone}개`);
+  if (cant) miss.push(`못 끼는 장비 ${cant}개`);
   if (p.pet) { if (s.pets.some((x) => x.uid === p.pet)) s.activePet = p.pet; else miss.push('펫'); }
   const deck = p.deck.filter((id) => s.cards?.[id]);
   if (deck.length < p.deck.length) miss.push(`카드 ${p.deck.length - deck.length}장`);
   s.deck = deck;
   if (p.title && unlockedTitles(s).includes(p.title)) s.title = p.title; else if (!p.title) s.title = undefined;
-  return { ok: true, msg: `「${p.name}」 불러옴${miss.length ? ` (없어서 건너뜀: ${miss.join(', ')})` : ''}` };
+  return { ok: true, msg: `「${p.name}」 불러옴${moved ? ` · 다른 단원에게서 가져온 장비 ${moved}개` : ''}${miss.length ? ` (건너뜀: ${miss.join(', ')})` : ''}` };
 }
 export function renamePreset(s: GameState, i: number, name: string): Result {
   const list = presetList(s);

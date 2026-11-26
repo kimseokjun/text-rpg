@@ -8,6 +8,8 @@
 | 대기 브랜치 일괄 배포 (2D 전투 무대, 4인 레이드 심연, 프리셋 장비, 스킬 이펙트) | Claude Code | `src/ui/stage2d.ts`, `src/ui/skillfx.ts`, `src/ui/r4stage.ts`, `src/ui/main.ts`, `src/state/game.ts`, `src/data/raid4.ts`, `src/data/cosmetics.ts`, `src/data/achievements.ts`, `src/ui/style.css`, 공지 migration | 완료 | `claude/deploy-pending` (#2) |
 | Claude 작업 시작·재개 규칙 문서 (Codex 이미지 확인) | Claude Code | `docs/CLAUDE_RESUME.md`, `CLAUDE.md` | 완료 | `claude/resume-rules` (#3) |
 | 2D 전투 무대 전열·후열 배치 (일반 전투·결투·4인 레이드) | Claude Code | `src/ui/stage2d.ts`, `src/ui/r4stage.ts`, `src/ui/main.ts`, `src/core/combat.ts`, `src/core/types.ts`, `src/core/raid4battle.ts` | 완료 | `claude/stage-rows` (#4) |
+| 4인 레이드 무대에 전투 그림 적용 | Claude Code | `src/ui/main.ts`(`unitIcon`), `src/ui/r4stage.ts`, `src/ui/stage2d.ts`, `src/ui/style.css` | 검토 대기 | `claude/r4-art` |
+| 일반 전투 무대 스킬 이펙트 (레이드 이펙트 공용화) | Claude Code | `src/ui/skillfx.ts`, `src/ui/r4stage.ts`, `src/ui/stage2d.ts`, `src/ui/main.ts` | 진행 중 | `claude/stage-fx` |
 | 랜덤 디펜스 디자인 재작업 (11/26 배포 후 롤백) | Claude Code | `src/core/defense.ts`, `src/ui/defense.ts` | 대기 | `feat/defense` |
 | 전투 그림 스펙·요청 목록 작성 | Claude Code | `docs/ART_SPEC.md`, `docs/art/`, `docs/CLAUDE_RESUME.md` | 완료 | `claude/art-spec` (#5) |
 | 전투 그림 제작·업로드 (1단계: 기본 직업 4 + 지하묘지 몬스터 6) | Codex | `public/sprites/` (그림 파일만) | 완료 | `codex/art-1` (#6, `claude/art-apply-1`에 포함해 병합) |

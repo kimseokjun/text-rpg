@@ -1652,7 +1652,17 @@ function r4Finish(win: boolean, frac: number) {
   r4Track();
   commit();
 }
-const unitIcon = (u: { jobId?: string; name: string; boss?: boolean; mid?: string; cos?: Character['cos'] }, size: number) => u.boss ? monsterSprite(u.mid ?? 'abyssKing', { size, boss: true, tags: ['demon'] }) : u.jobId ? charSprite(JOBS[u.jobId as JobId].base, u.name.replace(/\(.+\)$/, ''), JOBS[u.jobId as JobId].tier, { size, cape: u.cos?.cape ? COS_BY_ID[u.cos.cape]?.value : undefined }) : monsterSprite(u.mid ?? 'voidWraith', { size, tags: ['demon'] });
+/** 4인 레이드 무대 아이콘: 그림이 있으면 그림(파티는 오른쪽을 보게 뒤집음), 없으면 도트. size = 예전 도트 크기 */
+const unitIcon = (u: { jobId?: string; name: string; boss?: boolean; mid?: string; owner?: string; cos?: Character['cos'] }, size: number) => {
+  // 순서 막대 같은 작은 아이콘(36px 이하)은 기존 도트가 더 잘 보임
+  const face = (img: string | null, flip: boolean) => (img && size > 36 ? `<span class="r4face ${flip ? 'flip' : ''}">${img}</span>` : null);
+  if (u.boss) return face(spriteImg(`mon/${u.mid ?? 'abyssKing'}`, Math.round(size * 1.45)), false) ?? monsterSprite(u.mid ?? 'abyssKing', { size, boss: true, tags: ['demon'] });
+  if (u.jobId) {
+    const j = u.jobId as JobId, h = Math.round(size * 1.7);
+    return face(spriteImg(`job/${j}`, h) ?? spriteImg(`job/${JOBS[j].base}`, h), true) ?? charSprite(JOBS[j].base, u.name.replace(/\(.+\)$/, ''), JOBS[j].tier, { size, cape: u.cos?.cape ? COS_BY_ID[u.cos.cape]?.value : undefined });
+  }
+  return face(spriteImg(`mon/${u.mid ?? 'voidWraith'}`, Math.round(size * 1.8)), false) ?? monsterSprite(u.mid ?? 'voidWraith', { size, tags: ['demon'] });
+};
 function viewRaid4() {
   const s = S!;
   if (!CLOUD || !Cloud.session) return `<div class="wrap">${backBtn()}<h2>4인 레이드</h2><p class="mute">로그인해야 할 수 있어요.</p></div>`;

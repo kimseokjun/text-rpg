@@ -442,6 +442,9 @@ async function run(events: BattleEvent[], fast: boolean) {
         aoe = seg.filter((x) => x.t === 'damage').length;
         targets = [...new Set(seg.filter((x) => x.t === 'damage').map((x) => elOf.get((x as { to: string }).to)).filter(Boolean) as HTMLElement[])];
         if (actor) {
+          // 공격 자세 그림이 있으면 이 공격 동안 바꿔 보임
+          const face = actor.querySelector<HTMLElement>('.r4face');
+          if (face?.querySelector('.s2atk')) { face.classList.add('atking'); setTimeout(() => face.classList.remove('atking'), fast ? 300 : 650); }
           if (e.t === 'skill') { if (spec) { const c = center(actor); const r = colored(fxEl('castring', c.x, c.y + 26), spec); r.style.setProperty('--c2', spec.c2); void anim(r, [{ transform: 'translate(-50%,-50%) scale(.4)', opacity: 0.9 }, { transform: 'translate(-50%,-50%) scale(1.1)', opacity: 0 }], 500); } else cast(actor, kind); showSkillName(actor, e.skill, kind, spec?.c2); }
           if (boss && aoe >= 3) bossFlash();
           if (spec && SELF[spec.style]) await selfFx(spec, actor, fast);

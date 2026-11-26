@@ -16,9 +16,8 @@ export interface PlazaOpts {
 interface P { id: string; name: string; av?: AvatarState; title?: string | null; x: number; y: number; tx: number; ty: number; f: 1 | -1; moving: boolean; el: HTMLElement; seen: number }
 
 export const PW = 100, PH = 62.5;
-export const DOORS = [
-  { x: 14, to: 'guild', name: '길드' }, { x: 34, to: 'smith', name: '대장간' }, { x: 66, to: 'raid4', name: '4인 레이드' }, { x: 86, to: 'shop', name: '잡화점' },
-];
+/** 광장 문: 가운데 성문 하나 → 원래 마을 화면 */
+export const DOORS = [{ x: 50, to: 'town', name: '마을로', label: '마을로 나가기' }];
 const FOUNTAIN = { x: 50, y: 36, r: 7.5 };
 const TREES = [{ x: 6, y: 30 }, { x: 94, y: 30 }, { x: 8, y: 54 }, { x: 92, y: 54 }, { x: 26, y: 50 }, { x: 74, y: 50 }];
 const WALL_Y = 17; // 건물 앞 (이보다 위로 못 감)
@@ -31,19 +30,21 @@ function blocked(x: number, y: number) {
 }
 
 let BG = '';
-function background() {
+export function background() {
   if (BG) return BG;
   const r = (s: number) => { const x = Math.sin(s * 9301 + 49297) * 233280; return x - Math.floor(x); };
   const stones = Array.from({ length: 140 }, (_, i) => `<rect x="${(r(i) * 200).toFixed(1)}" y="${(36 + r(i + 500) * 89).toFixed(1)}" width="${(2 + r(i + 900) * 4).toFixed(1)}" height="${(1 + r(i + 1300) * 1.5).toFixed(1)}" rx=".5" fill="#6a5a6a" opacity=".45"/>`).join('');
-  const bld = (x: number, w: number, roof: string, wall: string, sign: string, door: string) => `
-    <rect x="${x}" y="6" width="${w}" height="30" fill="${wall}"/><polygon points="${x - 3},8 ${x + w / 2},-4 ${x + w + 3},8" fill="${roof}"/>
-    <rect x="${x + w / 2 - 5}" y="20" width="10" height="16" rx="5" fill="${door}"/><rect x="${x + 4}" y="12" width="7" height="6" fill="#ffd95e" opacity=".75"/><rect x="${x + w - 11}" y="12" width="7" height="6" fill="#ffd95e" opacity=".75"/>
-    <rect x="${x + w / 2 - 11}" y="8.5" width="22" height="6" rx="1.5" fill="#3a2414"/><text x="${x + w / 2}" y="13.2" font-size="4.2" fill="#ffe9a8" text-anchor="middle" font-family="sans-serif" font-weight="700">${sign}</text>`;
   const tree = (x: number, y: number) => `<ellipse cx="${x * 2}" cy="${y * 2 + 3}" rx="5" ry="2" fill="#0004"/><rect x="${x * 2 - 1}" y="${y * 2 - 4}" width="2" height="6" fill="#4a2e1a"/><circle cx="${x * 2}" cy="${y * 2 - 8}" r="6" fill="#2f5a3a"/><circle cx="${x * 2 - 2}" cy="${y * 2 - 10}" r="3" fill="#3f7a4a"/>`;
   BG = `<svg class="pzbg" viewBox="0 0 200 125" preserveAspectRatio="none" aria-hidden="true">
     <rect width="200" height="125" fill="#4a3e4c"/>${stones}
     <rect y="0" width="200" height="36" fill="#2a2030"/>
-    ${bld(12, 32, '#6a2a2a', '#8a6a4a', '길드', '#3a2414')}${bld(52, 32, '#3a3a4a', '#6a6a72', '대장간', '#2a2420')}${bld(116, 32, '#3a1a5a', '#4a3a5a', '레이드', '#120818')}${bld(156, 32, '#2a5a3a', '#8a7a5a', '잡화점', '#3a2414')}
+    <rect y="14" width="200" height="22" fill="#5a4e5a"/>${Array.from({ length: 25 }, (_, i) => `<rect x="${i * 8 + 1}" y="10" width="5" height="5" fill="#5a4e5a"/>`).join('')}
+    <rect y="22" width="200" height="1" fill="#00000030"/><rect y="29" width="200" height="1" fill="#00000030"/>
+    <rect x="84" y="4" width="32" height="32" fill="#6a5e6a"/>${Array.from({ length: 4 }, (_, i) => `<rect x="${84 + i * 8 + 1}" y="0" width="5" height="5" fill="#6a5e6a"/>`).join('')}
+    <rect x="90" y="16" width="20" height="20" rx="10" fill="#1a1222"/><rect x="90" y="26" width="20" height="10" fill="#1a1222"/>
+    <rect x="91.5" y="17.5" width="17" height="18.5" rx="8.5" fill="#3a2a40" opacity=".6"/>
+    <rect x="89" y="6.5" width="22" height="6" rx="1.5" fill="#3a2414"/><text x="100" y="11.2" font-size="4.2" fill="#ffe9a8" text-anchor="middle" font-family="sans-serif" font-weight="700">마을</text>
+    <rect x="80" y="18" width="3" height="5" fill="#ffb02a" opacity=".85"/><rect x="117" y="18" width="3" height="5" fill="#ffb02a" opacity=".85"/>
     <ellipse cx="100" cy="76" rx="16" ry="9" fill="#5a6a8a"/><ellipse cx="100" cy="74" rx="13" ry="7" fill="#6ab0e0"/><rect x="97" y="58" width="6" height="16" fill="#8a8a9a"/><circle cx="100" cy="57" r="4" fill="#bfe8ff" opacity=".8"/>
     ${TREES.map((t) => tree(t.x, t.y)).join('')}
     <rect x="0" y="36" width="200" height="1.2" fill="#00000055"/>
@@ -54,7 +55,7 @@ function background() {
 export function mountPlaza(o: PlazaOpts) {
   const { host, h } = o;
   host.innerHTML = `<div class="plaza" tabindex="0" aria-label="마을 광장 (방향키·WASD로 이동, 바닥을 누르면 그쪽으로 걸어가요)">
-    ${background()}<div class="pzdoors">${DOORS.map((d) => `<button class="pzdoor" data-to="${d.to}" style="left:${d.x}%;top:${(WALL_Y + 1) / PH * 100}%">${h.esc(d.name)} 들어가기 <kbd>E</kbd></button>`).join('')}</div>
+    ${background()}<div class="pzdoors">${DOORS.map((d) => `<button class="pzdoor" data-to="${d.to}" style="left:${d.x}%;top:${(WALL_Y + 1) / PH * 100}%">${h.esc(d.label)} <kbd>E</kbd></button>`).join('')}</div>
     <div class="pzlayer" id="pzlayer"></div>
     <div class="pzjoy" id="pzjoy" aria-hidden="true"><i></i></div>
   </div>`;

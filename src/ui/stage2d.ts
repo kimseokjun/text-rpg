@@ -89,7 +89,16 @@ export function spriteImg(key: string, h: number): string | null {
   return idle + atk;
 }
 /** 몬스터별 크기 (기본 1). 작은 짐승은 작게 */
-const MON_SIZE: Record<string, number> = { rat: 0.55, bat: 0.62, skeletonKnight: 1.08 };
+const MON_SIZE: Record<string, number> = {
+  // 작은 짐승·벌레·떠다니는 것
+  rat: 0.55, bat: 0.62, crystalBat: 0.62, volcBat: 0.62, vampireBat: 0.62, mosquito: 0.6, imp: 0.7, eggCluster: 0.65,
+  swampToad: 0.7, salamander: 0.6, venomSpider: 0.65, webSpider: 0.7, frostWolf: 0.75, hellhound: 0.75, chaosHound: 0.75,
+  spirit: 0.75, iceSpirit: 0.8, coreSpirit: 0.75, chaosEcho: 0.85, wardStone: 0.8, grimoire: 0.75, rotVine: 0.8,
+  kobold: 0.82, bomberKobold: 0.82, lesserDemon: 0.88,
+  // 큰 것
+  skeletonKnight: 1.08, statue: 1.1, caveGolem: 1.15, ironGolem: 1.12, yeti: 1.2, lavaGolem: 1.15, coralGolem: 1.15,
+  siegeGolem: 1.12, gargoyle: 1.1, inkGolem: 1.1, hellTitan: 1.2, nightmare: 1.1,
+};
 export const JOB_SPRITE_H = 116;
 export function monSpriteH(id: string, boss?: boolean, elite?: boolean) {
   return Math.round((boss ? 210 : 108 * (elite ? 1.12 : 1)) * (MON_SIZE[id] ?? 1));

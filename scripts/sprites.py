@@ -4,7 +4,7 @@
 - 기본 자세: 그림이 있는 영역만 잘라 높이 OUT_H px로 줄인다.
 - 공격 자세: 2단계부터는 원본이 기본 자세와 같은 배율이라 같은 비율로 줄이고, 원본 위치 차이(오른쪽·아래 끝)를 ar·ab로 기록한다.
   1단계(LEGACY_FIT)는 공격 자세가 따로 캔버스에 맞춰져 있어서, 높이를 기본의 ATK_RATIO 배로 맞추고 오른쪽 아래에 붙인다.
-사용: python3 scripts/sprites.py
+사용: python3 scripts/sprites.py  (이미 변환한 그림은 원본이 바뀌지 않았으면 건너뜀)
 """
 import glob, json, os
 from PIL import Image
@@ -21,11 +21,23 @@ def clean(im):
     return im, im.getbbox()
 
 manifest = {}
+# 기존 manifest 읽기 (변환 건너뛰기용)
+old_manifest = {}
+mpath = os.path.join(ROOT, 'src/data/spriteManifest.ts')
+if os.path.exists(mpath):
+    import re
+    for k, body in re.findall(r"'([^']+)': \{([^}]*)\}", open(mpath).read()):
+        old_manifest[k] = {a: int(b) for a, b in re.findall(r'(\w+): (-?\d+)', body)}
 for png in sorted(glob.glob(os.path.join(ROOT, 'public/sprites/*/*.png'))):
     kind, name = png.split(os.sep)[-2], os.path.basename(png)[:-4]
     if name.endswith('_atk'):
         continue
     key = f'{kind}/{name}'
+    webp, atk_png, atk_webp = png[:-4] + '.webp', png[:-4] + '_atk.png', png[:-4] + '_atk.webp'
+    fresh = lambda src, dst: os.path.exists(dst) and os.path.getmtime(dst) >= os.path.getmtime(src)
+    if key not in LEGACY_FIT and key in old_manifest and fresh(png, webp) and (not os.path.exists(atk_png) or fresh(atk_png, atk_webp)):
+        manifest[key] = old_manifest[key]  # 이미 변환됨 (원본이 바뀌지 않았으면 건너뜀)
+        continue
     raw, box = clean(Image.open(png))
     idle = raw.crop(box)
     s = OUT_H / idle.height

@@ -406,7 +406,7 @@ export function pickFoe(ctx: BattleContext, c: Combatant, prefer?: 'lowest'): Co
 
 // ───────── 스킬 사용 ─────────
 function useSkill(ctx: BattleContext, c: Combatant, sk: SkillDef) {
-  ctx.log.push({ t: 'skill', actor: c.name, skill: sk.name });
+  ctx.log.push({ t: 'skill', actor: c.name, skill: sk.name, ...(c.maxMp > 0 ? { mp: Math.round(c.mp), maxMp: Math.round(c.maxMp) } : {}) });
   ctx.cur = { c, label: sk.name };
   let singleTarget: Combatant | undefined;
   for (const e of sk.effects) {

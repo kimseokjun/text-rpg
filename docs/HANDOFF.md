@@ -2,6 +2,17 @@
 
 작업 완료 시 최신 항목을 위에 추가한다. 날짜, 담당, 기준 커밋, 브랜치 또는 PR, 변경 사항, 검증 명령과 결과, 다음 작업을 남긴다. 실패하거나 실행하지 못한 검증에는 이유를 적는다.
 
+## 2026-11-26 · 전투 중 MP 갱신 · 모바일 무대 겹침
+
+- 담당 및 브랜치는 Claude Code, `claude/known-fixes`
+- 기준 커밋 `d3a722f` (PR #12 병합 후 `origin/main`).
+- 변경 사항
+  - MP: `skill` 이벤트에 쓴 뒤 남은 `mp`·`maxMp`를 실었다(MP가 있는 유닛만, `src/core/types.ts`·`src/core/combat.ts`의 `useSkill`). `applyEvent`가 `statusMp()`로 상태창 MP 막대와 숫자를 바로 줄인다. 패시브 회복처럼 이벤트 없이 바뀌는 MP는 기존처럼 층이 끝날 때 맞춰진다.
+  - 모바일(≤600px) 무대: `.s2`를 정사각형(`aspect-ratio: 1/1`)으로 바꿨다. 줄 배치는 `COL_Y_M`(세로 간격 넓힘)과 `COL_X_M`(앞줄끼리 더 떨어지게)을 쓰고, 엇갈림도 2배로 했다. PC 배치는 그대로다.
+- 검증
+  - `npm run typecheck`, `npm run smoke`, `npm run build`, `git diff --check`가 통과했다.
+  - Playwright 모바일(390px)로 지하묘지 2층·5층 보스에서 이름표·그림이 겹치지 않는 것을 확인했다. 전투 도중 상태창 MP가 줄어드는 것도 확인했다(168→160 등).
+
 ## 2026-11-26 · 일반 전투 무대 스킬 이펙트
 
 - 담당 및 브랜치는 Claude Code, `claude/stage-fx`

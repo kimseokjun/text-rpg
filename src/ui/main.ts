@@ -27,7 +27,7 @@ import { Raid4Battle, type R4Member, type R4State } from '../core/raid4battle';
 import { mountStage, playEvents, setBanner, setPanel, speech, stageMounted, updateStage } from './r4stage';
 import * as Bgm from './bgm';
 import { mountPlaza, EMOTES, type PlazaRun } from './plaza';
-import { stageShell, unitBox, fxSkill, spriteImg, monSpriteH, JOB_SPRITE_H, formation, enemyFormation, SUMMON_POS, fxCaption, fxLunge, fxNumber, fxBossBar, statusPanel, statusHp, type StageTheme } from './stage2d';
+import { stageShell, unitBox, fxSkill, statusMp, spriteImg, monSpriteH, JOB_SPRITE_H, formation, enemyFormation, SUMMON_POS, fxCaption, fxLunge, fxNumber, fxBossBar, statusPanel, statusHp, type StageTheme } from './stage2d';
 import { FISH, FISH_GRADE_NAME, MASTERY_MAX, fishCosChance, fishWeights, masteryNeed } from '../data/fish';
 import { COSMETICS, COS_BY_ID, COS_KIND_KO, FREE_HEADS, MERC_KINDS, OUTFIT_COLORS, TRIM_COLORS, type AvatarState, type CosKind } from '../data/cosmetics';
 import { CHESTS, dRewardText } from '../data/missions';
@@ -2777,7 +2777,7 @@ function applyEvent(e: BattleEvent): boolean {
       return true;
     case 'round': return false;
     case 'attack': if (speed !== 0) fxLunge(e.actor, speed === 2); return false;
-    case 'skill': if (speed !== 0) { fxCaption(`${e.actor} · ${e.skill}`, units[e.actor]?.side === 'e' ? 'e' : 'p'); fxLunge(e.actor, speed === 2); } logLine('sk', `${e.actor}의 [${e.skill}]`); return true;
+    case 'skill': if (e.mp !== undefined && e.maxMp) statusMp(esc(e.actor), e.mp, e.maxMp); if (speed !== 0) { fxCaption(`${e.actor} · ${e.skill}`, units[e.actor]?.side === 'e' ? 'e' : 'p'); fxLunge(e.actor, speed === 2); } logLine('sk', `${e.actor}의 [${e.skill}]`); return true;
     case 'damage': if (speed !== 0) fxNumber(e.to, e.crit ? `${fmt(e.amount)}!` : fmt(e.amount), e.crit ? 'crit' : 'dmg'); setHp(e.to, e.hpLeft, e.maxHp, true); logLine(e.crit ? 'cr' : 'dm', `  ${e.from} → ${e.to} ${e.amount}${e.crit ? ' 치명타!' : ''}`); return true;
     case 'evade': if (speed !== 0) fxNumber(e.to, 'MISS', 'miss'); logLine('st', `  ${e.to}이(가) 공격을 피했다`); return true;
     case 'heal': if (speed !== 0) fxNumber(e.to, `+${fmt(e.amount)}`, 'heal'); setHp(e.to, e.hpLeft, e.maxHp, false); logLine('hl', `  ${e.to} +${e.amount} 회복`); return true;

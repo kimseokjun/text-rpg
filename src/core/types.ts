@@ -199,7 +199,7 @@ export interface UnitSnap { name: string; hp: number; maxHp: number; boss?: bool
 export type BattleEvent =
   | { t: 'wave'; floor: number; wave: number; enemies: UnitSnap[]; elite: boolean; boss: boolean }
   | { t: 'round'; n: number }
-  | { t: 'skill'; actor: string; skill: string }
+  | { t: 'skill'; actor: string; skill: string; mp?: number; maxMp?: number } // mp: 쓴 뒤 남은 MP (MP 있는 유닛만)
   | { t: 'attack'; actor: string }
   | { t: 'damage'; from: string; to: string; amount: number; crit: boolean; hpLeft: number; maxHp: number }
   | { t: 'evade'; from: string; to: string }

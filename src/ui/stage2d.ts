@@ -49,13 +49,19 @@ export function stageBg(theme: StageTheme): string {
 export interface Pos { x: number; y: number }
 /** 한 줄에 n명일 때 세로 자리 (위 = 화면 안쪽) */
 const COL_Y: Record<number, number[]> = { 1: [84], 2: [77, 91], 3: [73, 83, 93], 4: [72, 79, 86, 93] };
+/** 모바일(무대가 정사각형): 위아래 간격을 더 벌려 이름표·그림이 안 겹치게 */
+const COL_Y_M: Record<number, number[]> = { 1: [84], 2: [74, 91], 3: [70, 80, 91], 4: [69, 76, 84, 91] };
+const mobile = () => typeof window !== 'undefined' && window.matchMedia('(max-width:600px)').matches;
 /** 같은 줄 안에서 살짝 엇갈리게 (겹침 방지) */
 const ZIG = [-2, 2, -2, 2];
 const COL_X = { p: { front: 60, back: 80 }, e: { front: 40, back: 20 } } as const;
+/** 모바일: 앞줄끼리 조금 더 떨어지게 */
+const COL_X_M = { p: { front: 63, back: 84 }, e: { front: 37, back: 16 } } as const;
 function column(side: 'p' | 'e', row: 'front' | 'back', n: number): Pos[] {
-  const ys = COL_Y[Math.min(4, Math.max(1, n))];
+  const m = mobile();
+  const ys = (m ? COL_Y_M : COL_Y)[Math.min(4, Math.max(1, n))];
   const dir = side === 'p' ? 1 : -1;
-  return Array.from({ length: n }, (_, i) => ({ x: COL_X[side][row] + dir * ZIG[i % 4], y: ys[i % ys.length] + (i >= 4 ? 4 : 0) }));
+  return Array.from({ length: n }, (_, i) => ({ x: (m ? COL_X_M : COL_X)[side][row] + dir * ZIG[i % 4] * (m ? 2 : 1), y: ys[i % ys.length] + (i >= 4 ? 4 : 0) }));
 }
 /** 줄 정보(전열/후열) 목록 → 자리 목록 (같은 순서) */
 export function formation(side: 'p' | 'e', rows: ('front' | 'back')[]): Pos[] {
@@ -154,6 +160,13 @@ export function statusPanel(rows: { name: string; hp: number; max: number; mp?: 
   s.innerHTML = rows.map((r) => `<div class="s2row ${r.dead ? 'dead' : ''}" data-name="${r.name.replace(/"/g, '&quot;')}"><span class="s2ri">${r.icon}</span><b>${r.name}</b>
     <span class="s2lbl">HP</span><div class="s2hp"><i style="width:${Math.max(0, Math.min(100, (r.hp / Math.max(1, r.max)) * 100))}%"></i></div><small>${Math.round(r.hp)}</small>
     ${r.mpMax ? `<span class="s2lbl">MP</span><div class="s2mpb"><i style="width:${Math.max(0, Math.min(100, ((r.mp ?? 0) / r.mpMax) * 100))}%"></i></div><small>${Math.round(r.mp ?? 0)}</small>` : ''}</div>`).join('');
+}
+/** 상태창 MP 갱신 (스킬을 쓸 때마다) */
+export function statusMp(name: string, mp: number, max: number) {
+  const r = document.querySelector<HTMLElement>(`#s2status .s2row[data-name="${CSS.escape(name)}"]`); if (!r) return;
+  const b = r.querySelector<HTMLElement>('.s2mpb i'); if (!b) return;
+  b.style.width = `${Math.max(0, Math.min(100, (mp / Math.max(1, max)) * 100))}%`;
+  const smalls = r.querySelectorAll('small'); if (smalls[1]) smalls[1].textContent = String(Math.max(0, Math.round(mp)));
 }
 export function statusHp(name: string, hp: number, max: number, dead?: boolean) {
   const r = document.querySelector<HTMLElement>(`#s2status .s2row[data-name="${CSS.escape(name)}"]`); if (!r) return;

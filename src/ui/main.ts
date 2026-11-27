@@ -240,6 +240,34 @@ function commit(r?: G.Result) {
 }
 
 // ───────── 공통 조각 ─────────
+let logoutBusy = false;
+function canLogout() {
+  return CLOUD && !!Cloud.session && !EX && !r4 && !myRoom;
+}
+async function logout() {
+  if (logoutBusy || !canLogout()) return;
+  logoutBusy = true;
+  app.inert = true;
+  try {
+    if (S && !(await saveGameNow(S))) {
+      toast('저장에 실패했어요. 잠시 후 로그아웃을 다시 시도하세요.', true);
+      return;
+    }
+    if (!(await Cloud.signOut())) {
+      toast('로그아웃에 실패했어요. 잠시 후 다시 시도하세요.', true);
+      return;
+    }
+    stopSocial();
+    S = null; lastSave = null; modal = null; screen = 'title';
+    render();
+  } catch {
+    toast('연결에 실패했어요. 잠시 후 다시 시도하세요.', true);
+  } finally {
+    app.inert = false;
+    logoutBusy = false;
+  }
+}
+
 function topbar() {
   if (!S) return '';
   return `<header class="top"><div class="wrap">
@@ -250,6 +278,7 @@ function topbar() {
       <span>강화석 <b>${S.stones}</b></span>
       <span>축복 <b>${S.blessings}</b></span>
       <span>${S.day}일차</span>
+      ${canLogout() ? '<button class="btn ghost sm" data-a="logout">로그아웃</button>' : ''}
     </div>
   </div></header>`;
 }
@@ -2687,6 +2716,7 @@ function viewDungeon() {
   return `<div class="wrap">
     <div class="dhead"><div><div class="small mute">${ex.settings.duel ? `친구 결투 · vs ${esc(ex.settings.duel.foeName)}` : ex.settings.rift ? `카드 던전 · ${esc(zoneOf(ex.settings.rift.level).name)}` : ex.settings.tower ? `무한 탑 · ${esc(towerGimmick(ex.floor).icon)} ${esc(towerGimmick(ex.floor).name)}` : ex.settings.raid ? `개인 레이드 · ${esc(raidForm(ex.settings.raid.week).name)}` : ex.daily ? '일일 던전' : `${esc(regionOf(ex.floor).name)} · ${esc(zone.name)}`}</div><h2 id="floorTitle">${floorTitle(ex)}</h2></div>
       <div class="speed" role="group" aria-label="전투 속도">${([1, 2, 0] as const).map((v) => `<button data-a="speed" data-v="${v}" class="${speed === v ? 'on' : ''}" ${EX?.settings.multi ? 'disabled title="멀티에서는 방장이 정한 배속으로 고정돼요"' : ''}>${v === 0 ? '스킵' : `${v}x`}</button>`).join('')}</div></div>
+    ${!ex.settings.multi && !ex.settings.duel ? '<button id="dretreat" class="btn ghost sm" data-a="retreat" hidden>이번 층 정산 후 귀환</button>' : ''}
     ${stageShell(stageTheme(ex))}
     <details class="s2log" ${logOpen ? 'open' : ''}><summary>전투 기록</summary><div class="log" id="log" aria-live="polite"></div></details>
     <div class="dctl" id="dctl"></div>
@@ -2854,6 +2884,8 @@ function renderDctl() {
   const el = document.getElementById('dctl');
   if (!el || !EX) return;
   const ex = EX;
+  const retreat = document.getElementById('dretreat');
+  if (retreat) retreat.hidden = phase !== 'playing';
   if (ex.settings.multi) {
     el.innerHTML = phase === 'done' ? `<button class="btn" data-a="endRun">결과 보기</button>` : `<span class="mute">${phase === 'playing' ? '전투 중…' : '다음 층으로 이동 중…'} · 배속 ${speed ? `${speed}배` : '스킵'} (방장 설정)</span>`;
     return;
@@ -3365,7 +3397,7 @@ app.addEventListener('click', (ev) => {
     case 'towerGo': startTowerRun(); break;
     case 'cardDunGo': startCardDunRun(d.v as CardDunDiff); break;
     case 'authMode': authMode = d.v as 'login' | 'signup'; authErr = ''; render(); break;
-    case 'logout': stopSocial(); Cloud.signOut().then(() => { S = null; lastSave = null; screen = 'title'; render(); }); break;
+    case 'logout': void logout(); break;
     case 'rankKind': rankKind = d.v as Cloud.RankKind; render(); break;
     case 'rankRefresh': loadRanks(true); break;
     case 'chatToggle': chatOpen = !chatOpen; if (chatOpen && chatTab === 'chat') chatUnread = 0; renderChat(); break;
@@ -3497,7 +3529,14 @@ app.addEventListener('click', (ev) => {
       }
       break;
     case 'nextFloor': if (EX) { EX.next(); playFloor(); } break;
-    case 'retreat': if (EX) { EX.finish('manual'); phase = 'done'; endRun(); } break;
+    case 'retreat':
+      if (EX && !EX.settings.multi && !EX.settings.duel) {
+        // 현재 층의 시뮬레이션 결과는 이미 확정됐고, 화면 재생만 중단한다.
+        EX.finish('manual');
+        phase = 'done';
+        endRun();
+      }
+      break;
     case 'endRun': endRun(); break;
     case 'copySave': {
       const t = document.getElementById('saveOut') as HTMLTextAreaElement;

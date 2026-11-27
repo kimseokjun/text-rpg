@@ -58,14 +58,31 @@ export async function loadGame(): Promise<GameState | null> {
 }
 
 let cloudTimer = 0;
+let cloudWrite = Promise.resolve(true);
+function queueCloudSave(s: GameState, json: string, owner: string, rank = false) {
+  const power = statePower(s);
+  const day = s.day;
+  const scores = { power, tower_best: s.tower?.best ?? 0, raid_best: s.raid?.best ?? 0, raid_week: s.raid?.week ?? 0, max_floor: s.maxFloor };
+  cloudWrite = cloudWrite.then(async () => {
+    if (session?.user.id !== owner) return false;
+    const saved = await saveCloud(JSON.parse(json), day, power);
+    if (saved && rank && session?.user.id === owner) void pushRank(scores).catch(() => {});
+    return saved;
+  }).catch(() => false);
+  return cloudWrite;
+}
 export let cloudStatus: 'idle' | 'saving' | 'saved' | 'error' = 'idle';
 export function saveGame(s: GameState) {
   const json = JSON.stringify(s);
   if (CLOUD) {
     if (!session) return;
-    try { localStorage.setItem(`${LS_KEY}-${session.user.id}`, json); } catch { /* 무시 */ }
+    const owner = session.user.id;
+    try { localStorage.setItem(`${LS_KEY}-${owner}`, json); } catch { /* 무시 */ }
     clearTimeout(cloudTimer);
-    cloudTimer = window.setTimeout(async () => { cloudStatus = 'saving'; const pw = statePower(s); cloudStatus = (await saveCloud(JSON.parse(json), s.day, pw)) ? 'saved' : 'error'; pushRank({ power: pw, tower_best: s.tower?.best ?? 0, raid_best: s.raid?.best ?? 0, raid_week: s.raid?.week ?? 0, max_floor: s.maxFloor }).catch(() => {}); }, 1200);
+    cloudTimer = window.setTimeout(async () => {
+      cloudStatus = 'saving';
+      cloudStatus = (await queueCloudSave(s, json, owner, true)) ? 'saved' : 'error';
+    }, 1200);
     return;
   }
   try { localStorage.setItem(LS_KEY, json); } catch { /* 무시 */ }
@@ -102,6 +119,8 @@ export async function wipeSave() {
 export async function saveGameNow(s: GameState): Promise<boolean> {
   if (!CLOUD || !session) return false;
   clearTimeout(cloudTimer);
-  try { localStorage.setItem(`${LS_KEY}-${session.user.id}`, JSON.stringify(s)); } catch { /* 무시 */ }
-  return saveCloud(JSON.parse(JSON.stringify(s)), s.day, statePower(s));
+  const owner = session.user.id;
+  const json = JSON.stringify(s);
+  try { localStorage.setItem(`${LS_KEY}-${owner}`, json); } catch { /* 무시 */ }
+  return queueCloudSave(s, json, owner);
 }

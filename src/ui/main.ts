@@ -339,6 +339,13 @@ const KIND_NAME_EQ: Record<BaseSlot, string> = { weapon: '무기', hat: '모자'
 const BASE_ORDER: Record<BaseSlot, number> = { weapon: 0, hat: 1, armor: 2, bottom: 3, accessory: 4, ring: 5 };
 
 // ───────── 화면들 ─────────
+const compactScreen = window.matchMedia('(max-width: 600px)');
+function enterMobileTown() {
+  if (compactScreen.matches && CLOUD && Cloud.session && lastSave && screen === 'title') {
+    S = lastSave;
+    screen = 'town';
+  }
+}
 let authMode: 'login' | 'signup' = 'login';
 let authBusy = false;
 let authErr = '';
@@ -365,12 +372,25 @@ async function submitAuth() {
   authBusy = false;
   if (err) { authErr = err; render(); return; }
   lastSave = await loadGame();
+  enterMobileTown();
   render();
   startSocial();
   if (authMode === 'signup') Cloud.logEvent('signup', '');
   toast(authMode === 'login' ? `${Cloud.username}님 어서 오세요` : '가입 완료!');
 }
 function viewTitle() {
+  if (compactScreen.matches && CLOUD) {
+    return `<main class="mobile-entry">
+      <h1>지하묘지의 용병단</h1>
+      ${!Cloud.session ? authForm() : `<div class="panel grid">
+        ${lastSave ? '<button class="btn" data-a="continue">마을 들어가기</button>' : `<label for="heroName">주인공 이름</label>
+        <input id="heroName" maxlength="8" placeholder="용사">
+        <button class="btn" data-a="newGame">마을 들어가기</button>
+        <button class="btn ghost" data-a="openSave">세이브 코드로 불러오기</button>`}
+        <button class="btn ghost" data-a="logout">로그아웃</button>
+      </div>`}
+    </main>`;
+  }
   return `<div class="title">
     <div class="scene">${townScene()}</div>
     <div class="tbox">
@@ -459,6 +479,29 @@ function viewTown() {
     ...(CLOUD ? [['rank', '명예의 전당', '무한 탑 · 전투력 · 레이드 순위'] as [string, string, string]] : []),
     ...(CLOUD && Cloud.isAdmin ? [['admin', '관리자', '회원 · 활동 로그 · 채팅 · 지급'] as [string, string, string]] : []),
   ];
+  if (compactScreen.matches) {
+    return `<main class="wrap mobile-town">
+      <header class="mobile-town-head">
+        <div><h1>마을</h1><span class="small mute">${esc(s.heroName)} · ${s.day}일차</span></div>
+        <details class="mobile-town-menu">
+          <summary>메뉴</summary>
+          <nav aria-label="마을 콘텐츠" class="panel">
+            <button class="btn ghost" data-a="go" data-to="party">파티 편성</button>
+            ${signs.map(([to, name]) => `<button class="btn ghost" data-a="go" data-to="${to}">${name}</button>`).join('')}
+            <button class="btn ghost" data-a="openSave">저장 관리</button>
+            ${CLOUD && Cloud.session ? '<button class="btn ghost" data-a="logout">로그아웃</button>' : ''}
+          </nav>
+        </details>
+      </header>
+      <div class="scene">${townScene()}</div>
+      <div class="mobile-town-stats panel"><span>파티 전투력 <b>${fmt(G.statePower(s))}</b></span><span>골드 <b>${fmt(s.gold)}</b></span></div>
+      ${noticeStrip()}
+      ${questPanel()}
+      <details class="panel mobile-town-notes"><summary>일일 보상과 마을 소식</summary>
+        ${todoPanel()}<ul class="news">${s.news.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>
+      </details>
+    </main>`;
+  }
   return `<div class="wrap">
     <div class="scene">${townScene()}</div>
     ${noticeStrip()}
@@ -3188,7 +3231,7 @@ function renderNow() {
   const body = !S || screen === 'title' ? viewTitle()
     : screen === 'town' ? viewTown() : screen === 'party' ? viewParty() : screen === 'guild' ? viewGuild() : screen === 'smith' ? viewSmith() : screen === 'refinery' ? viewRefinery() : screen === 'pets' ? viewPets() : screen === 'ach' ? viewAch() : screen === 'avatar' ? viewAvatar() : screen === 'plaza' ? viewPlaza() : screen === 'forge' ? viewForge() : screen === 'daily' ? viewDaily() : screen === 'raid' ? viewRaid()
     : screen === 'shop' ? viewShop() : screen === 'storage' ? viewStorage() : screen === 'training' ? viewTraining() : screen === 'temple' ? viewTemple() : screen === 'gate' ? viewGate() : screen === 'tower' ? viewTower() : screen === 'codex' ? viewCodex() : screen === 'admin' ? viewAdmin() : screen === 'notice' ? viewNotice() : screen === 'cards' ? viewCards() : screen === 'rank' ? viewRank() : screen === 'world' ? viewWorld() : screen === 'multi' ? viewMulti() : screen === 'carddun' ? viewCardDun() : screen === 'duel' ? viewDuel() : screen === 'profile' ? viewProfile() : screen === 'raid4' ? viewRaid4() : viewResult();
-  app.innerHTML = (screen === 'title' ? '' : topbar()) + body;
+  app.innerHTML = (screen === 'title' || (screen === 'town' && compactScreen.matches) ? '' : topbar()) + body;
   if (screen === 'raid4' && r4?.phase === 'battle' && r4.st) r4Mount();
   if (screen === 'plaza') plazaMount();
   document.querySelector('.hubtabs .on')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
@@ -3642,7 +3685,13 @@ async function boot() {
   render();
   await initRemote();
   lastSave = await loadGame();
+  enterMobileTown();
   render();
   startSocial();
 }
+compactScreen.addEventListener('change', () => {
+  if (screen !== 'title' && screen !== 'town') return;
+  enterMobileTown();
+  render();
+});
 boot();

@@ -986,3 +986,24 @@ kbd{font-family:inherit;font-size:.85em;padding:0 4px;border:1px solid #ffffff40
 .fx.sk-slash{width:100px;height:5px;background:linear-gradient(90deg,transparent,var(--c1),var(--c2),transparent);box-shadow:0 0 12px var(--c2);border-radius:3px}
 .fx.sk-slash.big{width:150px;height:7px}
 @media (prefers-reduced-motion:reduce){.fx[class*="sk-"]{display:none}}
+
+/* 좁은 화면의 로그인과 마을 */
+.mobile-entry{width:min(100%,420px);margin-inline:auto;min-height:100dvh;display:grid;align-content:center;gap:14px;padding:16px}
+.mobile-entry h1{font-size:clamp(22px,7vw,31px);margin:0;text-align:center}
+.mobile-entry input{font-size:16px;min-width:0}
+.mobile-entry button,.mobile-town-menu button,.mobile-town-menu summary{min-height:44px}
+.mobile-town{padding-bottom:60px;display:grid;gap:10px}
+.mobile-town-head{height:64px;display:flex;align-items:center;justify-content:space-between;position:relative;z-index:5}
+.mobile-town-head h1{font-size:24px;margin:0}
+.mobile-town-menu summary{display:grid;place-items:center;cursor:pointer;padding:0 14px;border:1px solid var(--line);border-radius:10px}
+.mobile-town-menu nav{position:absolute;right:0;top:100%;width:min(100%,340px);max-height:calc(100dvh - 96px);overflow:auto;overscroll-behavior:contain;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;background:var(--bg)}
+.mobile-town-menu button{padding:6px;overflow-wrap:anywhere}
+.mobile-town .scene{height:clamp(100px,22dvh,180px);margin:0;border-radius:10px}
+.mobile-town-stats{display:flex;gap:12px;justify-content:space-between}
+.mobile-town-notes summary{min-height:36px;cursor:pointer}
+@media(max-height:640px){
+  .mobile-town{gap:8px;padding-bottom:44px}
+  .mobile-town-head{height:56px}
+  .mobile-town .scene{height:94px}
+}
+body:has(.mobile-town) .bgmbox{inset:auto auto 10px 10px;flex-direction:row}

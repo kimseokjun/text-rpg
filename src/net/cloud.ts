@@ -49,10 +49,12 @@ export async function signIn(id: string, pw: string): Promise<string | null> {
   return null;
 }
 
-export async function signOut() {
-  if (!sb) return;
-  await sb.auth.signOut();
+export async function signOut(): Promise<boolean> {
+  if (!sb) return false;
+  const { error } = await sb.auth.signOut({ scope: 'local' });
+  if (error) return false;
   session = null; username = '';
+  return true;
 }
 
 /** 클라우드 세이브 */

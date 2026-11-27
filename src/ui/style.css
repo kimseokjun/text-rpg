@@ -986,3 +986,5 @@ kbd{font-family:inherit;font-size:.85em;padding:0 4px;border:1px solid #ffffff40
 .fx.sk-slash{width:100px;height:5px;background:linear-gradient(90deg,transparent,var(--c1),var(--c2),transparent);box-shadow:0 0 12px var(--c2);border-radius:3px}
 .fx.sk-slash.big{width:150px;height:7px}
 @media (prefers-reduced-motion:reduce){.fx[class*="sk-"]{display:none}}
+#dretreat{margin-bottom:8px}
+#dretreat[hidden]{display:none}

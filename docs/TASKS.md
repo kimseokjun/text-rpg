@@ -25,6 +25,6 @@
 | 절대영도 대쉬와 직업 그림 비율 수정 | Codex | `src/ui/dodge.ts`, `src/ui/style.css`, 공지 migration | 완료 | `codex/dodge-dash` (#20) |
 | 절대영도 좌우 방향 표시 수정 | Codex | `src/ui/style.css`, 공지 migration | 완료 | `codex/dodge-facing` (#21) |
 | 전투 그림 제작·게임 적용 4단계 (특수 몬스터 20종) | Codex | `public/sprites/mon/`, `src/data/spriteManifest.ts`, `src/ui/stage2d.ts`, `src/ui/main.ts`, `src/ui/style.css`, `docs/ART_SPEC.md`, 공지 migration | 완료 | `codex/art-4` (#22) |
-| 모바일 로그인 및 마을 메뉴 | Codex | `src/ui/main.ts`, `src/ui/style.css`, 공지 migration | 검토 대기 | `codex/mobile-ui` |
+| 모바일 로그인 및 마을 메뉴 | Codex | `src/ui/main.ts`, `src/ui/style.css`, 공지 migration | 롤백 | `codex/mobile-ui` (#23) |
 
 Claude Code의 작업은 배정 시 행을 추가하고 `claude/<작업명>` 브랜치를 기록한다. 두 AI가 동시에 작업할 때는 각자의 행을 갱신한다.
